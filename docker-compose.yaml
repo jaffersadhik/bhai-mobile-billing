@@ -1,0 +1,64 @@
+# Bhai Mobile Billing - MySQL 8.4 + Spring Boot app
+#   1. cp .env.example .env   (set passwords + MYSQL_DATA_DIR / MYSQL_BACKUP_DIR absolute paths)
+#   2. mkdir -p <MYSQL_DATA_DIR> <MYSQL_BACKUP_DIR>
+#   3. docker compose up -d --build
+#   4. open http://<server>:8080/   first login: admin / admin123
+name: bhai-mobile-billing
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: bmb
+      MYSQL_USER: ${DB_USER:-bmb}
+      MYSQL_PASSWORD: ${DB_PASS:?set DB_PASS in .env}
+      TZ: Asia/Kolkata
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - bmb-mysql-data:/var/lib/mysql      # data -> local disk folder MYSQL_DATA_DIR
+      - bmb-mysql-backup:/backup           # mysqldump files -> local disk folder MYSQL_BACKUP_DIR
+    healthcheck:
+      # TCP ping with the app user: succeeds only after MySQL's first-time init has finished
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # no "ports:" on purpose - MySQL is reachable only by the app on the internal network
+
+  app:
+    build: .
+    image: bhai-mobile-billing:1.0.0
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_URL: "jdbc:mysql://mysql:3306/bmb?useUnicode=true&characterEncoding=UTF-8&rewriteBatchedStatements=true&useSSL=false&allowPublicKeyRetrieval=true"
+      DB_USER: ${DB_USER:-bmb}
+      DB_PASS: ${DB_PASS}
+      BMB_ZONE: Asia/Kolkata
+      TZ: Asia/Kolkata
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+volumes:
+  # Named volumes stored in folders on the local disk (bind). The folders must exist first.
+  bmb-mysql-data:
+    name: bmb-mysql-data
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MYSQL_DATA_DIR:?set MYSQL_DATA_DIR in .env (absolute path)}
+  bmb-mysql-backup:
+    name: bmb-mysql-backup
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MYSQL_BACKUP_DIR:?set MYSQL_BACKUP_DIR in .env (absolute path)}
