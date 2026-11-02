@@ -24,6 +24,7 @@ public class AppConfig {
     @Bean
     public ApplicationRunner createDefaultAdmin(BillingService service) {
         return args -> {
+            service.migrate();
             if (service.ensureDefaultAdmin())
                 log.warn("Bhai Mobile Billing: first start - created login admin / admin123. Change this password immediately after login.");
         };

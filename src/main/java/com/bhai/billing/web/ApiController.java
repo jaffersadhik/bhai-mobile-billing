@@ -68,13 +68,32 @@ public class ApiController {
     /** Sales report / statistics of the session company. ?date=yyyy-MM-dd (default today) */
     @GetMapping("/report")
     public ResponseEntity<Object> report(@RequestHeader(value = AUTH, required = false) String auth,
-                                         @RequestParam(value = "date", required = false) String date) { return run(() -> svc.report(auth, date)); }
+                                         @RequestParam(value = "date", required = false) String date,
+                                         @RequestParam(value = "branch", required = false) String branch) { return run(() -> svc.report(auth, date, branch)); }
+
+    /** Stock of a branch (stock users: own branch, admin: ?branch=) */
+    @GetMapping("/stock")
+    public ResponseEntity<Object> stock(@RequestHeader(value = AUTH, required = false) String auth,
+                                        @RequestParam(value = "branch", required = false) String branch) { return run(() -> svc.stock(auth, branch)); }
+
+    /** {item, size, qty} = set, {item, size, add} = add / subtract; negative allowed */
+    @PutMapping("/stock")
+    public ResponseEntity<Object> setStock(@RequestHeader(value = AUTH, required = false) String auth,
+                                           @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.setStock(auth, nn(body))); }
 
     // ---- admin
     /** Today / selected day / month sales of all companies. ?date=yyyy-MM-dd (default today) */
     @GetMapping("/admin/sales")
     public ResponseEntity<Object> adminSales(@RequestHeader(value = AUTH, required = false) String auth,
                                              @RequestParam(value = "date", required = false) String date) { return run(() -> svc.adminSales(auth, date)); }
+
+    @PostMapping("/admin/branch")
+    public ResponseEntity<Object> saveBranch(@RequestHeader(value = AUTH, required = false) String auth,
+                                             @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.saveBranch(auth, nn(body))); }
+
+    @DeleteMapping("/admin/branch/{companyId}/{id}")
+    public ResponseEntity<Object> deleteBranch(@RequestHeader(value = AUTH, required = false) String auth,
+                                               @PathVariable("companyId") String companyId, @PathVariable("id") String id) { return run(() -> svc.deleteBranch(auth, companyId, id)); }
 
     @GetMapping("/admin/overview")
     public ResponseEntity<Object> overview(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.overview(auth)); }

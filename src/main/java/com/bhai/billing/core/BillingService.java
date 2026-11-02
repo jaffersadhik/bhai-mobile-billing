@@ -14,6 +14,7 @@ import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,11 +35,14 @@ public class BillingService {
 
     static final Pattern ID = Pattern.compile("[A-Za-z0-9_-]{1,40}");
     static final Pattern USERNAME = Pattern.compile("[a-z0-9._-]{3,30}");
+    static final Set<String> USER_TYPES = Set.of("admin", "owner", "sales", "stock");
     static final Pattern MOBILE = Pattern.compile("[6-9][0-9]{9}");
     static final Pattern GSTIN = Pattern.compile("[0-9]{2}[A-Z0-9]{13}");
     static final Pattern EMAIL = Pattern.compile("[^@\\s]+@[^@\\s]+\\.[^@\\s]+");
     static final Pattern PREFIX = Pattern.compile("[A-Z0-9]{1,8}");
     static final Pattern COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
+    /** printable ASCII, no spaces - covers EAN/UPC/Code128/Code39/QR text used on garment tags */
+    static final Pattern BARCODE = Pattern.compile("[\\x21-\\x7E]{3,40}");
     static final String DEFAULT_FOOTER = "நன்றி! மீண்டும் வருக 🙏";
     static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 
@@ -66,11 +70,105 @@ public class BillingService {
 
         boolean admin() { return "admin".equals(str(user.get("user_type"))); }
 
+        String type() { return str(user.get("user_type")); }
+
+        /** owner: reports of the whole company only (no billing) */
+        boolean owner() { return "owner".equals(type()); }
+
+        /** stock: everything sales can do + stock maintenance */
+        boolean stock() { return "stock".equals(type()); }
+
         String uid() { return str(user.get("id")); }
     }
 
     // ================================================================ startup
     /** First start: create admin / admin123 (must be changed after login). */
+    /**
+     * Upgrades an existing database (schema.sql only creates missing tables, it never changes them).
+     * Safe to run at every start: each step checks information_schema first.
+     */
+    public void migrate() {
+        if (!hasColumn("item_sizes", "barcode"))
+            db.update("ALTER TABLE item_sizes ADD COLUMN barcode VARCHAR(40) NULL AFTER rate");
+        if (!hasIndex("item_sizes", "uk_sizes_barcode"))
+            db.update("ALTER TABLE item_sizes ADD UNIQUE KEY uk_sizes_barcode (company_id, barcode)");
+
+        // user types: customer -> sales, new owner / stock
+        Map<String, Object> ut = db.one("SELECT column_type AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'user_type'");
+        if (ut != null && !str(ut.get("t")).contains("'sales'")) {
+            if (db.one("SELECT 1 AS x FROM information_schema.table_constraints WHERE table_schema = DATABASE() AND table_name = 'users' AND constraint_name = 'chk_users_company'") != null)
+                db.update("ALTER TABLE users DROP CONSTRAINT chk_users_company");
+            db.update("ALTER TABLE users MODIFY user_type ENUM('admin','customer','owner','sales','stock') NOT NULL");
+            db.update("UPDATE users SET user_type = 'sales' WHERE user_type = 'customer'");
+            db.update("ALTER TABLE users MODIFY user_type ENUM('admin','owner','sales','stock') NOT NULL");
+            db.update("ALTER TABLE users ADD CONSTRAINT chk_users_company CHECK ((user_type = 'admin' AND company_id IS NULL) OR (user_type <> 'admin' AND company_id IS NOT NULL))");
+        }
+        if (!hasColumn("users", "branch_id")) db.update("ALTER TABLE users ADD COLUMN branch_id VARCHAR(20) NULL AFTER company_id");
+        if (!hasColumn("bills", "branch_id")) db.update("ALTER TABLE bills ADD COLUMN branch_id VARCHAR(20) NULL AFTER company_id");
+        if (!hasIndex("bills", "idx_bills_branch_date")) db.update("ALTER TABLE bills ADD KEY idx_bills_branch_date (company_id, branch_id, created_at)");
+        if (!hasColumn("bill_lines", "item_id")) db.update("ALTER TABLE bill_lines ADD COLUMN item_id VARCHAR(40) NULL AFTER line_no");
+        ensureBranches(null);
+    }
+
+    private boolean hasColumn(String table, String col) {
+        return db.one("SELECT 1 AS x FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?", table, col) != null;
+    }
+
+    private boolean hasIndex(String table, String idx) {
+        return db.one("SELECT 1 AS x FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? LIMIT 1", table, idx) != null;
+    }
+
+    /**
+     * Every company has at least one branch ("Main"); sales / stock users and bills without a branch go to the
+     * company's first branch. cid = one company, or null for all companies.
+     */
+    private void ensureBranches(String cid) {
+        List<Map<String, Object>> cs = cid == null ? db.query("SELECT id FROM companies") : db.query("SELECT id FROM companies WHERE id = ?", cid);
+        for (Map<String, Object> co : cs) {
+            String id = str(co.get("id"));
+            if (db.one("SELECT 1 AS x FROM branches WHERE company_id = ? LIMIT 1", id) == null)
+                db.update("INSERT INTO branches (company_id, id, name, sort_order, created_at) VALUES (?, ?, ?, 0, ?)", id, newId("b"), "Main", now());
+            String first = firstBranch(id);
+            db.update("UPDATE users SET branch_id = ? WHERE company_id = ? AND user_type IN ('sales','stock') AND (branch_id IS NULL OR branch_id NOT IN (SELECT id FROM branches WHERE company_id = ?))", first, id, id);
+            db.update("UPDATE bills SET branch_id = ? WHERE company_id = ? AND branch_id IS NULL", first, id);
+        }
+    }
+
+    private String firstBranch(String cid) {
+        Map<String, Object> r = db.one("SELECT id FROM branches WHERE company_id = ? ORDER BY sort_order, created_at, id LIMIT 1", cid);
+        return r == null ? null : str(r.get("id"));
+    }
+
+    private Map<String, Object> branchRow(String cid, String bid) {
+        return blank(bid) ? null : db.one("SELECT * FROM branches WHERE company_id = ? AND id = ?", cid, bid);
+    }
+
+    private List<Object> branchList(String cid) {
+        List<Object> out = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT id, name FROM branches WHERE company_id = ? ORDER BY sort_order, created_at, id", cid)) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("id", str(r.get("id")));
+            n.put("name", str(r.get("name")));
+            out.add(n);
+        }
+        return out;
+    }
+
+    /** Branch where this user's bills and stock go: own branch for sales / stock, the first branch for admin. */
+    private String userBranch(Ctx c, String cid) {
+        if (!c.admin()) {
+            String b = str(c.user.get("branch_id"));
+            if (branchRow(cid, b) != null) return b;
+        }
+        return firstBranch(cid);
+    }
+
+    /** owner may only read reports */
+    private String requireBilling(Ctx c) {
+        if (c.owner()) throw new ApiException(403, "Owner கணக்கில் அறிக்கை மட்டுமே பார்க்கலாம் (Report only)");
+        return requireCompany(c);
+    }
+
     public boolean ensureDefaultAdmin() {
         Map<String, Object> r = db.one("SELECT COUNT(*) AS n FROM users");
         if (r != null && lng(r.get("n")) > 0) return false;
@@ -153,6 +251,10 @@ public class BillingService {
         Map<String, Object> co = companyOf(c);
         o.put("company", co == null ? null : pubCompany(co));
         o.put("defaultPassword", bool(c.user.get("must_change")));
+        if (co != null && !c.admin() && !c.owner()) {
+            Map<String, Object> br = branchRow(str(co.get("id")), userBranch(c, str(co.get("id"))));
+            o.put("branch", br == null ? null : obj("name", str(br.get("name"))));
+        }
         return o;
     }
 
@@ -172,7 +274,7 @@ public class BillingService {
     // ================================================================ company data (groups / items)
     public Map<String, Object> data(String auth) {
         Ctx c = ctx(auth);
-        String cid = requireCompany(c);
+        String cid = requireBilling(c);
         Map<String, Object> o = new LinkedHashMap<>();
         o.put("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", cid)));
         o.put("catalog", loadCatalog(db, cid));
@@ -192,10 +294,11 @@ public class BillingService {
             cats.add(n);
         }
         Map<String, List<Object>> sizes = new LinkedHashMap<>();
-        for (Map<String, Object> z : d.query("SELECT item_id, size_label, rate FROM item_sizes WHERE company_id = ? ORDER BY item_id, sort_order", cid)) {
+        for (Map<String, Object> z : d.query("SELECT item_id, size_label, rate, barcode FROM item_sizes WHERE company_id = ? ORDER BY item_id, sort_order", cid)) {
             Map<String, Object> n = new LinkedHashMap<>();
             n.put("size", str(z.get("size_label")));
             n.put("rate", dbl(z.get("rate")));
+            if (!blank(str(z.get("barcode")))) n.put("code", str(z.get("barcode")));
             sizes.computeIfAbsent(str(z.get("item_id")), k -> new ArrayList<>()).add(n);
         }
         for (Map<String, Object> x : d.query("SELECT * FROM items WHERE company_id = ? ORDER BY sort_order, id", cid)) {
@@ -220,7 +323,7 @@ public class BillingService {
     /** Saves the full list of groups + items of the caller's company (optimistic version check). */
     public Map<String, Object> putCatalog(String auth, Map<String, Object> in) {
         Ctx c = ctx(auth);
-        String cid = requireCompany(c);
+        String cid = requireBilling(c);
         long version = lng(in.get("version"));
         CleanCatalog clean = cleanCatalog(in);
         Map<String, Object> cat = db.tx(t -> {
@@ -230,7 +333,7 @@ public class BillingService {
             t.update("DELETE FROM item_groups WHERE company_id = ?", cid);   // cascades to items and item_sizes
             t.batch("INSERT INTO item_groups (company_id, id, name_ta, name_en, emoji, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)", clean.groups(cid));
             t.batch("INSERT INTO items (company_id, id, group_id, name_ta, name_en, sort_order) VALUES (?, ?, ?, ?, ?, ?)", clean.items(cid));
-            t.batch("INSERT INTO item_sizes (company_id, item_id, size_label, rate, sort_order) VALUES (?, ?, ?, ?, ?)", clean.sizes(cid));
+            t.batch("INSERT INTO item_sizes (company_id, item_id, size_label, rate, sort_order, barcode) VALUES (?, ?, ?, ?, ?, ?)", clean.sizes(cid));
             t.update("UPDATE companies SET catalog_version = ?, catalog_setup = 1, updated_at = ? WHERE id = ?", version + 1, now(), cid);
             return loadCatalog(t, cid);
         });
@@ -261,6 +364,7 @@ public class BillingService {
     private CleanCatalog cleanCatalog(Map<String, Object> in) {
         CleanCatalog out = new CleanCatalog();
         Set<String> gids = new HashSet<>(), iids = new HashSet<>();
+        Map<String, String> codes = new HashMap<>();   // barcode -> "item (size)", must be unique in the company
         for (Object o : list(in.get("cats"))) {
             if (!(o instanceof Map)) continue;
             Map<String, Object> g = map(o);
@@ -287,7 +391,16 @@ public class BillingService {
                 if (label.isEmpty() || label.indexOf('|') >= 0 || seen.contains(label) || !(r > 0 && r <= 999999)) continue;
                 if (sz.size() >= 20) break;
                 seen.add(label);
-                sz.add(new Object[]{id, label, BigDecimal.valueOf(r), sz.size()});
+                String code = str(z.get("code")).trim();
+                if (code.isEmpty()) code = null;
+                else {
+                    if (!BARCODE.matcher(code).matches())
+                        throw new ApiException(400, "தவறான barcode: " + clip(code, 40) + " (" + ta + " " + label + ")");
+                    String owner = codes.putIfAbsent(code, ta + " (" + label + ")");
+                    if (owner != null)
+                        throw new ApiException(400, "Barcode " + code + " ஏற்கனவே " + owner + "-க்கு உள்ளது");
+                }
+                sz.add(new Object[]{id, label, BigDecimal.valueOf(r), sz.size(), code});
             }
             if (sz.isEmpty()) continue;
             if (out.items.size() >= 3000) throw new ApiException(400, "அதிகபட்சம் 3000 ஐட்டங்கள்");
@@ -301,7 +414,8 @@ public class BillingService {
     // ================================================================ bills
     public Map<String, Object> addBill(String auth, Map<String, Object> in) {
         Ctx c = ctx(auth);
-        String cid = requireCompany(c);
+        String cid = requireBilling(c);
+        String branch = userBranch(c, cid);
         String cust = clip(in.get("customer"), 60);
         String phone = str(in.get("phone")).replaceAll("[^0-9]", "");
         if (!phone.isEmpty() && !MOBILE.matcher(phone).matches()) throw new ApiException(400, "மொபைல் எண் தவறு");
@@ -323,6 +437,8 @@ public class BillingService {
             total += amt;
             pcs += qty;
             Map<String, Object> n = new LinkedHashMap<>();
+            String itemId = str(l.get("id"));
+            n.put("id", ID.matcher(itemId).matches() ? itemId : null);   // catalog item (custom items have none)
             n.put("name", name);
             n.put("en", clip(l.get("en"), 60));
             n.put("size", clip(l.get("size"), 12));
@@ -341,15 +457,27 @@ public class BillingService {
             if (prefix.isEmpty()) prefix = "INV";
             String no = prefix + "-" + String.format("%04d", seq);
             t.update("UPDATE companies SET bill_seq = ? WHERE id = ?", seq, cid);
-            long billId = t.insert("INSERT INTO bills (company_id, bill_seq, bill_no, created_at, customer_name, customer_phone, billed_by_user, billed_by_name, pieces, total) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    cid, seq, no, at, cust, phone, str(c.user.get("username")), str(c.user.get("full_name")), pieces, BigDecimal.valueOf(billTotal));
-            List<Object[]> rows = new ArrayList<>();
+            long billId = t.insert("INSERT INTO bills (company_id, branch_id, bill_seq, bill_no, created_at, customer_name, customer_phone, billed_by_user, billed_by_name, pieces, total) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    cid, branch, seq, no, at, cust, phone, str(c.user.get("username")), str(c.user.get("full_name")), pieces, BigDecimal.valueOf(billTotal));
+            // only real catalog item + size pairs are linked (and reduce stock); anything else is a custom line
+            Set<String> known = new HashSet<>();
+            for (Map<String, Object> z : t.query("SELECT item_id, size_label FROM item_sizes WHERE company_id = ?", cid))
+                known.add(str(z.get("item_id")) + "|" + str(z.get("size_label")));
+            List<Object[]> rows = new ArrayList<>(), stockRows = new ArrayList<>();
             int ln = 1;
-            for (Map<String, Object> l : lines)
-                rows.add(new Object[]{cid, billId, ln++, l.get("name"), l.get("en"), l.get("size"), l.get("qty"),
+            for (Map<String, Object> l : lines) {
+                String iid = (String) l.get("id");
+                if (iid != null && !known.contains(iid + "|" + l.get("size"))) { iid = null; l.put("id", null); }
+                rows.add(new Object[]{cid, billId, ln++, iid, l.get("name"), l.get("en"), l.get("size"), l.get("qty"),
                         BigDecimal.valueOf((Double) l.get("rate")), BigDecimal.valueOf((Double) l.get("amt"))});
-            t.batch("INSERT INTO bill_lines (company_id, bill_id, line_no, item_name, item_name_en, size_label, qty, rate, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
+                if (iid != null && branch != null)
+                    stockRows.add(new Object[]{cid, branch, iid, l.get("size"), -((Long) l.get("qty")), at, "bill " + no, l.get("qty"), at, "bill " + no});
+            }
+            t.batch("INSERT INTO bill_lines (company_id, bill_id, line_no, item_id, item_name, item_name_en, size_label, qty, rate, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
+            if (!stockRows.isEmpty())
+                t.batch("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                        + "ON DUPLICATE KEY UPDATE qty = qty - ?, updated_at = ?, updated_by = ?", stockRows);
             Map<String, Object> b = new LinkedHashMap<>();
             b.put("no", no);
             b.put("seq", seq);
@@ -367,12 +495,14 @@ public class BillingService {
 
     public Map<String, Object> bills(String auth) {
         Ctx c = ctx(auth);
-        String cid = requireCompany(c);
-        List<Map<String, Object>> rows = db.query("SELECT * FROM bills WHERE company_id = ? ORDER BY id DESC LIMIT 100", cid);
+        String cid = requireBilling(c);
+        String br = c.admin() ? null : userBranch(c, cid);       // sales / stock: own branch only
+        String bf = br == null ? "" : " AND branch_id = ?";
+        List<Map<String, Object>> rows = db.query("SELECT * FROM bills WHERE company_id = ?" + bf + " ORDER BY id DESC LIMIT 100", args(br, cid));
         List<Object> list = billList(cid, rows);
         LocalDateTime day = LocalDate.now(zone).atStartOfDay();
-        Map<String, Object> td = db.one("SELECT COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ?",
-                cid, day, day.plusDays(1));
+        Map<String, Object> td = db.one("SELECT COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ?" + bf,
+                args(br, cid, day, day.plusDays(1)));
         Map<String, Object> today = new LinkedHashMap<>();
         today.put("count", lng(td.get("cnt")));
         today.put("total", round2(dbl(td.get("tot"))));
@@ -436,10 +566,13 @@ public class BillingService {
         return d;
     }
 
-    /** count / total / avg / max / pieces of bills in [from, to) */
-    private Map<String, Object> salesSummary(String cid, LocalDateTime from, LocalDateTime to) {
+    /** query args with the optional branch filter appended (the filter is always the last condition) */
+    static Object[] args(String branch, Object... a) { return branch == null ? a : concat(a, branch); }
+
+    /** count / total / avg / max / pieces of bills in [from, to), optionally of one branch */
+    private Map<String, Object> salesSummary(String cid, String br, LocalDateTime from, LocalDateTime to) {
         Map<String, Object> r = db.one("SELECT COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot, COALESCE(MAX(total), 0) AS mx, "
-                + "COALESCE(SUM(pieces), 0) AS pcs FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ?", cid, from, to);
+                + "COALESCE(SUM(pieces), 0) AS pcs FROM bills b WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ?" + bf(br), args(br, cid, from, to));
         long cnt = lng(r.get("cnt"));
         double tot = round2(dbl(r.get("tot")));
         Map<String, Object> o = new LinkedHashMap<>();
@@ -451,18 +584,29 @@ public class BillingService {
         return o;
     }
 
+    private static String bf(String br) { return br == null ? "" : " AND b.branch_id = ?"; }
+
     private static Double growth(double cur, double prev) {
         if (prev <= 0) return null;                  // no base to compare
         return Math.round((cur - prev) * 1000.0 / prev) / 10.0;
     }
 
     /**
-     * Sales statistics of the company in the session (customer: own company, admin: the opened company).
+     * Sales statistics of the company in the session.
+     * owner / admin: whole company, or one branch with ?branch=; sales / stock: always their own branch.
      * date = the selected day (yyyy-MM-dd, default today). Month figures are for the month of that day.
      */
-    public Map<String, Object> report(String auth, String date) {
+    public Map<String, Object> report(String auth, String date, String branch) {
         Ctx c = ctx(auth);
         String cid = requireCompany(c);
+        boolean wide = c.admin() || c.owner();
+        String br;
+        if (wide) {
+            br = blank(branch) ? null : branch.trim();
+            if (br != null && branchRow(cid, br) == null) throw new ApiException(404, "கிளை இல்லை (Branch not found)");
+        } else br = userBranch(c, cid);
+        String f = bf(br);
+
         LocalDate today = LocalDate.now(zone);
         LocalDate sel = reportDate(date);
         LocalDateTime dFrom = sel.atStartOfDay(), dTo = sel.plusDays(1).atStartOfDay();
@@ -477,17 +621,26 @@ public class BillingService {
         o.put("date", sel.toString());
         o.put("today", today.toString());
         o.put("month", m1.toString().substring(0, 7));
+        List<Object> branches = branchList(cid);
+        Map<String, Object> scope = new LinkedHashMap<>();
+        scope.put("branch", br);
+        Map<String, Object> brRow = branchRow(cid, br);
+        scope.put("branchName", brRow == null ? "" : str(brRow.get("name")));
+        scope.put("canFilter", wide);
+        scope.put("branchCount", branches.size());
+        o.put("scope", scope);
+        if (wide) o.put("branches", branches);
 
-        Map<String, Object> todayS = salesSummary(cid, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
-        Map<String, Object> yest = salesSummary(cid, today.minusDays(1).atStartOfDay(), today.atStartOfDay());
+        Map<String, Object> todayS = salesSummary(cid, br, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        Map<String, Object> yest = salesSummary(cid, br, today.minusDays(1).atStartOfDay(), today.atStartOfDay());
         todayS.put("growth", growth(dbl(todayS.get("total")), dbl(yest.get("total"))));
         todayS.put("yesterday", yest.get("total"));
         o.put("todaySales", todayS);
-        o.put("daySales", salesSummary(cid, dFrom, dTo));
+        o.put("daySales", salesSummary(cid, br, dFrom, dTo));
 
-        Map<String, Object> monthS = salesSummary(cid, mFrom, mTo);
-        Map<String, Object> prevS = salesSummary(cid, pFrom, mFrom);
-        Map<String, Object> prevSame = curMonth ? salesSummary(cid, pFrom, pSameTo) : prevS;
+        Map<String, Object> monthS = salesSummary(cid, br, mFrom, mTo);
+        Map<String, Object> prevS = salesSummary(cid, br, pFrom, mFrom);
+        Map<String, Object> prevSame = curMonth ? salesSummary(cid, br, pFrom, pSameTo) : prevS;
         int days = curMonth ? today.getDayOfMonth() : m1.lengthOfMonth();
         monthS.put("days", days);
         monthS.put("perDay", round2(dbl(monthS.get("total")) / days));
@@ -499,8 +652,8 @@ public class BillingService {
 
         // day-wise trend of the month (every day present, 0 when no sale)
         Map<String, double[]> byDay = new LinkedHashMap<>();
-        for (Map<String, Object> r : db.query("SELECT DATE(created_at) AS d, COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot FROM bills "
-                + "WHERE company_id = ? AND created_at >= ? AND created_at < ? GROUP BY DATE(created_at)", cid, mFrom, mTo))
+        for (Map<String, Object> r : db.query("SELECT DATE(b.created_at) AS d, COUNT(*) AS cnt, COALESCE(SUM(b.total), 0) AS tot FROM bills b "
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ?" + f + " GROUP BY DATE(b.created_at)", args(br, cid, mFrom, mTo)))
             byDay.put(str(r.get("d")).substring(0, 10), new double[]{lng(r.get("cnt")), dbl(r.get("tot"))});
         List<Object> trend = new ArrayList<>();
         Map<String, Object> best = null;
@@ -520,8 +673,8 @@ public class BillingService {
         // hour-wise sales of the selected day
         long[] hc = new long[24];
         double[] ht = new double[24];
-        for (Map<String, Object> r : db.query("SELECT HOUR(created_at) AS h, COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot FROM bills "
-                + "WHERE company_id = ? AND created_at >= ? AND created_at < ? GROUP BY HOUR(created_at)", cid, dFrom, dTo)) {
+        for (Map<String, Object> r : db.query("SELECT HOUR(b.created_at) AS h, COUNT(*) AS cnt, COALESCE(SUM(b.total), 0) AS tot FROM bills b "
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ?" + f + " GROUP BY HOUR(b.created_at)", args(br, cid, dFrom, dTo))) {
             int h = (int) lng(r.get("h"));
             hc[h] = lng(r.get("cnt"));
             ht[h] = round2(dbl(r.get("tot")));
@@ -537,31 +690,72 @@ public class BillingService {
         }
         o.put("hours", hours);
 
-        o.put("topItemsDay", topItems(cid, dFrom, dTo, 5));
-        o.put("topItemsMonth", topItems(cid, mFrom, mTo, 10));
+        o.put("topItemsDay", topItems(cid, br, dFrom, dTo, 5));
+        o.put("topItemsMonth", topItems(cid, br, mFrom, mTo, 10));
         o.put("sizesMonth", rows("SELECT l.size_label AS k, SUM(l.qty) AS qty, SUM(l.amount) AS amt FROM bill_lines l JOIN bills b ON b.company_id = l.company_id AND b.id = l.bill_id "
-                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ? AND l.size_label <> '' GROUP BY l.size_label ORDER BY qty DESC LIMIT 8", cid, mFrom, mTo));
-        o.put("staffMonth", rows("SELECT CASE WHEN billed_by_name = '' THEN billed_by_user ELSE billed_by_name END AS k, COUNT(*) AS qty, SUM(total) AS amt FROM bills "
-                + "WHERE company_id = ? AND created_at >= ? AND created_at < ? GROUP BY k ORDER BY amt DESC", cid, mFrom, mTo));
-        Map<String, Object> cust = db.one("SELECT COUNT(DISTINCT NULLIF(customer_phone, '')) AS uniq, SUM(customer_phone <> '') AS withPhone, COUNT(*) AS cnt "
-                + "FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ?", cid, mFrom, mTo);
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ? AND l.size_label <> ''" + f + " GROUP BY l.size_label ORDER BY qty DESC LIMIT 8", args(br, cid, mFrom, mTo)));
+
+        // branch-wise sales (selected day + month), whole company view only
+        if (wide && br == null) {
+            List<Object> bs = new ArrayList<>();
+            for (Map<String, Object> r : db.query("SELECT br.id, br.name, "
+                    + "COALESCE(SUM(b.created_at >= ? AND b.created_at < ?), 0) AS d_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.total END), 0) AS d_tot, "
+                    + "COUNT(b.id) AS m_cnt, COALESCE(SUM(b.total), 0) AS m_tot "
+                    + "FROM branches br LEFT JOIN bills b ON b.company_id = br.company_id AND b.branch_id = br.id AND b.created_at >= ? AND b.created_at < ? "
+                    + "WHERE br.company_id = ? GROUP BY br.id, br.name, br.sort_order, br.created_at ORDER BY br.sort_order, br.created_at, br.id",
+                    dFrom, dTo, dFrom, dTo, mFrom, mTo, cid)) {
+                Map<String, Object> p = new LinkedHashMap<>();
+                p.put("id", str(r.get("id")));
+                p.put("name", str(r.get("name")));
+                p.put("dayCount", lng(r.get("d_cnt")));
+                p.put("dayTotal", round2(dbl(r.get("d_tot"))));
+                p.put("monthCount", lng(r.get("m_cnt")));
+                p.put("monthTotal", round2(dbl(r.get("m_tot"))));
+                bs.add(p);
+            }
+            o.put("branchSales", bs);
+        }
+
+        // user-wise bills (selected day + month)
+        List<Object> us = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT b.billed_by_user AS u, MAX(b.billed_by_name) AS n, MAX(br.name) AS bn, "
+                + "COALESCE(SUM(b.created_at >= ? AND b.created_at < ?), 0) AS d_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.total END), 0) AS d_tot, "
+                + "COUNT(*) AS m_cnt, COALESCE(SUM(b.total), 0) AS m_tot, COALESCE(SUM(b.pieces), 0) AS m_pcs "
+                + "FROM bills b LEFT JOIN branches br ON br.company_id = b.company_id AND br.id = b.branch_id "
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ?" + f + " GROUP BY b.billed_by_user ORDER BY m_tot DESC",
+                args(br, dFrom, dTo, dFrom, dTo, cid, mFrom, mTo))) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("user", str(r.get("u")));
+            p.put("name", blank(str(r.get("n"))) ? str(r.get("u")) : str(r.get("n")));
+            p.put("branch", str(r.get("bn")));
+            p.put("dayCount", lng(r.get("d_cnt")));
+            p.put("dayTotal", round2(dbl(r.get("d_tot"))));
+            p.put("monthCount", lng(r.get("m_cnt")));
+            p.put("monthTotal", round2(dbl(r.get("m_tot"))));
+            p.put("monthPieces", lng(r.get("m_pcs")));
+            us.add(p);
+        }
+        o.put("userSales", us);
+
+        Map<String, Object> cust = db.one("SELECT COUNT(DISTINCT NULLIF(b.customer_phone, '')) AS uniq, COALESCE(SUM(b.customer_phone <> ''), 0) AS withPhone, COUNT(*) AS cnt "
+                + "FROM bills b WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ?" + f, args(br, cid, mFrom, mTo));
         Map<String, Object> cu = new LinkedHashMap<>();
         cu.put("unique", lng(cust.get("uniq")));
         cu.put("withPhone", lng(cust.get("withphone")));
         cu.put("bills", lng(cust.get("cnt")));
         o.put("customersMonth", cu);
 
-        List<Map<String, Object>> billRows = db.query("SELECT * FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ? ORDER BY id DESC LIMIT " + REPORT_BILL_LIMIT,
-                cid, dFrom, dTo);
+        List<Map<String, Object>> billRows = db.query("SELECT b.* FROM bills b WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ?" + f
+                + " ORDER BY b.id DESC LIMIT " + REPORT_BILL_LIMIT, args(br, cid, dFrom, dTo));
         o.put("bills", billList(cid, billRows));
         o.put("billsTruncated", billRows.size() >= REPORT_BILL_LIMIT);
         return o;
     }
 
-    private List<Object> topItems(String cid, LocalDateTime from, LocalDateTime to, int limit) {
+    private List<Object> topItems(String cid, String br, LocalDateTime from, LocalDateTime to, int limit) {
         return rows("SELECT l.item_name AS k, MAX(l.item_name_en) AS en, SUM(l.qty) AS qty, SUM(l.amount) AS amt FROM bill_lines l "
                 + "JOIN bills b ON b.company_id = l.company_id AND b.id = l.bill_id "
-                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ? GROUP BY l.item_name ORDER BY amt DESC LIMIT " + limit, cid, from, to);
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ?" + bf(br) + " GROUP BY l.item_name ORDER BY amt DESC LIMIT " + limit, args(br, cid, from, to));
     }
 
     /** rows of k / en / qty / amt as JSON maps */
@@ -576,6 +770,110 @@ public class BillingService {
             out.add(p);
         }
         return out;
+    }
+
+    // ================================================================ stock (branch-wise, item + size)
+    static final long STOCK_LIMIT = 999999;
+
+    /** stock users: own branch; admin: any branch of the opened company */
+    private String stockBranch(Ctx c, String cid, String requested) {
+        if (!c.admin() && !c.stock()) throw new ApiException(403, "Stock அனுமதி இல்லை (Stock users only)");
+        if (c.admin() && !blank(requested)) {
+            if (branchRow(cid, requested.trim()) == null) throw new ApiException(404, "கிளை இல்லை (Branch not found)");
+            return requested.trim();
+        }
+        String b = userBranch(c, cid);
+        if (b == null) throw new ApiException(400, "கிளை இல்லை (No branch)");
+        return b;
+    }
+
+    public Map<String, Object> stock(String auth, String branch) {
+        Ctx c = ctx(auth);
+        String cid = requireBilling(c);
+        String br = stockBranch(c, cid, branch);
+        List<Object> list = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT item_id, size_label, qty, updated_at, updated_by FROM stock WHERE company_id = ? AND branch_id = ?", cid, br)) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("item", str(r.get("item_id")));
+            n.put("size", str(r.get("size_label")));
+            n.put("qty", lng(r.get("qty")));
+            n.put("at", iso(ldt(r.get("updated_at"))));
+            n.put("by", str(r.get("updated_by")));
+            list.add(n);
+        }
+        Map<String, Object> o = new LinkedHashMap<>();
+        Map<String, Object> b = branchRow(cid, br);
+        o.put("branch", br);
+        o.put("branchName", b == null ? "" : str(b.get("name")));
+        if (c.admin()) o.put("branches", branchList(cid));
+        o.put("stock", list);
+        return o;
+    }
+
+    /** {item, size, qty} sets the stock; {item, size, add} adds / subtracts. Negative stock is allowed. */
+    public Map<String, Object> setStock(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireBilling(c);
+        String br = stockBranch(c, cid, str(in.get("branch")));
+        String item = str(in.get("item")), size = str(in.get("size"));
+        if (db.one("SELECT 1 AS x FROM item_sizes WHERE company_id = ? AND item_id = ? AND size_label = ?", cid, item, size) == null)
+            throw new ApiException(404, "ஐட்டம் / சைஸ் இல்லை");
+        boolean add = in.containsKey("add") && in.get("add") != null;
+        double v = dbl(add ? in.get("add") : in.get("qty"));
+        if (Double.isNaN(v) || v != Math.floor(v) || Math.abs(v) > STOCK_LIMIT) throw new ApiException(400, "ஸ்டாக் எண் தவறு (whole number)");
+        long q = (long) v;
+        String by = str(c.user.get("full_name"));
+        if (by.isEmpty()) by = str(c.user.get("username"));
+        LocalDateTime now = now();
+        if (add)
+            db.update("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    + "ON DUPLICATE KEY UPDATE qty = qty + ?, updated_at = ?, updated_by = ?", cid, br, item, size, q, now, by, q, now, by);
+        else
+            db.update("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    + "ON DUPLICATE KEY UPDATE qty = ?, updated_at = ?, updated_by = ?", cid, br, item, size, q, now, by, q, now, by);
+        Map<String, Object> r = db.one("SELECT qty, updated_at, updated_by FROM stock WHERE company_id = ? AND branch_id = ? AND item_id = ? AND size_label = ?", cid, br, item, size);
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("item", item);
+        n.put("size", size);
+        n.put("qty", lng(r.get("qty")));
+        n.put("at", iso(ldt(r.get("updated_at"))));
+        n.put("by", str(r.get("updated_by")));
+        return obj("stock", n);
+    }
+
+    // ================================================================ branches (admin)
+    public Map<String, Object> saveBranch(String auth, Map<String, Object> in) {
+        admin(auth);
+        String cid = str(in.get("companyId")), id = str(in.get("id"));
+        if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", cid) == null) throw new ApiException(404, "கம்பெனி இல்லை");
+        String name = clip(in.get("name"), 40);
+        if (name.isEmpty()) throw new ApiException(400, "கிளை பெயர் தேவை");
+        Map<String, Object> dup = db.one("SELECT id FROM branches WHERE company_id = ? AND LOWER(name) = LOWER(?)", cid, name);
+        if (dup != null && !str(dup.get("id")).equals(id)) throw new ApiException(409, "இந்த பெயரில் கிளை ஏற்கனவே உள்ளது");
+        if (id.isEmpty()) {
+            long n = lng(db.one("SELECT COUNT(*) AS n FROM branches WHERE company_id = ?", cid).get("n"));
+            if (n >= 50) throw new ApiException(400, "அதிகபட்சம் 50 கிளைகள்");
+            id = newId("b");
+            db.update("INSERT INTO branches (company_id, id, name, sort_order, created_at) VALUES (?, ?, ?, ?, ?)", cid, id, name, n, now());
+        } else {
+            if (branchRow(cid, id) == null) throw new ApiException(404, "கிளை இல்லை");
+            db.update("UPDATE branches SET name = ? WHERE company_id = ? AND id = ?", name, cid, id);
+        }
+        return obj("branches", branchList(cid));
+    }
+
+    public Map<String, Object> deleteBranch(String auth, String cid, String id) {
+        admin(auth);
+        if (branchRow(cid, id) == null) throw new ApiException(404, "கிளை இல்லை");
+        if (lng(db.one("SELECT COUNT(*) AS n FROM branches WHERE company_id = ?", cid).get("n")) <= 1)
+            throw new ApiException(409, "கடைசி கிளையை நீக்க முடியாது");
+        if (db.one("SELECT 1 AS x FROM users WHERE company_id = ? AND branch_id = ? LIMIT 1", cid, id) != null)
+            throw new ApiException(409, "இந்த கிளையில் users உள்ளனர். முதலில் அவர்களை வேறு கிளைக்கு மாற்றவும்");
+        if (db.one("SELECT 1 AS x FROM bills WHERE company_id = ? AND branch_id = ? LIMIT 1", cid, id) != null)
+            throw new ApiException(409, "இந்த கிளையில் பில்கள் உள்ளன — அறிக்கைக்காக நீக்க முடியாது. பெயரை மாற்றலாம்");
+        db.update("DELETE FROM stock WHERE company_id = ? AND branch_id = ?", cid, id);
+        db.update("DELETE FROM branches WHERE company_id = ? AND id = ?", cid, id);
+        return obj("branches", branchList(cid));
     }
 
     /** Admin: today / selected day / month sales of every company, plus grand totals. */
@@ -653,12 +951,24 @@ public class BillingService {
             p.put("groupCount", lng(r.get("group_count")));
             p.put("itemCount", lng(r.get("item_count")));
             p.put("billCount", lng(r.get("bill_seq")));
+            List<Object> bl = new ArrayList<>();
+            for (Map<String, Object> b : db.query("SELECT br.id, br.name, (SELECT COUNT(*) FROM users u WHERE u.company_id = br.company_id AND u.branch_id = br.id) AS uc "
+                    + "FROM branches br WHERE br.company_id = ? ORDER BY br.sort_order, br.created_at, br.id", str(r.get("id")))) {
+                Map<String, Object> n = new LinkedHashMap<>();
+                n.put("id", str(b.get("id")));
+                n.put("name", str(b.get("name")));
+                n.put("userCount", lng(b.get("uc")));
+                bl.add(n);
+            }
+            p.put("branches", bl);
             cs.add(p);
         }
         List<Object> us = new ArrayList<>();
-        for (Map<String, Object> r : db.query("SELECT u.*, c.name AS company_name FROM users u LEFT JOIN companies c ON c.id = u.company_id ORDER BY u.created_at, u.username")) {
+        for (Map<String, Object> r : db.query("SELECT u.*, c.name AS company_name, br.name AS branch_name FROM users u LEFT JOIN companies c ON c.id = u.company_id "
+                + "LEFT JOIN branches br ON br.company_id = u.company_id AND br.id = u.branch_id ORDER BY u.created_at, u.username")) {
             Map<String, Object> p = pubUser(r);
             p.put("companyName", str(r.get("company_name")));
+            p.put("branchName", str(r.get("branch_name")));
             us.add(p);
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -699,6 +1009,7 @@ public class BillingService {
             db.update("UPDATE companies SET name = ?, tagline = ?, owner_name = ?, phone = ?, address = ?, city = ?, gstin = ?, email = ?, "
                     + "bill_prefix = ?, show_bismillah = ?, bill_footer = ?, updated_at = ? WHERE id = ?", concat(f, id));
         }
+        ensureBranches(id);
         return obj("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", id)));
     }
 
@@ -728,12 +1039,19 @@ public class BillingService {
         String name = clip(in.get("name"), 60);
         if (name.isEmpty()) throw new ApiException(400, "பெயர் தேவை");
         String type = str(in.get("type"));
-        if (!type.equals("admin") && !type.equals("customer")) throw new ApiException(400, "User type: admin / customer");
-        String cid = null;
-        if (type.equals("customer")) {
+        if (type.equals("customer")) type = "sales";               // old app versions
+        if (!USER_TYPES.contains(type)) throw new ApiException(400, "User type: admin / owner / sales / stock");
+        String cid = null, bid = null;
+        if (!type.equals("admin")) {
             cid = str(in.get("companyId"));
             if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", cid) == null)
-                throw new ApiException(400, "Customer-க்கு கம்பெனி தேவை");
+                throw new ApiException(400, "இந்த user-க்கு கம்பெனி தேவை");
+            if (!type.equals("owner")) {                            // sales / stock work in one branch
+                ensureBranches(cid);
+                bid = str(in.get("branchId"));
+                if (blank(bid)) bid = firstBranch(cid);
+                if (branchRow(cid, bid) == null) throw new ApiException(400, "கிளையை தேர்வு செய்யவும்");
+            }
         }
         boolean active = !(in.get("active") instanceof Boolean) || (Boolean) in.get("active");
         String pw = rawStr(in.get("password"));
@@ -748,11 +1066,14 @@ public class BillingService {
         if (u == null) {
             id = newId("u");
             byte[] salt = bytes(16);
-            db.update("INSERT INTO users (id, username, full_name, user_type, company_id, pass_salt, pass_hash, active, must_change, created_at, updated_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)", id, un, name, type, cid, b64(salt), hash(pw, salt), active, now, now);
+            db.update("INSERT INTO users (id, username, full_name, user_type, company_id, branch_id, pass_salt, pass_hash, active, must_change, created_at, updated_at) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)", id, un, name, type, cid, bid, b64(salt), hash(pw, salt), active, now, now);
         } else {
-            db.update("UPDATE users SET username = ?, full_name = ?, user_type = ?, company_id = ?, active = ?, updated_at = ? WHERE id = ?",
-                    un, name, type, cid, active, now, id);
+            boolean roleChanged = !type.equals(str(u.get("user_type"))) || !java.util.Objects.equals(cid, nz(u.get("company_id")))
+                    || !java.util.Objects.equals(bid, nz(u.get("branch_id")));
+            db.update("UPDATE users SET username = ?, full_name = ?, user_type = ?, company_id = ?, branch_id = ?, active = ?, updated_at = ? WHERE id = ?",
+                    un, name, type, cid, bid, active, now, id);
+            if (!self && roleChanged) db.update("DELETE FROM auth_tokens WHERE user_id = ?", id);   // new rights from the next login
             if (!pw.isEmpty()) {
                 byte[] salt = bytes(16);
                 db.update("UPDATE users SET pass_salt = ?, pass_hash = ?, must_change = 0 WHERE id = ?", b64(salt), hash(pw, salt), id);
@@ -795,6 +1116,7 @@ public class BillingService {
         p.put("name", str(u.get("full_name")));
         p.put("type", str(u.get("user_type")));
         p.put("companyId", u.get("company_id") == null ? null : str(u.get("company_id")));
+        p.put("branchId", u.get("branch_id") == null ? null : str(u.get("branch_id")));
         p.put("active", bool(u.get("active")));
         p.put("created", iso(ldt(u.get("created_at"))));
         return p;

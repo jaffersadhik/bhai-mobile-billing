@@ -110,15 +110,19 @@ CREATE TABLE IF NOT EXISTS items (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- item_sizes : size-wise rate of an item
+-- item_sizes : size-wise rate (and optional barcode) of an item
+--   barcode is unique inside a company (NULL = no barcode); older databases get the
+--   column from BillingService.migrate() at startup
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS item_sizes (
   company_id   VARCHAR(20)    NOT NULL,
   item_id      VARCHAR(40)    COLLATE utf8mb4_bin NOT NULL,
   size_label   VARCHAR(12)    COLLATE utf8mb4_bin NOT NULL,
   rate         DECIMAL(10,2)  NOT NULL,
+  barcode      VARCHAR(40)    NULL,
   sort_order   INT            NOT NULL DEFAULT 0,
   PRIMARY KEY (company_id, item_id, size_label),
+  UNIQUE KEY uk_sizes_barcode (company_id, barcode),
   CONSTRAINT fk_sizes_item FOREIGN KEY (company_id, item_id) REFERENCES items (company_id, id) ON DELETE CASCADE,
   CONSTRAINT chk_sizes_rate CHECK (rate > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

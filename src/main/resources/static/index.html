@@ -341,6 +341,93 @@ footer .pw-by b{color:var(--leaf)}
   .rp-hero{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .bh .lines{display:block}
 }
+
+/* ---- barcode scanner ---- */
+.find .scbtn{position:absolute;right:22px;top:50%;transform:translateY(-38%);width:40px;height:36px;border-radius:10px;background:var(--leaf);color:#fff;font-size:17px;display:grid;place-items:center}
+.find input{padding-right:58px}
+.bcrow{display:grid;grid-template-columns:64px 1fr 46px;gap:8px;align-items:center;padding:0 0 8px;border-bottom:1px solid var(--line);margin-top:-4px}
+.bcrow .bci{height:40px;border:1.5px dashed var(--line);border-radius:10px;padding:0 10px;font-size:14px;font-weight:600;background:#fff;width:100%;font-family:ui-monospace,Menlo,monospace}
+.bcrow .bcl{font-size:10.5px;color:var(--muted);font-weight:700;text-align:center}
+.scbtn2{height:40px;border-radius:10px;background:var(--leaf-l);color:var(--leaf-d);font-size:18px;border:1.5px solid var(--leaf)}
+.rrow.hasbc{border-bottom:0;padding-bottom:4px}
+.bcf{display:grid;grid-template-columns:1fr 48px;gap:8px;align-items:end}
+.bcf .fld input{font-family:ui-monospace,Menlo,monospace}
+.bcf .scbtn2{height:48px;margin-bottom:0}
+.codebox{font-family:ui-monospace,Menlo,monospace;font-size:20px;font-weight:800;text-align:center;letter-spacing:1px;padding:8px;word-break:break-all;color:var(--leaf-d)}
+.scan{position:fixed;inset:0;z-index:90;background:#0b1410;color:#fff;display:none;flex-direction:column;padding:calc(10px + env(safe-area-inset-top,0px)) 14px calc(14px + env(safe-area-inset-bottom,0px));max-width:480px;margin:0 auto}
+.scan.on{display:flex}
+.sc-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.sc-top b{font-family:var(--head);font-size:19px;font-weight:800}
+.sc-top button{width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.12);font-size:18px}
+.sc-cam{position:relative;margin-top:10px;border-radius:18px;overflow:hidden;background:#000;flex:1;min-height:220px;max-height:46vh}
+.sc-cam video{width:100%;height:100%;object-fit:cover;display:block}
+.sc-frame{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.sc-frame i{width:80%;height:42%;border:3px solid var(--gold);border-radius:14px;box-shadow:0 0 0 999px rgba(0,0,0,.35);position:relative;overflow:hidden}
+.sc-frame i:after{content:"";position:absolute;left:4%;right:4%;top:50%;height:2px;background:#ff4d4d;box-shadow:0 0 8px #ff4d4d;animation:scl 1.6s ease-in-out infinite}
+@keyframes scl{0%,100%{transform:translateY(-34px)}50%{transform:translateY(34px)}}
+.sc-msg{position:absolute;left:12px;right:12px;bottom:12px;font-size:13px;font-weight:700;background:rgba(0,0,0,.65);border-radius:10px;padding:8px 10px;text-align:center}
+.sc-msg:empty{display:none}
+.sc-hint{font-size:12.5px;opacity:.8;margin-top:8px;text-align:center;font-weight:600}
+.sc-last{margin-top:8px;min-height:44px;display:flex;flex-direction:column;gap:4px}
+.sc-last div{background:rgba(255,255,255,.1);border-radius:10px;padding:8px 10px;font-size:13.5px;font-weight:700}
+.sc-last div.ok{background:rgba(31,170,89,.28)}
+.sc-last div.bad{background:rgba(179,38,30,.35)}
+.sc-man{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}
+.sc-man input{height:46px;border-radius:12px;border:0;padding:0 12px;font-size:16px;font-weight:700;font-family:ui-monospace,Menlo,monospace;color:var(--ink)}
+.sc-man button{height:46px;padding:0 16px;border-radius:12px;background:var(--gold);color:var(--leaf-d);font-weight:800}
+.sc-btns{display:grid;grid-template-columns:auto 1fr;gap:8px;margin-top:8px}
+.sc-btns button{height:50px;border-radius:14px;font-weight:800;font-size:15px}
+.sc-btns #scTorch{width:56px;background:rgba(255,255,255,.12)}
+.sc-btns #scTorch.on{background:var(--gold)}
+.sc-btns #scDone{background:var(--wa);color:#fff}
+.sc-btns #scTorch[hidden]+#scDone{grid-column:1/-1}
+
+/* ---- roles / branches / stock ---- */
+.tag.t-owner{background:#e7e3ff;color:#3b2a8f}
+.tag.t-stock{background:#ffe7d2;color:#8a3d00}
+.tag.t-sales{background:var(--leaf-l);color:var(--leaf-d)}
+.brchip{display:inline-flex;align-items:center;gap:6px;margin-top:10px;background:var(--leaf-l);color:var(--leaf-d);font-weight:800;font-size:13px;border-radius:20px;padding:6px 12px}
+.rp-br{margin-top:8px}
+.rp-br select{width:100%;height:44px;border-radius:12px;border:1.5px solid var(--line);background:#fff;padding:0 10px;font-size:15px;font-weight:700}
+.rp-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.rp-tbl th{font-size:11px;color:var(--muted);font-weight:700;text-align:right;padding:4px 4px 6px}
+.rp-tbl th:first-child,.rp-tbl td:first-child{text-align:left}
+.rp-tbl td{padding:8px 4px;border-top:1px solid var(--line);text-align:right;font-weight:700;vertical-align:top}
+.rp-tbl td small{display:block;font-size:11px;color:var(--muted);font-weight:600}
+.rp-tbl tr.tap{cursor:pointer}
+.rp-tbl .rp-bar{height:6px;border-radius:4px;background:var(--leaf-l);margin-top:5px;overflow:hidden}
+.rp-tbl .rp-bar i{display:block;height:100%;background:var(--leaf)}
+.st-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.st-sum div{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+.st-sum b{display:block;font-family:var(--head);font-size:20px;color:var(--leaf-d)}
+.st-sum small{font-size:11px;color:var(--muted);font-weight:700}
+.st-sum .neg b{color:var(--bad)}
+.st-tools{display:grid;grid-template-columns:1fr 48px;gap:8px;margin-top:10px}
+.st-tools input{height:46px;border-radius:12px;border:1.5px solid var(--line);padding:0 12px;font-size:15px;background:#fff}
+.st-tools button{height:46px;border-radius:12px;background:var(--leaf);color:#fff;font-size:18px}
+.st-flt{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.st-flt button{height:34px;padding:0 12px;border-radius:17px;border:1.5px solid var(--line);background:#fff;font-size:12.5px;font-weight:800}
+.st-flt button.on{background:var(--leaf);border-color:var(--leaf);color:#fff}
+.st-g{font-family:var(--head);font-size:16px;font-weight:800;margin:16px 0 6px}
+.st-it{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-top:8px}
+.st-it b{font-size:14.5px;display:block}
+.st-it small{font-size:11.5px;color:var(--muted);font-weight:600}
+.st-sz{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.st-sz button{min-width:64px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);padding:5px 8px;text-align:center;line-height:1.15}
+.st-sz button span{display:block;font-size:11px;color:var(--muted);font-weight:700}
+.st-sz button b{font-family:var(--head);font-size:17px;color:var(--leaf-d)}
+.st-sz button.neg{border-color:var(--bad);background:#fdecea}.st-sz button.neg b{color:var(--bad)}
+.st-sz button.zero b{color:var(--muted)}
+.st-big{font-family:var(--head);font-size:44px;font-weight:800;text-align:center;color:var(--leaf-d);line-height:1.1}
+.st-big.neg{color:var(--bad)}
+.st-in{display:grid;grid-template-columns:52px 1fr;gap:8px;margin-top:10px}
+.st-in button{height:56px;border-radius:14px;background:var(--leaf-l);color:var(--leaf-d);font-size:22px;font-weight:800;border:1.5px solid var(--leaf)}
+.st-in input{min-width:0;width:100%;height:56px;border-radius:14px;border:1.5px solid var(--line);font-size:26px;font-weight:800;text-align:center;font-family:var(--head)}
+.st-q{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.st-q button{height:42px;border-radius:12px;border:1.5px solid var(--line);background:#fff;font-weight:800}
+.brl{display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.brl input{width:100%;height:42px;border-radius:10px;border:1.5px solid var(--line);padding:0 10px;font-size:15px;font-weight:700;min-width:0}
+.brl small{grid-column:1/-1;font-size:11.5px;color:var(--muted);font-weight:600;margin-top:-2px}
 </style>
 </head>
 <body>
@@ -366,7 +453,7 @@ footer .pw-by b{color:var(--leaf)}
 </section>
 <div class="app">
   <header class="bar" id="bar"></header>
-  <div class="find" id="findBox"><span aria-hidden="true">🔍</span><input id="q" type="search" autocomplete="off" aria-label="Search items"></div>
+  <div class="find" id="findBox"><span aria-hidden="true">🔍</span><input id="q" type="search" autocomplete="off" aria-label="Search items"><button class="scbtn" id="scanFind" aria-label="Scan barcode">📷</button></div>
   <main class="pad" id="view"></main>
   <footer>
     <p><strong id="footCo"></strong></p>
@@ -383,6 +470,14 @@ footer .pw-by b{color:var(--leaf)}
   <div id="sheetBody"></div>
 </section>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<section class="scan" id="scan" role="dialog" aria-modal="true" aria-label="Barcode scanner">
+  <div class="sc-top"><b id="scTitle">Barcode Scan</b><button id="scClose" aria-label="Close scanner">✕</button></div>
+  <div class="sc-cam"><video id="scVideo" playsinline muted autoplay></video><div class="sc-frame"><i></i></div><p class="sc-msg" id="scMsg"></p></div>
+  <p class="sc-hint" id="scHint"></p>
+  <div class="sc-last" id="scLast"></div>
+  <div class="sc-man"><input id="scCode" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Barcode எண் type / USB scanner" aria-label="Barcode number"><button id="scAdd">சேர்</button></div>
+  <div class="sc-btns"><button id="scTorch" hidden aria-label="Torch">🔦</button><button id="scDone">✓ முடிந்தது</button></div>
+</section>
 <div class="busy" id="busy" aria-hidden="true"><span></span></div>
 
 <script>
@@ -463,20 +558,26 @@ function apiErr(e){ if(e && e.status!==401) toast(e.message||"Error"); }
 /* ================= STATE ================= */
 let me=null, company=null, defaultPw=false, adminData=null;
 let catalog={version:0,setup:false,cats:[],items:[]};
-let CATS=[], ITEMS=[], byId={}, catById={};
+let CATS=[], ITEMS=[], byId={}, catById={}, byCode={};
 let cart={}, sel={}, customs={};
 let customQty=1, customFrom="home", customCat=null, cameFromHome=false;
 
 const isAdmin = () => !!(me && me.type==="admin");
-const canEdit = () => !!(me && company);     // admin (inside an opened company) and customer users can manage groups / items
+const isOwner = () => !!(me && me.type==="owner");   // reports only
+const isStock = () => !!(me && me.type==="stock");   // sales + stock
+const canEdit = () => !!(me && company && !isOwner());     // admin (inside an opened company), sales and stock users manage groups / items
+const canStock = () => !!(me && company && (isAdmin()||isStock()));
+const TYPE_LABEL = {admin:"⚙ Admin", owner:"👑 Owner", sales:"🧾 Sales", stock:"📦 Stock"};
+let myBranch="";
 
 function buildCatalog(){
   CATS=(catalog.cats||[]).map(c=>[c.id,c.ta,c.en||"",c.emoji||"🛍️",c.color||"#e8eef0"]);
   catById={}; CATS.forEach(c=>catById[c[0]]=c);
-  ITEMS=[]; byId={};
+  ITEMS=[]; byId={}; byCode={};
   CATS.forEach(c=>(catalog.items||[]).filter(x=>x.cat===c[0]).forEach(x=>{
-    const it={id:x.id,cat:x.cat,ta:x.ta,en:x.en||"",emoji:c[3],sizes:x.sizes.map(z=>({size:z.size,rate:Number(z.rate)}))};
+    const it={id:x.id,cat:x.cat,ta:x.ta,en:x.en||"",emoji:c[3],sizes:x.sizes.map(z=>({size:z.size,rate:Number(z.rate),code:z.code||""}))};
     ITEMS.push(it); byId[it.id]=it;
+    it.sizes.forEach(z=>{ if(z.code) byCode[z.code]={id:it.id,size:z.size}; });
   }));
 }
 function sampleCatalog(){
@@ -493,7 +594,7 @@ const ck = n => "bmb_"+n+"_"+(company?company.id:"x");
 function loadCart(){
   cart={}; customs={}; sel={};
   try{ const s=JSON.parse(localStorage.getItem(ck("cart"))||"{}"); for(const k in s){ const [id,size]=parseKey(k); if(byId[id]&&byId[id].sizes.some(z=>z.size===size)&&s[k]>0) cart[k]=Math.min(99,s[k]|0); } }catch(e){}
-  try{ const c=JSON.parse(localStorage.getItem(ck("custom"))||"{}"); for(const id in c){ const v=c[id]; if(v&&v.name&&v.rate>0&&v.qty>0) customs[id]={name:String(v.name),size:String(v.size||""),rate:Number(v.rate),qty:Math.min(99,v.qty|0)}; } }catch(e){}
+  try{ const c=JSON.parse(localStorage.getItem(ck("custom"))||"{}"); for(const id in c){ const v=c[id]; if(v&&v.name&&v.rate>0&&v.qty>0) customs[id]={name:String(v.name),size:String(v.size||""),rate:Number(v.rate),qty:Math.min(99,v.qty|0),code:String(v.code||"")}; } }catch(e){}
 }
 function save(){ if(!company) return; try{ localStorage.setItem(ck("cart"),JSON.stringify(cart)); localStorage.setItem(ck("custom"),JSON.stringify(customs)); }catch(e){} }
 function purgeCart(){ for(const k in cart){ const [id,size]=parseKey(k); if(!byId[id]||!byId[id].sizes.some(z=>z.size===size)) delete cart[k]; } save(); }
@@ -536,8 +637,9 @@ function view(){
   const h=location.hash.slice(1);
   if(h==="admin" && isAdmin()) return "admin";
   if(!company) return isAdmin() ? "admin" : "nocompany";
-  if(h==="report") return "report";
+  if(isOwner() || h==="report") return "report";
   if(!catalog.setup) return "setup";
+  if(h==="stock" && canStock()) return "stock";
   if(catById[h]) return "cat";
   return "home";
 }
@@ -560,7 +662,8 @@ function renderBar(){
   let left;
   if(c) left=`<button class="back" id="back" aria-label="Back">←</button><div><h1>${esc(c[1])}</h1><small>${esc(c[2])}</small></div>`;
   else if(v==="admin") left=`${company?`<button class="back" id="toHome" aria-label="Back to billing">←</button>`:`<div class="mark" aria-hidden="true">⚙</div>`}<div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">Admin Panel</h1></div>`;
-  else if(v==="report") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}</span><h1 class="co">📊 விற்பனை அறிக்கை</h1></div>`;
+  else if(v==="report") left=`${isOwner()?`<div class="mark" aria-hidden="true">📊</div>`:`<button class="back" id="toHome" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">விற்பனை அறிக்கை</h1></div>`;
+  else if(v==="stock") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}</span><h1 class="co">📦 ஸ்டாக் (Stock)</h1></div>`;
   else left=`<div class="mark" aria-hidden="true">${esc(coMark())}</div><div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">${esc(company?company.name:APP_NAME)}</h1></div>`;
   $("#bar").innerHTML = left + (me?`<button class="out" id="menuBtn" aria-label="Menu"><span aria-hidden="true">☰</span><em>${esc(me.user)}</em></button>`:"");
   $("#findBox").hidden = !(v==="home"||v==="cat");
@@ -569,7 +672,7 @@ function renderBar(){
 function heroHtml(){
   return `<section class="hero">${company.bismillah!==false?`<div class="bis">${esc(BISMILLAH)}</div>`:""}<h2>${esc(company.name)}</h2>
     ${company.tagline?`<p>${esc(company.tagline)}</p>`:""}<span class="pill">${esc(APP_NAME)}</span><br>
-    <span class="owner">👤 ${esc(me.name)} · ${esc(me.user)}${isAdmin()?" · Admin":""}</span></section>`;
+    <span class="owner">👤 ${esc(me.name)} · ${esc(me.user)}${isAdmin()?" · Admin":""}${myBranch?" · 🏬 "+esc(myBranch):""}</span></section>`;
 }
 const pwWarn = () => defaultPw ? `<div class="warnbox">⚠️ Default password பயன்படுத்துகிறீர்கள். உடனே மாற்றவும்<button id="chgPw">மாற்று</button></div>` : "";
 function ctl(id){
@@ -598,6 +701,7 @@ function renderView(){
   if(v==="none") html="";
   else if(v==="admin") html=renderAdmin();
   else if(v==="report") html=renderReport();
+  else if(v==="stock") html=renderStock();
   else if(v==="nocompany") html=`<div class="none"><b>🏬</b>உங்கள் கணக்கில் கம்பெனி இணைக்கப்படவில்லை.<br>Admin-ஐ தொடர்பு கொள்ளவும்.</div>`;
   else if(v==="setup"){
     html = heroHtml()+pwWarn()+`<h2 class="h2">தொடங்குவோம் 👋</h2>
@@ -623,8 +727,10 @@ function renderView(){
         <li><i>1</i>வகையைத் தேர்வு செய்யுங்கள்</li>
         <li><i>2</i>சைஸ் தேர்வு செய்து ADD அழுத்தவும்</li>
         <li><i>3</i>பில் பார்த்து WhatsApp-ல் அனுப்புங்கள்</li></ol></div>
+      <button class="admin" id="scanHome"><span class="pl" aria-hidden="true">📷</span><div><b>Barcode Scan செய்து பில் போடு</b><small>Mobile camera அல்லது USB / Bluetooth scanner · ஒவ்வொரு scan-உம் பில்லில் சேரும்</small></div></button>
       ${manualBtn("பட்டியலில் இல்லாத பொருளை பெயர், சைஸ், ரேட் கொடுத்து சேர்க்கவும்")}
       <button class="admin" id="billHist"><span class="pl" aria-hidden="true">🧾</span><div><b>பில் வரலாறு (Bills)</b><small>இந்த கம்பெனியின் பில்கள், இன்றைய விற்பனை, மீண்டும் WhatsApp</small></div></button>
+      ${canStock()?`<button class="admin" id="openStock"><span class="pl" aria-hidden="true">📦</span><div><b>ஸ்டாக் (Stock)</b><small>ஐட்டம் / சைஸ் வாரியாக கையிருப்பு · மாற்றலாம் · பில் போட்டால் தானாக குறையும்</small></div></button>`:""}
       <button class="admin" id="openReport"><span class="pl" aria-hidden="true">📊</span><div><b>விற்பனை அறிக்கை (Sales Report)</b><small>இன்றைய / தேதி வாரியான / மாத விற்பனை, அதிகம் விற்ற பொருட்கள்</small></div></button>
       <h2 class="h2">என்ன வேண்டும்?</h2>
       ${CATS.length?"":`<p class="hint" style="margin:-4px 0 10px">முதலில் ஒரு குரூப் உருவாக்கவும் (எ.கா. சேலை, நைட்டி)</p>`}
@@ -684,7 +790,7 @@ function openBill(){
   $("#sheetBody").innerHTML=`
     <h2>உங்கள் பில்</h2><p class="sub">${esc(company.name)} · ஐட்டம், சைஸ், எண்ணிக்கை, ரேட்</p>
     <div class="box" id="billList"></div>
-    <button class="cta ghost" id="addCustomBill" style="margin-top:12px">➕ Custom item சேர்க்க</button>
+    <div class="two-b" style="margin-top:12px"><button class="cta leaf" id="scanBill" style="margin-top:0">📷 Barcode Scan</button><button class="cta ghost" id="addCustomBill" style="margin-top:0">➕ Custom item</button></div>
     <div class="sum"><div><span>மொத்த எண்ணிக்கை</span><span id="sumPcs"></span></div><div class="gt"><span>மொத்த தொகை</span><span id="sumTot"></span></div></div>
     <div class="box"><h3>வாடிக்கையாளர் விவரம்</h3>
       <label class="fld">பெயர் (Name, optional)<input id="iName" maxlength="60" autocomplete="off"></label>
@@ -720,7 +826,8 @@ async function sendBill(){
   let bill;
   try{
     bill=(await api("bills","POST",{customer:$("#iName").value.trim(),phone:ph,
-      lines:L.map(l=>({name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate}))})).bill;
+      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate}))})).bill;
+    stockData=null;   // bill reduced the stock
   }catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; }
   finally{ busy(false); }
   cart={}; customs={}; save(); renderAll();
@@ -736,7 +843,7 @@ async function sendBill(){
   try{ window.open(url,"_blank","noopener"); }catch(e){}
 }
 let billCache=[];
-let repData=null, repDate=null, repCo=null, repTop="month", repLoading=false;
+let repData=null, repDate=null, repCo=null, repTop="month", repLoading=false, repBranch="";
 async function openBills(){
   $("#sheetBody").innerHTML=`<h2>பில் வரலாறு</h2><p class="sub">${esc(company.name)}</p><div class="box"><p class="sub">ஏற்றுகிறது…</p></div>`; showSheet();
   try{
@@ -758,7 +865,7 @@ function catOptions(selId,withNew){
 }
 function updateCustomTotal(){ const r=numIn($("#cRate").value); $("#cTot").textContent=inr(isFinite(r)&&r>0?money(r*customQty):0); }
 function openCustom(from,prefill,keep){
-  customFrom=from; customQty=1;
+  customFrom=from; customQty=1; keep=keep||null;
   if(!keep){ const c=curCat(); customCat=c?c[0]:(CATS[0]&&CATS[0][0]); }
   $("#sheetBody").innerHTML=`
     <h2>Custom ஐட்டம் சேர்க்க</h2><p class="sub">பட்டியலில் இல்லாத பொருளை கையால் பில்லில் சேர்க்கவும்</p>
@@ -770,6 +877,7 @@ function openCustom(from,prefill,keep){
       </div>
       <div class="qtyrow"><b style="font-size:14px">எண்ணிக்கை (Qty)</b>
         <div class="step"><button data-cq="dec" aria-label="Decrease">−</button><span id="cQty">1</span><button data-cq="inc" aria-label="Increase">+</button></div></div>
+      <div class="bcf"><label class="fld" id="fCCode">Barcode (optional)<input id="cCode" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Scan / type"><span class="err">இந்த barcode வேறு ஐட்டத்திற்கு உள்ளது</span></label><button type="button" class="scbtn2" id="cScan" aria-label="Scan barcode">📷</button></div>
       <div class="prev"><span>இந்த ஐட்டம் மொத்தம்</span><b id="cTot">₹0</b></div>
       ${canEdit()?`<div class="perm"><label class="rem"><input type="checkbox" id="cPerm">நிரந்தரமாக குரூப்பில் சேமி (Save permanently)</label>
         <label class="fld" id="fCCat" hidden>எந்த குரூப்பில்? (Group)<select id="cCat">${CATS.length?"":`<option value="">— குரூப் இல்லை —</option>`}${catOptions(customCat,true)}</select></label>
@@ -778,8 +886,9 @@ function openCustom(from,prefill,keep){
     <button class="cta leaf" id="customAdd">பில்லில் சேர்</button>
     <button class="cta ghost" id="customCancel">ரத்து (Cancel)</button>`;
   $("#cName").value=prefill||"";
-  if(keep && keep.draft){ const d=keep.draft; $("#cName").value=d.name; $("#cSize").value=d.size; $("#cRate").value=d.rate; customQty=d.qty; $("#cQty").textContent=d.qty; updateCustomTotal();
+  if(keep && keep.draft){ const d=keep.draft; $("#cName").value=d.name; $("#cSize").value=d.size; $("#cRate").value=d.rate; $("#cCode").value=d.code||""; customQty=d.qty; $("#cQty").textContent=d.qty; updateCustomTotal();
     if($("#cPerm")){ $("#cPerm").checked=true; togglePerm(); } }
+  if(keep && keep.code){ $("#cCode").value=keep.code; if($("#cPerm")){ $("#cPerm").checked=true; togglePerm(); } setTimeout(()=>{ const i=$("#cName"); if(i) i.focus(); },250); }
   showSheet();
 }
 function togglePerm(){ const on=$("#cPerm").checked; $("#fCCat").hidden=!on; $("#cPermHint").hidden=!on; }
@@ -788,6 +897,8 @@ async function submitCustom(){
   const okN=name.length>0, okR=isFinite(rate)&&rate>0&&rate<=999999;
   $("#fCName").classList.toggle("bad",!okN); $("#fCRate").classList.toggle("bad",!okR);
   if(!okN||!okR){ toast("பெயர் மற்றும் ரேட்டை சரி பார்க்கவும்"); return; }
+  const code=cleanCode($("#cCode").value);
+  if(code && byCode[code]){ $("#fCCode").classList.add("bad"); const h=byCode[code]; toast("இந்த barcode ஏற்கனவே "+byId[h.id].ta+" ("+h.size+")-க்கு உள்ளது"); return; }
   if(canEdit() && $("#cPerm") && $("#cPerm").checked){
     const cat=$("#cCat").value; if(!catById[cat]){ toast("குரூப்பை தேர்வு செய்யவும் / உருவாக்கவும்"); return; }
     const sz=(size||"Free size").replace(/\|/g,"/").slice(0,12);
@@ -795,8 +906,9 @@ async function submitCustom(){
     const id=ex?ex.id:newId("u"), qty=customQty, from=customFrom;
     const ok=await commitCatalog(d=>{
       const x=d.items.find(i=>i.id===id);
-      if(x){ const z=x.sizes.find(z=>z.size===sz); if(z) z.rate=rate; else x.sizes.push({size:sz,rate}); }
-      else d.items.push({id,cat,ta:name.slice(0,60),en:"",sizes:[{size:sz,rate}]});
+      const nz=code?{size:sz,rate,code}:{size:sz,rate};
+      if(x){ const z=x.sizes.find(z=>z.size===sz); if(z){ z.rate=rate; if(code) z.code=code; } else x.sizes.push(nz); }
+      else d.items.push({id,cat,ta:name.slice(0,60),en:"",sizes:[nz]});
     });
     if(!ok) return;
     const k=id+"|"+sz; if(byId[id]&&byId[id].sizes.some(z=>z.size===sz)){ cart[k]=Math.min(99,(cart[k]||0)+qty); save(); }
@@ -805,8 +917,8 @@ async function submitCustom(){
     return;
   }
   let id=Object.keys(customs).find(i=>{ const c=customs[i]; return c.name.toLowerCase()===name.toLowerCase() && c.size.toLowerCase()===size.toLowerCase() && c.rate===rate; });
-  if(id) customs[id].qty=Math.min(99,customs[id].qty+customQty);
-  else { id="x"+Date.now().toString(36)+Math.floor(Math.random()*1000); customs[id]={name,size,rate,qty:customQty}; }
+  if(id){ customs[id].qty=Math.min(99,customs[id].qty+customQty); if(code) customs[id].code=code; }
+  else { id="x"+Date.now().toString(36)+Math.floor(Math.random()*1000); customs[id]={name,size,rate,qty:customQty,code}; }
   save(); renderDock(); toast("சேர்க்கப்பட்டது: "+name);
   if(customFrom==="bill") openBill(); else closeSheet();
 }
@@ -868,7 +980,7 @@ async function deleteGroup(){
 
 function openItemForm(cat,draft){
   if(!CATS.length){ toast("முதலில் ஒரு குரூப் உருவாக்கவும்"); openGroupForm(null); return; }
-  iForm={cat:catById[cat]?cat:CATS[0][0], set:(draft&&draft.set)||"alpha", vals:(draft&&draft.vals)||{}};
+  iForm={cat:catById[cat]?cat:CATS[0][0], set:(draft&&draft.set)||"alpha", vals:(draft&&draft.vals)||{}, codes:(draft&&draft.codes)||{}};
   $("#sheetBody").innerHTML=`
     <h2>புது ஐட்டம் சேர்க்க</h2><p class="sub">எந்த குரூப்பிலும் நிரந்தர ஐட்டம் · சைஸ் வாரியாக ரேட்</p>
     <div class="box frm">
@@ -893,15 +1005,20 @@ function openItemForm(cat,draft){
   renderIRows(); showSheet();
 }
 const curISizes = () => iForm.set==="custom" ? parseSizes($("#iSizes").value) : SIZES[iForm.set].slice();
-function keepIVals(){ document.querySelectorAll("[data-isz]").forEach(i=>{ iForm.vals[i.dataset.isz]=i.value; }); }
+function keepIVals(){ document.querySelectorAll("[data-isz]").forEach(i=>{ iForm.vals[i.dataset.isz]=i.value; }); iForm.codes=iForm.codes||{}; document.querySelectorAll("[data-icode]").forEach(i=>{ iForm.codes[i.dataset.icode]=i.value; }); }
 function renderIRows(){
   const list=curISizes();
   $("#iRows").innerHTML = list.length ? list.map((sz,i)=>`<div class="rrow"><span class="szb">${esc(sz)}</span>
       <label class="fld" id="if${i}"><input data-isz="${esc(sz)}" data-iri="${i}" inputmode="decimal" autocomplete="off" placeholder="₹" aria-label="Rate for size ${esc(sz)}"><span class="err">சரியான ரேட்</span></label></div>`).join("")
     : `<p class="hint">மேலே சைஸ்களை எழுதவும்</p>`;
+  if(list.length) $("#iRows").innerHTML = list.map((sz,i)=>`<div class="rrow hasbc"><span class="szb">${esc(sz)}</span>
+      <label class="fld" id="if${i}"><input data-isz="${esc(sz)}" data-iri="${i}" inputmode="decimal" autocomplete="off" placeholder="₹" aria-label="Rate for size ${esc(sz)}"><span class="err">சரியான ரேட்</span></label></div>
+    <div class="bcrow"><span class="bcl">Barcode</span><input class="bci" id="ic${i}" data-icode="${esc(sz)}" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="optional" aria-label="Barcode for size ${esc(sz)}"><button type="button" class="scbtn2" data-scanfill="ic${i}" aria-label="Scan barcode for size ${esc(sz)}">📷</button></div>`).join("");
+  iForm.codes=iForm.codes||{};
   document.querySelectorAll("[data-isz]").forEach(i=>{ const v=iForm.vals[i.dataset.isz]; if(v!==undefined) i.value=v; });
+  document.querySelectorAll("[data-icode]").forEach(i=>{ const v=iForm.codes[i.dataset.icode]; if(v!==undefined) i.value=v; });
 }
-function itemDraft(){ keepIVals(); return {ta:$("#iTa").value, en:$("#iEn").value, set:iForm.set, sizes:$("#iSizes").value, vals:iForm.vals}; }
+function itemDraft(){ keepIVals(); return {ta:$("#iTa").value, en:$("#iEn").value, set:iForm.set, sizes:$("#iSizes").value, vals:iForm.vals, codes:iForm.codes}; }
 async function saveItem(){
   const cat=$("#iCat").value, ta=$("#iTa").value.trim(), en=$("#iEn").value.trim(), list=curISizes();
   $("#fITa").classList.toggle("bad",!ta);
@@ -909,9 +1026,10 @@ async function saveItem(){
   let ok=!!ta && list.length>0 && !!catById[cat]; const sizes=[];
   document.querySelectorAll("[data-isz]").forEach((inp,i)=>{
     const v=money(numIn(inp.value)), good=isFinite(v)&&v>0&&v<=999999;
-    $("#if"+i).classList.toggle("bad",!good); if(!good) ok=false; else sizes.push({size:inp.dataset.isz,rate:v});
+    $("#if"+i).classList.toggle("bad",!good); if(!good) ok=false; else { const code=cleanCode(($("#ic"+i)||{}).value); sizes.push(code?{size:inp.dataset.isz,rate:v,code}:{size:inp.dataset.isz,rate:v}); }
   });
   if(!ok){ toast("பெயர், சைஸ், ரேட்டை சரி பார்க்கவும்"); return; }
+  const clash=codeClash(sizes,null); if(clash){ toast(clash); return; }
   if(ITEMS.some(it=>it.cat===cat && it.ta.toLowerCase()===ta.toLowerCase())){ $("#fITa").classList.add("bad"); toast("இந்த குரூப்பில் இதே பெயரில் ஐட்டம் உள்ளது"); return; }
   const done=await commitCatalog(d=>{ d.items.push({id:newId("u"),cat,ta,en,sizes}); },"புது ஐட்டம் சேர்க்கப்பட்டது: "+ta);
   if(!done) return;
@@ -929,14 +1047,15 @@ function itemHint(i){
 function openItemEdit(id){
   const it=byId[id]; if(!it) return; editItem=id;
   $("#sheetBody").innerHTML=`
-    <h2>ஐட்டம் மாற்றம்</h2><p class="sub">பெயர், குரூப், ரேட் மாற்றலாம் · எல்லா மொபைலிலும் உடனே மாறும்</p>
+    <h2>ஐட்டம் மாற்றம்</h2><p class="sub">பெயர், குரூப், ரேட், barcode மாற்றலாம் · எல்லா மொபைலிலும் உடனே மாறும்</p>
     <div class="box frm"><label class="fld" id="fETa">ஐட்டம் பெயர் (தமிழ்)<input id="eTa" maxlength="60" autocomplete="off"><span class="err">பெயரை உள்ளிடவும்</span></label>
       <label class="fld">English பெயர் (optional)<input id="eEn" maxlength="60" autocomplete="off"></label>
       <label class="fld">குரூப் (Group)<select id="eCat">${catOptions(it.cat,false)}</select></label></div>
     <div class="box"><h3>ரேட் (Rate)</h3>${it.sizes.map((z,i)=>`
-      <div class="rrow"><span class="szb">${esc(z.size)}</span>
+      <div class="rrow hasbc"><span class="szb">${esc(z.size)}</span>
         <label class="fld" id="rf${i}"><input id="r${i}" data-ri="${i}" inputmode="decimal" autocomplete="off" value="${z.rate}" aria-label="Rate for size ${esc(z.size)}">
-          <span class="def" id="rd${i}"></span><span class="err">சரியான ரேட்டை உள்ளிடவும்</span></label></div>`).join("")}
+          <span class="def" id="rd${i}"></span><span class="err">சரியான ரேட்டை உள்ளிடவும்</span></label></div>
+      <div class="bcrow"><span class="bcl">Barcode</span><input class="bci" id="bc${i}" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="optional" value="${esc(z.code||"")}" aria-label="Barcode for size ${esc(z.size)}"><button type="button" class="scbtn2" data-scanfill="bc${i}" aria-label="Scan barcode for size ${esc(z.size)}">📷</button></div>`).join("")}
     </div>
     <div class="box"><h3>எல்லா சைஸுக்கும் ஒரே நேரத்தில் கூட்ட / குறைக்க</h3>
       <div class="bump">${[-50,-20,-10,10,20,50].map(n=>`<button data-bump="${n}">${n>0?"+":"−"}₹${Math.abs(n)}</button>`).join("")}</div></div>
@@ -948,11 +1067,13 @@ function openItemEdit(id){
 }
 async function saveItemEdit(){
   const it=byId[editItem]; if(!it) return;
-  let ok=true; const vals={};
+  let ok=true; const vals={}, codes={};
   it.sizes.forEach((z,i)=>{
     const v=money(numIn($("#r"+i).value)), good=isFinite(v)&&v>0&&v<=999999;
     $("#rf"+i).classList.toggle("bad",!good); if(!good) ok=false; else vals[z.size]=v;
+    codes[z.size]=cleanCode(($("#bc"+i)||{}).value);
   });
+  const clash=codeClash(it.sizes.map(z=>({size:z.size,code:codes[z.size]})),editItem); if(clash){ toast(clash); return; }
   const ta=$("#eTa").value.trim(), en=$("#eEn").value.trim(), cat=$("#eCat").value;
   $("#fETa").classList.toggle("bad",!ta);
   if(!ok||!ta){ toast("பெயர் / ரேட்டை சரி பார்க்கவும்"); return; }
@@ -960,7 +1081,7 @@ async function saveItemEdit(){
   const done=await commitCatalog(d=>{
     const x=d.items.find(i=>i.id===id); if(!x) return false;
     x.ta=ta; x.en=en; if(d.cats.some(c=>c.id===cat)) x.cat=cat;
-    x.sizes=x.sizes.map(z=>({size:z.size,rate:vals[z.size]!==undefined?vals[z.size]:z.rate}));
+    x.sizes=x.sizes.map(z=>{ const n={size:z.size,rate:vals[z.size]!==undefined?vals[z.size]:z.rate}, c=codes[z.size]!==undefined?codes[z.size]:(z.code||""); if(c) n.code=c; return n; });
   },"சேமிக்கப்பட்டது: "+ta);
   if(!done) return;
   closeSheet(); renderAll();
@@ -982,8 +1103,11 @@ async function setupCompany(mode){
 /* ================= MENU / ACCOUNT ================= */
 function openMenu(){
   $("#sheetBody").innerHTML=`<h2>${esc(me.name)}</h2>
-    <p class="sub">@${esc(me.user)} · ${isAdmin()?"⚙ Admin":"🏬 Customer"}${company?" · "+esc(company.name):""}</p>
-    ${company?`<button class="mrow" id="mBills">🧾 பில் வரலாறு (Bills)</button><button class="mrow" id="mReport">📊 விற்பனை அறிக்கை (Report)</button><button class="mrow" id="mCompany">🏬 கம்பெனி விவரம் (Company)</button>`:""}
+    <p class="sub">@${esc(me.user)} · ${TYPE_LABEL[me.type]||esc(me.type)}${company?" · "+esc(company.name):""}${myBranch?" · 🏬 "+esc(myBranch):""}</p>
+    ${company&&!isOwner()?`<button class="mrow" id="mBills">🧾 பில் வரலாறு (Bills)</button>`:""}
+    ${company?`<button class="mrow" id="mReport">📊 விற்பனை அறிக்கை (Report)</button>`:""}
+    ${canStock()&&catalog.setup?`<button class="mrow" id="mStock">📦 ஸ்டாக் (Stock)</button>`:""}
+    ${company?`<button class="mrow" id="mCompany">🏬 கம்பெனி விவரம் (Company)</button>`:""}
     ${isAdmin()?`<button class="mrow" id="mAdmin">⚙ Admin Panel — Users / Companies</button>`:""}
     <button class="mrow" id="mPw">🔑 கடவுச்சொல் மாற்று (Password)</button>
     <button class="mrow warnr" id="mLogout">⏻ வெளியேறு (Logout)</button>`;
@@ -1029,12 +1153,12 @@ function renderAdmin(){
     ${cs.length?`<div class="list">${cs.map(c=>`<article class="acard">
         <div class="r1"><div><b>${esc(c.name)}</b><small>${esc([c.owner,c.city].filter(Boolean).join(" · ")||c.tagline||"")}</small></div>${company&&company.id===c.id?`<span class="tag on">திறந்துள்ளது</span>`:""}</div>
         <div class="meta">📞 ${esc(c.phone||"-")}${c.gstin?` · GST ${esc(c.gstin)}`:""}<br>👤 ${c.userCount} users · 🗂 ${c.groupCount} குரூப் · 👗 ${c.itemCount} ஐட்டம் · 🧾 ${c.billCount} பில்</div>
-        <div class="acts"><button class="mini" data-opencomp="${esc(c.id)}">🧾 Billing திற</button><button class="mini" data-editcomp="${esc(c.id)}">✏️ விவரம்</button><button class="mini" data-adduserfor="${esc(c.id)}">👤 User சேர்</button></div>
+        <div class="acts"><button class="mini" data-opencomp="${esc(c.id)}">🧾 Billing திற</button><button class="mini" data-editcomp="${esc(c.id)}">✏️ விவரம்</button><button class="mini" data-adduserfor="${esc(c.id)}">👤 User சேர்</button><button class="mini" data-branches="${esc(c.id)}">🏬 கிளைகள் · ${(c.branches||[]).length}</button></div>
       </article>`).join("")}</div>`:`<div class="none"><b>🏬</b>இன்னும் கம்பெனி இல்லை.<br>➕ புது கம்பெனி அழுத்தவும்</div>`}
     <div class="adm-head"><h2 class="h2">பயனர்கள் · ${us.length}</h2><button class="gbtn" id="addUser">➕ புது User</button></div>
     <div class="list">${us.map(u=>`<article class="acard ${u.active?"":"off"}">
-        <div class="r1"><div><b>${esc(u.name)}</b><small>@${esc(u.user)}${u.id===me.id?" (நீங்கள்)":""}</small></div><span class="tag t-${u.type}">${u.type==="admin"?"⚙ Admin":"🏬 Customer"}</span></div>
-        <div class="meta">${u.type==="customer"?`🏬 ${esc(u.companyName||"— கம்பெனி இல்லை —")}`:"எல்லா கம்பெனி, user-களையும் நிர்வகிக்கலாம்"}${u.active?"":` · <b style="display:inline;color:var(--bad);font-size:inherit">நிறுத்தப்பட்டது</b>`}</div>
+        <div class="r1"><div><b>${esc(u.name)}</b><small>@${esc(u.user)}${u.id===me.id?" (நீங்கள்)":""}</small></div><span class="tag t-${u.type}">${TYPE_LABEL[u.type]||esc(u.type)}</span></div>
+        <div class="meta">${u.type!=="admin"?`🏬 ${esc(u.companyName||"— கம்பெனி இல்லை —")}${u.branchName?" · "+esc(u.branchName):u.type==="owner"?" · எல்லா கிளைகள்":""}`:"எல்லா கம்பெனி, user-களையும் நிர்வகிக்கலாம்"}${u.active?"":` · <b style="display:inline;color:var(--bad);font-size:inherit">நிறுத்தப்பட்டது</b>`}</div>
         <div class="acts"><button class="mini" data-edituser="${esc(u.id)}">✏️ மாற்று</button>${u.id!==me.id?`<button class="mini" data-deluser="${esc(u.id)}">🗑 நீக்கு</button>`:""}</div>
       </article>`).join("")}</div>`;
 }
@@ -1094,12 +1218,14 @@ async function deleteCompany(){
 let uForm=null;
 function openUserForm(id,draft){
   const u=id?adminData.users.find(x=>x.id===id):null;
-  uForm={id:u?u.id:null, type:(draft&&draft.type)||(u?u.type:"customer")};
+  uForm={id:u?u.id:null, type:(draft&&draft.type)||(u?u.type:"sales")};
+  const bid=(draft&&draft.branchId)||(u&&u.branchId)||"";
   const cid=(draft&&draft.companyId)||(u&&u.companyId)||"";
   $("#sheetBody").innerHTML=`<h2>${u?"User மாற்று":"புது User சேர்க்க"}</h2><p class="sub">${u?"@"+esc(u.user):"Login விவரம் உருவாக்கி கடைக்கு அனுப்பலாம்"}</p>
     <div class="box frm">
-      <div class="fld">User type<div class="chips"><button type="button" data-utype="customer">🏬 Customer (கடை)</button><button type="button" data-utype="admin">⚙ Admin</button></div><p class="hint" id="uTypeHint"></p></div>
+      <div class="fld">User type<div class="chips"><button type="button" data-utype="sales">🧾 Sales</button><button type="button" data-utype="stock">📦 Stock</button><button type="button" data-utype="owner">👑 Owner</button><button type="button" data-utype="admin">⚙ Admin</button></div><p class="hint" id="uTypeHint"></p></div>
       <label class="fld" id="fuComp">எந்த கம்பெனியை சேர்ந்தவர்? *<select id="uComp"><option value="">— தேர்வு செய்யவும் —</option>${adminData.companies.map(c=>`<option value="${esc(c.id)}"${c.id===cid?" selected":""}>${esc(c.name)}</option>`).join("")}<option value="__new">➕ புது கம்பெனி உருவாக்கு…</option></select><span class="err">கம்பெனியை தேர்வு செய்யவும்</span></label>
+      <label class="fld" id="fuBranch">எந்த கிளை? (Branch) *<select id="uBranch" data-sel="${esc(bid)}"></select><span class="err">கிளையை தேர்வு செய்யவும்</span></label>
       <label class="fld" id="fuName">பெயர் *<input id="uName" maxlength="60" autocomplete="off" placeholder="எ.கா. அமீன்"><span class="err">பெயர் தேவை</span></label>
       <label class="fld" id="fuUser">Username * (login-க்கு)<input id="uUser" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="எ.கா. ameen"><span class="err">3-30 எழுத்து: a-z 0-9 . _ -</span></label>
       <label class="fld" id="fuPass">${u?"புது கடவுச்சொல் (மாற்ற மட்டும்)":"கடவுச்சொல் *"}<div class="pw"><input id="uPass" maxlength="100" autocomplete="off" placeholder="குறைந்தது 6 எழுத்து"><button type="button" class="eye" id="uGen" aria-label="Generate password">🎲</button></div><span class="err">குறைந்தது 6 எழுத்து</span></label>
@@ -1111,20 +1237,34 @@ function openUserForm(id,draft){
   if(draft){ if(draft.name!==undefined) $("#uName").value=draft.name; if(draft.user!==undefined) $("#uUser").value=draft.user; if(draft.password) $("#uPass").value=draft.password; if($("#uActive")&&draft.active!==undefined) $("#uActive").checked=draft.active; }
   syncUType(); showSheet();
 }
+const U_HINT={
+  admin:"எல்லா கம்பெனி, கிளை, user-களையும் நிர்வகிக்கலாம்; எந்த கம்பெனியின் billing / stock-ஐயும் திறக்கலாம்",
+  owner:"தன் கம்பெனியின் விற்பனை அறிக்கை மட்டும் — எல்லா கிளைகள், கிளை வாரியாக, user வாரியாக. பில் போட முடியாது",
+  sales:"தன் கிளையில் பில் போடலாம்; குரூப், ஐட்டம், பில் வரலாறு, கிளையின் அறிக்கை",
+  stock:"Sales-ன் எல்லா வசதிகளும் + தன் கிளையின் ஸ்டாக் பார்க்க / மாற்ற (மைனஸ் அனுமதி)"};
 function syncUType(){
   document.querySelectorAll("[data-utype]").forEach(b=>b.classList.toggle("on",b.dataset.utype===uForm.type));
-  $("#fuComp").hidden = uForm.type!=="customer";
-  $("#uTypeHint").textContent = uForm.type==="admin" ? "எல்லா கம்பெனி, user-களையும் நிர்வகிக்கலாம்; எந்த கம்பெனியின் billing-ஐயும் திறக்கலாம்" : "தன் கம்பெனிக்கு மட்டும்: பில், குரூப், ஐட்டம், பில் வரலாறு";
+  $("#fuComp").hidden = uForm.type==="admin";
+  $("#fuBranch").hidden = !(uForm.type==="sales"||uForm.type==="stock");
+  $("#uTypeHint").textContent = U_HINT[uForm.type]||"";
+  fillUBranches();
 }
-const userDraft = () => ({id:uForm.id, type:uForm.type, companyId:$("#uComp").value, name:$("#uName").value, user:$("#uUser").value, password:$("#uPass").value, active:$("#uActive")?$("#uActive").checked:true});
+function fillUBranches(){
+  const sel=$("#uBranch"); if(!sel) return;
+  const c=adminData.companies.find(x=>x.id===$("#uComp").value), keep=sel.value||sel.dataset.sel||"";
+  const bs=c&&c.branches||[];
+  sel.innerHTML=bs.length?bs.map(b=>`<option value="${esc(b.id)}"${b.id===keep?" selected":""}>🏬 ${esc(b.name)}</option>`).join(""):`<option value="">— கம்பெனியை முதலில் தேர்வு செய்யவும் —</option>`;
+}
+const userDraft = () => ({id:uForm.id, type:uForm.type, companyId:$("#uComp").value, branchId:$("#uBranch")?$("#uBranch").value:"", name:$("#uName").value, user:$("#uUser").value, password:$("#uPass").value, active:$("#uActive")?$("#uActive").checked:true});
 async function saveUser(){
   const d=userDraft(); d.user=d.user.trim().toLowerCase(); d.name=d.name.trim();
   const okU=/^[a-z0-9._-]{3,30}$/.test(d.user), okN=!!d.name, okC=d.type==="admin"||(d.companyId&&d.companyId!=="__new"), okP=uForm.id?(!d.password||d.password.length>=6):d.password.length>=6;
-  $("#fuUser").classList.toggle("bad",!okU); $("#fuName").classList.toggle("bad",!okN); $("#fuComp").classList.toggle("bad",!okC); $("#fuPass").classList.toggle("bad",!okP);
-  if(!okU||!okN||!okC||!okP){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
+  const okB=!(d.type==="sales"||d.type==="stock")||!!d.branchId;
+  $("#fuUser").classList.toggle("bad",!okU); $("#fuName").classList.toggle("bad",!okN); $("#fuComp").classList.toggle("bad",!okC); $("#fuPass").classList.toggle("bad",!okP); $("#fuBranch").classList.toggle("bad",!okB);
+  if(!okU||!okN||!okC||!okP||!okB){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
   busy(true);
   try{
-    const r=await api("admin/user","POST",{id:d.id||"",user:d.user,name:d.name,type:d.type,companyId:d.type==="customer"?d.companyId:"",password:d.password,active:d.active});
+    const r=await api("admin/user","POST",{id:d.id||"",user:d.user,name:d.name,type:d.type,companyId:d.type!=="admin"?d.companyId:"",branchId:(d.type==="sales"||d.type==="stock")?d.branchId:"",password:d.password,active:d.active});
     uForm=null; await loadAdmin(); renderAll();
     if(d.password) openCreds(r.user,d.password); else { closeSheet(); toast("சேமிக்கப்பட்டது: "+r.user.name); }
   }catch(e){ apiErr(e); } finally{ busy(false); }
@@ -1152,7 +1292,7 @@ async function openCompanyBilling(id,go){
   try{
     const s=await api("admin/open","POST",{companyId:id}); company=s.company;
     await loadData(); loadCart(); cameFromHome=false; $("#q").value="";
-    repData=null;
+    repData=null; repBranch=""; stockData=null; stockBr="";
     const want=go?"#"+go:"";
     if(location.hash!==want) location.hash=want; else renderAll(true);
     toast(company.name+(go==="report"?" — அறிக்கை":" — billing திறக்கப்பட்டது"));
@@ -1162,8 +1302,9 @@ async function openCompanyBilling(id,go){
 /* ================= LOGIN / SESSION ================= */
 function lerr(t){ const el=$("#lErr"); el.textContent=t; el.classList.toggle("on",!!t); }
 async function enter(s){
-  me=s.user; company=s.company||null; defaultPw=!!s.defaultPassword;
-  if(company){ await loadData(); loadCart(); }
+  me=s.user; company=s.company||null; defaultPw=!!s.defaultPassword; myBranch=s.branch?s.branch.name:"";
+  repData=null; repBranch=""; stockData=null;
+  if(company && !isOwner()){ await loadData(); loadCart(); }
   else { catalog={version:0,setup:false,cats:[],items:[]}; buildCatalog(); cart={}; customs={}; }
   document.body.classList.add("authed");
   if(isAdmin() && !company && location.hash!=="#admin"){ history.replaceState(null,"","#admin"); }
@@ -1198,6 +1339,335 @@ $("#loginForm").addEventListener("submit",doLogin);
 $("#lEye").addEventListener("click",()=>{ const i=$("#lPass"), show=i.type==="password"; i.type=show?"text":"password"; $("#lEye").textContent=show?"🙈":"👁"; });
 
 
+
+/* ================= BARCODE ================= */
+/* Phone camera: native BarcodeDetector (Android Chrome) or the bundled ZXing library (iPhone / others).
+   USB / Bluetooth scanners type the code + Enter: caught anywhere on the billing screens. Camera needs HTTPS. */
+const SCAN_FORMATS=["ean_13","ean_8","upc_a","upc_e","code_128","code_39","code_93","itf","codabar","qr_code","data_matrix"];
+const cleanCode = c => String(c==null?"":c).replace(/[^\x21-\x7E]/g,"").slice(0,40);
+let scanS=null, pendingCode=null;
+
+/* returns an error text when a barcode in `sizes` is already used by another item / size (or twice in the list) */
+function codeClash(sizes,itemId){
+  const seen={};
+  for(const z of sizes){
+    if(!z.code) continue;
+    if(seen[z.code]) return "ஒரே barcode இரண்டு சைஸில்: "+z.code;
+    seen[z.code]=1;
+    const h=byCode[z.code];
+    if(h && !(h.id===itemId && h.size===z.size)) return "Barcode "+z.code+" ஏற்கனவே "+byId[h.id].ta+" ("+h.size+")-க்கு உள்ளது";
+  }
+  return "";
+}
+function loadZxing(){
+  if(window.ZXing) return Promise.resolve();
+  return loadZxing.p || (loadZxing.p=new Promise((ok,no)=>{ const sc=document.createElement("script"); sc.src="vendor/zxing.min.js"; sc.onload=ok; sc.onerror=()=>{ loadZxing.p=null; no(new Error("zxing")); }; document.head.appendChild(sc); }));
+}
+function zxFormats(){
+  const F=ZXing.BarcodeFormat;
+  return ["EAN_13","EAN_8","UPC_A","UPC_E","CODE_128","CODE_39","CODE_93","ITF","CODABAR","QR_CODE","DATA_MATRIX"].map(k=>F[k]).filter(v=>v!==undefined);
+}
+function scanMsg(t){ $("#scMsg").textContent=t||""; }
+function scanResult(t,ok){
+  const box=$("#scLast"), d=document.createElement("div");
+  d.className=ok?"ok":"bad"; d.textContent=t; box.prepend(d);
+  while(box.children.length>2) box.lastChild.remove();
+}
+function beep(ok){
+  try{ navigator.vibrate&&navigator.vibrate(ok?60:[60,60,60]); }catch(e){}
+  try{ const a=beep.ctx||(beep.ctx=new (window.AudioContext||window.webkitAudioContext)()); const o=a.createOscillator(), g=a.createGain();
+    o.frequency.value=ok?1650:330; g.gain.value=.08; o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+(ok?.09:.25)); }catch(e){}
+}
+async function openScanner(opts){
+  closeScanner(true);
+  const s=scanS={opts, last:"", lastAt:0};
+  $("#scTitle").textContent=opts.title||"Barcode Scan";
+  $("#scHint").textContent=opts.hint||"Barcode-ஐ மஞ்சள் கட்டத்திற்குள் வைக்கவும்";
+  $("#scLast").innerHTML=""; $("#scCode").value=""; $("#scTorch").hidden=true; $("#scTorch").classList.remove("on");
+  $("#scDone").textContent=opts.done||"✓ முடிந்தது";
+  $("#scan").classList.add("on"); document.documentElement.classList.add("lock");
+  try{ beep.ctx||(beep.ctx=new (window.AudioContext||window.webkitAudioContext)()); }catch(e){}
+  if(!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    scanMsg("📵 Mobile camera-க்கு HTTPS link தேவை. கீழே barcode எண்ணை type செய்யலாம் / USB scanner பயன்படுத்தலாம்"); return;
+  }
+  scanMsg("📷 Camera திறக்கிறது…");
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}}});
+    if(scanS!==s){ stream.getTracks().forEach(t=>t.stop()); return; }
+    s.stream=stream;
+    const v=$("#scVideo"); v.srcObject=stream; try{ await v.play(); }catch(e){}
+    const tr=stream.getVideoTracks()[0], cap=tr&&tr.getCapabilities?tr.getCapabilities():{};
+    $("#scTorch").hidden=!cap.torch;
+    if("BarcodeDetector" in window){
+      try{ const sup=await BarcodeDetector.getSupportedFormats(), f=SCAN_FORMATS.filter(x=>sup.includes(x)); if(f.length) s.detector=new BarcodeDetector({formats:f}); }catch(e){}
+    }
+    if(!s.detector){
+      await loadZxing();
+      const H=new Map(); H.set(ZXing.DecodeHintType.TRY_HARDER,true); H.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,zxFormats());
+      s.zx=new ZXing.MultiFormatReader(); s.zx.setHints(H);
+    }
+    if(scanS!==s) return;
+    scanMsg(""); scanLoop(s);
+  }catch(e){
+    if(scanS!==s) return;
+    scanMsg(e&&e.name==="NotAllowedError" ? "📵 Camera அனுமதி மறுக்கப்பட்டது. Browser-ல் 🔒 → Camera → Allow செய்யவும். அல்லது எண்ணை type செய்யவும்"
+          : e&&e.message==="zxing" ? "Scanner ஏற்ற முடியவில்லை. எண்ணை type செய்யவும்" : "📵 Camera திறக்க முடியவில்லை. எண்ணை type செய்யவும்");
+  }
+}
+function scanLoop(s){
+  if(scanS!==s) return;
+  const v=$("#scVideo"), next=()=>{ if(scanS===s) s.timer=setTimeout(()=>scanLoop(s), s.detector?120:200); };
+  if(v.readyState<2 || !v.videoWidth){ next(); return; }
+  const W=v.videoWidth, H=v.videoHeight, cw=Math.round(W*.86), ch=Math.round(H*.6);
+  const cv=s.cv||(s.cv=document.createElement("canvas"));
+  if(cv.width!==cw) cv.width=cw; if(cv.height!==ch) cv.height=ch;
+  const ctx=s.ctx||(s.ctx=cv.getContext("2d",{willReadFrequently:true}));
+  ctx.drawImage(v,(W-cw)/2,(H-ch)/2,cw,ch,0,0,cw,ch);
+  if(s.detector){
+    s.detector.detect(cv).then(r=>{ if(r&&r.length) gotScan(r[0].rawValue); }).catch(()=>{}).finally(next);
+  }else{
+    try{ const r=s.zx.decodeWithState(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(cv)))); if(r) gotScan(r.getText()); }
+    catch(e){ /* nothing found in this frame */ }
+    next();
+  }
+}
+function gotScan(raw,manual){
+  const s=scanS; if(!s) return;
+  const code=cleanCode(raw); if(code.length<3){ if(manual) toast("சரியான barcode எண் இல்லை"); return; }
+  const now=Date.now();
+  // the same tag kept in front of the camera counts once; move it away (~1.2 s) and show it again for the next piece
+  if(!manual && code===s.last && now-s.lastAt<1200){ s.lastAt=now; return; }
+  s.last=code; s.lastAt=now;
+  const keep=s.opts.onCode(code)===true;
+  if(!keep && scanS===s) closeScanner();
+}
+function closeScanner(silent){
+  const s=scanS; scanS=null;
+  if(s){ clearTimeout(s.timer); if(s.stream) s.stream.getTracks().forEach(t=>t.stop()); }
+  const v=$("#scVideo"); if(v) v.srcObject=null;
+  $("#scan").classList.remove("on");
+  if(!silent && !$("#sheet").classList.contains("on")) document.documentElement.classList.remove("lock");
+  if(!silent && s && s.opts.onClose) s.opts.onClose();
+}
+async function toggleTorch(){
+  const s=scanS, tr=s&&s.stream&&s.stream.getVideoTracks()[0]; if(!tr) return;
+  const on=!$("#scTorch").classList.contains("on");
+  try{ await tr.applyConstraints({advanced:[{torch:on}]}); $("#scTorch").classList.toggle("on",on); }catch(e){ toast("Torch இல்லை"); }
+}
+
+/* billing scan: each code adds one piece to the bill; unknown code -> ask what to do */
+function scanToCart(code){
+  const hit=byCode[code];
+  if(hit && byId[hit.id]){
+    const k=hit.id+"|"+hit.size; cart[k]=Math.min(99,(cart[k]||0)+1); save();
+    refreshCard(hit.id); renderDock(); if($("#billList")) renderBillList();
+    const it=byId[hit.id]; beep(true);
+    const msg=`✅ ${it.ta} (${hit.size}) · ${inr(rateOf(hit.id,hit.size))} — பில்லில் ${cart[k]}`;
+    if(scanS) scanResult(msg,true); else toast(msg);
+    return true;
+  }
+  const cid=Object.keys(customs).find(i=>customs[i].code===code);
+  if(cid){
+    const c=customs[cid]; c.qty=Math.min(99,c.qty+1); save(); renderDock(); if($("#billList")) renderBillList(); beep(true);
+    const msg=`✅ ${c.name}${c.size?" ("+c.size+")":""} — பில்லில் ${c.qty}`;
+    if(scanS) scanResult(msg,true); else toast(msg);
+    return true;
+  }
+  beep(false);
+  const back=$("#billList")?"bill":"home";
+  closeScanner(true); openUnknownCode(code,back);
+  return false;
+}
+function startCartScan(){
+  openScanner({title:"📷 பில்லில் சேர்க்க Scan", hint:"ஒவ்வொரு scan-உம் 1 பீஸ் பில்லில் சேரும் · அடுத்த பொருளை காட்டவும்",
+    done:"✓ முடிந்தது — பில் பார்", onCode:scanToCart,
+    onClose:()=>{ if(pieces()>0 && !$("#billList")) openBill(); }});
+}
+function openUnknownCode(code,back){
+  pendingCode={code,back:back||"home"};
+  $("#sheetBody").innerHTML=`<h2>புதிய Barcode</h2><p class="sub">இந்த barcode உங்கள் பட்டியலில் இல்லை. என்ன செய்யலாம்?</p>
+    <div class="box"><div class="codebox">${esc(code)}</div></div>
+    ${canEdit()&&ITEMS.length?`<button class="cta leaf" id="ucLink">🔗 ஏற்கனவே உள்ள ஐட்டம் / சைஸுடன் இணை</button><p class="hint">எ.கா. "காட்டன் நைட்டி – XL" க்கு இந்த barcode. அடுத்த முறை scan செய்தவுடன் தானாக சேரும்</p>`:""}
+    <button class="cta ${canEdit()&&ITEMS.length?"ghost":"leaf"}" id="ucCustom">✏️ புது ஐட்டமாக சேர் (பெயர், ரேட்)</button>
+    <button class="cta ghost" id="ucRescan">📷 மீண்டும் Scan</button>
+    <button class="cta ghost" id="ucCancel">ரத்து (Cancel)</button>`;
+  showSheet();
+}
+function openLinkCode(){
+  const pc=pendingCode; if(!pc) return;
+  const first=ITEMS[0];
+  $("#sheetBody").innerHTML=`<h2>Barcode இணைக்க</h2><p class="sub">இந்த barcode எந்த ஐட்டம், எந்த சைஸுக்கு?</p>
+    <div class="box"><div class="codebox">${esc(pc.code)}</div></div>
+    <div class="box frm">
+      <label class="fld">ஐட்டம் (Item)<select id="lkItem">${CATS.map(c=>{ const its=ITEMS.filter(i=>i.cat===c[0]); return its.length?`<optgroup label="${esc(c[3]+" "+c[1])}">${its.map(i=>`<option value="${esc(i.id)}">${esc(i.ta)}${i.en?" · "+esc(i.en):""}</option>`).join("")}</optgroup>`:""; }).join("")}</select></label>
+      <label class="fld">சைஸ் (Size)<select id="lkSize"></select></label>
+      <p class="hint" id="lkWarn"></p>
+    </div>
+    <button class="cta leaf" id="lkSave">🔗 இணைத்து பில்லில் சேர்</button>
+    <button class="cta ghost" id="lkBack">← பின்செல்</button>`;
+  if(first) lkSizes();
+  showSheet();
+}
+function lkSizes(){
+  const it=byId[$("#lkItem").value]; if(!it) return;
+  $("#lkSize").innerHTML=it.sizes.map(z=>`<option value="${esc(z.size)}">${esc(z.size)} · ${inr(z.rate)}${z.code?" · ▮ "+esc(z.code):""}</option>`).join("");
+  lkWarn();
+}
+function lkWarn(){
+  const it=byId[$("#lkItem").value], z=it&&it.sizes.find(z=>z.size===$("#lkSize").value);
+  $("#lkWarn").textContent = z&&z.code ? `⚠️ இந்த சைஸுக்கு ஏற்கனவே barcode ${z.code} உள்ளது — புதியதால் மாற்றப்படும்` : "";
+}
+async function saveLinkCode(){
+  const pc=pendingCode, id=$("#lkItem").value, size=$("#lkSize").value;
+  if(!pc||!byId[id]) return;
+  const ok=await commitCatalog(d=>{ const x=d.items.find(i=>i.id===id); if(!x) return false; const z=x.sizes.find(z=>z.size===size); if(!z) return false; z.code=pc.code; },
+    "Barcode இணைக்கப்பட்டது: "+byId[id].ta+" ("+size+")");
+  if(!ok) return;
+  const k=id+"|"+size; if(byId[id]&&byId[id].sizes.some(z=>z.size===size)){ cart[k]=Math.min(99,(cart[k]||0)+1); save(); }
+  pendingCode=null; renderAll();
+  if(pc.back==="bill") openBill(); else closeSheet();
+}
+/* 📷 next to a barcode field: fill the field */
+function scanFill(inputId){
+  openScanner({title:"Barcode Scan", hint:"இந்த சைஸின் tag barcode-ஐ scan செய்யவும்", onCode:code=>{
+    const el=$("#"+inputId); if(el){ el.value=code; el.dispatchEvent(new Event("input",{bubbles:true})); }
+    const h=byCode[code]; beep(!h);
+    if(h) toast("⚠️ இந்த barcode ஏற்கனவே "+byId[h.id].ta+" ("+h.size+")-க்கு உள்ளது");
+    else toast("Barcode: "+code);
+    return false;
+  }});
+}
+/* 📷 in the custom item form: a known code is billed directly, an unknown one fills the field */
+function scanCustom(){
+  openScanner({title:"Custom ஐட்டம் Barcode", hint:"Tag barcode-ஐ scan செய்யவும்", onCode:code=>{
+    if(byCode[code]){ const from=customFrom; scanToCart(code); toast("இந்த பொருள் பட்டியலில் உள்ளது — பில்லில் சேர்க்கப்பட்டது"); if(from==="bill") openBill(); else closeSheet(); return false; }
+    const el=$("#cCode"); if(el){ el.value=code; $("#fCCode").classList.remove("bad"); }
+    beep(true); toast("Barcode: "+code+" · பெயர், ரேட் கொடுக்கவும்");
+    if($("#cPerm") && !$("#cPerm").checked){ $("#cPerm").checked=true; togglePerm(); }
+    return false;
+  }});
+}
+/* USB / Bluetooth barcode scanners act as a fast keyboard ending with Enter */
+const wedge={buf:"",t:0};
+document.addEventListener("keydown",e=>{
+  if(!me||!company||e.ctrlKey||e.metaKey||e.altKey) return;
+  const tg=e.target, tag=tg&&tg.tagName;
+  if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT") return;          // typing in a field: let the field have it
+  if($("#scan").classList.contains("on")) return;
+  const v=view(); if(!(v==="home"||v==="cat")) return;
+  if($("#sheet").classList.contains("on") && !$("#billList")) return;    // other dialogs open
+  const now=Date.now(); if(now-wedge.t>90) wedge.buf=""; wedge.t=now;
+  if(e.key==="Enter"){ if(wedge.buf.length>=3){ e.preventDefault(); const c=wedge.buf; wedge.buf=""; scanToCart(cleanCode(c)); } return; }
+  if(e.key.length===1) wedge.buf+=e.key;
+});
+
+
+/* ================= STOCK ================= */
+let stockData=null, stockLoading=false, stockBr="", stockFlt="all", stockEdit=null;
+async function loadStock(){
+  if(stockLoading||!company) return;
+  stockLoading=true; busy(true);
+  try{
+    const r=await api("stock"+(stockBr?"?branch="+encodeURIComponent(stockBr):""));
+    const m={}; (r.stock||[]).forEach(x=>m[x.item+"|"+x.size]=x);
+    stockData={co:company.id, branch:r.branch, branchName:r.branchName, branches:r.branches||null, map:m};
+  }catch(e){ apiErr(e); if(!stockData) stockData={co:company.id,error:e.message,map:{}}; }
+  finally{ stockLoading=false; busy(false); }
+  if(view()==="stock") renderView();
+}
+const stQty = (id,size) => { const x=stockData&&stockData.map[id+"|"+size]; return x?x.qty:0; };
+function renderStock(){
+  if(!stockData || stockData.co!==company.id){ if(!stockLoading) setTimeout(loadStock,0); return `<div class="none"><b>⏳</b>ஸ்டாக் ஏற்றுகிறது…</div>`; }
+  if(stockData.error) return `<div class="none"><b>⚠️</b>${esc(stockData.error)}</div>`;
+  const q=($("#stq")&&$("#stq").value||"").trim().toLowerCase();
+  let pcs=0, neg=0, zero=0;
+  ITEMS.forEach(it=>it.sizes.forEach(z=>{ const v=stQty(it.id,z.size); if(v>0) pcs+=v; else if(v<0) neg++; else zero++; }));
+  const keep=(it,z)=>{ const v=stQty(it.id,z.size); return stockFlt==="neg"?v<0:stockFlt==="zero"?v===0:stockFlt==="low"?v>0&&v<=3:true; };
+  const match=it=>!q || (it.ta+" "+it.en).toLowerCase().includes(q) || it.sizes.some(z=>z.code&&z.code.toLowerCase()===q);
+  const groups=CATS.map(c=>{
+    const its=ITEMS.filter(it=>it.cat===c[0] && match(it) && it.sizes.some(z=>keep(it,z)));
+    if(!its.length) return "";
+    return `<div class="st-g">${esc(c[3]+" "+c[1])}</div>`+its.map(it=>`<div class="st-it"><b>${esc(it.ta)}</b>${it.en?`<small>${esc(it.en)}</small>`:""}
+      <div class="st-sz">${it.sizes.filter(z=>keep(it,z)).map(z=>{ const v=stQty(it.id,z.size);
+        return `<button data-stedit="${esc(it.id)}" data-stsize="${esc(z.size)}" class="${v<0?"neg":v===0?"zero":""}" aria-label="${esc(it.ta)} ${esc(z.size)} stock ${v}"><span>${esc(z.size)}</span><b>${v}</b></button>`; }).join("")}</div></div>`).join("");
+  }).join("");
+  return `
+    ${stockData.branches&&stockData.branches.length>1?`<div class="rp-br"><select id="stBranch" aria-label="Branch">${stockData.branches.map(b=>`<option value="${esc(b.id)}"${b.id===stockData.branch?" selected":""}>🏬 ${esc(b.name)}</option>`).join("")}</select></div>`
+      :`<span class="brchip">🏬 கிளை: ${esc(stockData.branchName||"-")}</span>`}
+    <div class="st-sum"><div><b>${pcs}</b><small>கையிருப்பு பீஸ்</small></div><div class="neg"><b>${neg}</b><small>மைனஸ் (−)</small></div><div><b>${zero}</b><small>இல்லை (0)</small></div></div>
+    <div class="st-tools"><input id="stq" type="search" placeholder="ஐட்டம் தேடு / barcode" value="${esc(q)}" autocomplete="off" aria-label="Search stock"><button id="stScan" aria-label="Scan barcode">📷</button></div>
+    <div class="st-flt">${[["all","எல்லாம்"],["neg","மைனஸ்"],["zero","0 ஸ்டாக்"],["low","குறைவு (1-3)"]].map(f=>`<button data-stflt="${f[0]}" class="${stockFlt===f[0]?"on":""}">${f[1]}</button>`).join("")}</div>
+    <p class="hint">சைஸை தொட்டு ஸ்டாக் மாற்றலாம் · பில் போட்டால் தானாக குறையும் · மைனஸ் அனுமதி உண்டு</p>
+    ${groups||`<div class="none"><b>📦</b>${q||stockFlt!=="all"?"பொருந்தும் ஐட்டம் இல்லை":"இன்னும் ஐட்டம் இல்லை"}</div>`}`;
+}
+function openStockEdit(id,size){
+  const it=byId[id]; if(!it) return;
+  const cur=stQty(id,size), x=stockData.map[id+"|"+size];
+  stockEdit={id,size,mode:"set"};
+  $("#sheetBody").innerHTML=`<h2>${esc(it.ta)}</h2><p class="sub">சைஸ் ${esc(size)} · 🏬 ${esc(stockData.branchName||"")}</p>
+    <div class="box"><p class="sub" style="text-align:center">இப்போதைய ஸ்டாக்</p><div class="st-big ${cur<0?"neg":""}">${cur}</div>
+      ${x&&x.by?`<p class="hint" style="text-align:center">கடைசி மாற்றம்: ${esc(x.by)} · ${esc(fmtDate(x.at))}</p>`:""}</div>
+    <div class="box frm">
+      <div class="chips"><button type="button" data-stmode="set" class="on">✏️ புது மதிப்பு (Set)</button><button type="button" data-stmode="add">➕➖ வரவு / குறைப்பு</button></div>
+      <p class="hint" id="stHint">புதிய மொத்த ஸ்டாக் எண்ணை உள்ளிடவும் (மைனஸ் அனுமதி)</p>
+      <div class="st-in"><button type="button" id="stSign" aria-label="Plus or minus">±</button><input id="stVal" inputmode="numeric" autocomplete="off" value="${cur}" aria-label="Stock value"></div>
+      <div class="st-q">${[-10,-1,1,10].map(n=>`<button type="button" data-stq="${n}">${n>0?"+":"−"}${Math.abs(n)}</button>`).join("")}</div>
+      <p class="hint" id="stPrev"></p>
+    </div>
+    <button class="cta leaf" id="stSave">சேமி (Save)</button>
+    <button class="cta ghost" data-close>ரத்து (Cancel)</button>`;
+  stPreview(); showSheet();
+  setTimeout(()=>{ const i=$("#stVal"); if(i){ i.focus(); i.select(); } },250);
+}
+function stNum(){ const t=String($("#stVal").value).trim().replace(/[^\d-]/g,""); if(!/^-?\d+$/.test(t)) return NaN; return parseInt(t,10); }
+function stPreview(){
+  if(!stockEdit) return; const v=stNum(), cur=stQty(stockEdit.id,stockEdit.size), el=$("#stPrev");
+  if(!isFinite(v)){ el.textContent="முழு எண் உள்ளிடவும் (எ.கா. 12 அல்லது -3)"; return; }
+  const nv=stockEdit.mode==="set"?v:cur+v;
+  el.innerHTML=`${cur} → <b style="color:${nv<0?"var(--bad)":"var(--leaf-d)"}">${nv}</b>${nv<0?" (மைனஸ்)":""}`;
+}
+async function saveStockEdit(){
+  const e=stockEdit; if(!e) return; const v=stNum();
+  if(!isFinite(v)||Math.abs(v)>999999){ toast("சரியான முழு எண் உள்ளிடவும்"); return; }
+  const body={item:e.id,size:e.size}; if(e.mode==="set") body.qty=v; else body.add=v;
+  if(stockData.branches) body.branch=stockData.branch;
+  busy(true);
+  try{
+    const r=await api("stock","PUT",body); stockData.map[e.id+"|"+e.size]=r.stock;
+    closeSheet(); renderView(); toast(`சேமிக்கப்பட்டது: ${byId[e.id].ta} (${e.size}) = ${r.stock.qty}`);
+    stockEdit=null;
+  }catch(x){ apiErr(x); } finally{ busy(false); }
+}
+function stockScan(){
+  openScanner({title:"📦 ஸ்டாக் — Barcode Scan", hint:"Scan செய்த ஐட்டத்தின் ஸ்டாக் திறக்கும்", onCode:code=>{
+    const h=byCode[code];
+    if(!h){ beep(false); toast("இந்த barcode பட்டியலில் இல்லை: "+code); return true; }
+    beep(true); closeScanner(true); openStockEdit(h.id,h.size); return false;
+  }});
+}
+
+
+/* ================= BRANCHES (admin) ================= */
+let brCo=null;
+function openBranches(cid){
+  brCo=cid; const c=adminData.companies.find(x=>x.id===cid); if(!c) return;
+  const bs=c.branches||[];
+  $("#sheetBody").innerHTML=`<h2>கிளைகள் (Branches)</h2><p class="sub">${esc(c.name)} · பில்களும் ஸ்டாக்கும் கிளை வாரியாக</p>
+    <div class="box">${bs.map(b=>`<div class="brl"><input id="brn_${esc(b.id)}" value="${esc(b.name)}" maxlength="40" aria-label="Branch name">
+        <button class="mini" data-brsave="${esc(b.id)}">💾</button>${bs.length>1?`<button class="mini" data-brdel="${esc(b.id)}" aria-label="Delete branch">🗑</button>`:"<span></span>"}
+        <small>👤 ${b.userCount} users</small></div>`).join("")}</div>
+    <div class="box frm"><label class="fld" id="fBrNew">புது கிளை பெயர்<input id="brNew" maxlength="40" autocomplete="off" placeholder="எ.கா. திருச்சி / T.Nagar"><span class="err">பெயர் தேவை</span></label></div>
+    <button class="cta leaf" id="brAdd">➕ கிளையை சேர்</button>
+    <p class="hint">பில்கள் உள்ள கிளையை நீக்க முடியாது (அறிக்கைக்காக) — பெயரை மாற்றலாம்</p>
+    <button class="cta ghost" data-close>மூடு (Close)</button>`;
+  showSheet();
+}
+async function branchApi(fn,msg){
+  busy(true);
+  try{ await fn(); await loadAdmin(); openBranches(brCo); if(msg) toast(msg); }
+  catch(e){ apiErr(e); } finally{ busy(false); }
+}
+
 /* ================= SALES REPORT ================= */
 const TA_MONTHS=["ஜனவரி","பிப்ரவரி","மார்ச்","ஏப்ரல்","மே","ஜூன்","ஜூலை","ஆகஸ்ட்","செப்டம்பர்","அக்டோபர்","நவம்பர்","டிசம்பர்"];
 const TA_DAYS=["ஞாயிறு","திங்கள்","செவ்வாய்","புதன்","வியாழன்","வெள்ளி","சனி"];
@@ -1219,7 +1689,8 @@ async function loadReport(date){
   if(repLoading) return;
   repLoading=true; busy(true);
   try{
-    repData=await api("report"+(date?"?date="+encodeURIComponent(date):""));
+    const q=[]; if(date) q.push("date="+encodeURIComponent(date)); if(repBranch) q.push("branch="+encodeURIComponent(repBranch));
+    repData=await api("report"+(q.length?"?"+q.join("&"):""));
     repDate=repData.date; repCo=company.id; billCache=repData.bills||[];
     if(view()==="report") renderView();
   }catch(e){ apiErr(e); if(!repData) { repData={error:e.message}; if(view()==="report") renderView(); } }
@@ -1262,6 +1733,8 @@ function renderReport(){
     <button class="nav" data-rnav="1" aria-label="Next day" ${isToday?"disabled":""}>›</button>
     ${isToday?"":`<button class="chip" id="rToday">இன்று</button>`}
   </div>
+  ${r.scope&&r.scope.canFilter&&r.branches&&r.branches.length>1?`<div class="rp-br"><select id="rBranch" aria-label="Branch"><option value="">🏬 எல்லா கிளைகளும் (All branches)</option>${r.branches.map(b=>`<option value="${esc(b.id)}"${b.id===r.scope.branch?" selected":""}>🏬 ${esc(b.name)}</option>`).join("")}</select></div>`
+    : r.scope&&r.scope.branchName&&r.scope.branchCount>1?`<span class="brchip">🏬 கிளை: ${esc(r.scope.branchName)}</span>`:""}
 
   <section class="rp-hero">
     <div class="l">இன்றைய விற்பனை · ${dLabel(r.today)}</div>
@@ -1297,7 +1770,8 @@ function renderReport(){
     ${hbars(top,"amt",x=>inr0(x.amt)+" · "+x.qty+" pcs",x=>esc(x.name))}</div>
 
   ${r.sizesMonth&&r.sizesMonth.length?`<div class="rp-card"><h3>சைஸ் வாரியாக <small>${mLabel(r.month)}</small></h3>${hbars(r.sizesMonth,"qty",x=>x.qty+" pcs",x=>esc(x.name))}</div>`:""}
-  ${r.staffMonth&&r.staffMonth.length>1?`<div class="rp-card"><h3>பில் போட்டவர் வாரியாக <small>${mLabel(r.month)}</small></h3>${hbars(r.staffMonth,"amt",x=>inr0(x.amt)+" · "+x.qty+" பில்",x=>"👤 "+esc(x.name||"-"))}</div>`:""}
+  ${branchSalesHtml(r)}
+  ${userSalesHtml(r)}
   <div class="rp-grid">
     <div class="rp-k"><div class="l">தனி வாடிக்கையாளர்கள்</div><div class="v">${cu.unique||0}</div><div class="s">மொபைல் எண் அடிப்படையில்</div></div>
     <div class="rp-k"><div class="l">WhatsApp பில்</div><div class="v">${cu.bills?Math.round((cu.withPhone||0)*100/cu.bills):0}%</div><div class="s">${cu.withPhone||0} / ${cu.bills||0} பில்கள்</div></div>
@@ -1315,14 +1789,37 @@ function renderReport(){
     ${r.billsTruncated?`<p class="hint">முதல் ${r.bills.length} பில்கள் மட்டும் காட்டப்படுகிறது</p>`:""}</div>`;
 }
 
+
+function branchSalesHtml(r){
+  const bs=r.branchSales; if(!bs||bs.length<2) return "";
+  const max=Math.max(1,...bs.map(b=>b.monthTotal)), sel=r.date===r.today?"இன்று":dShort(r.date);
+  return `<div class="rp-card"><h3>🏬 கிளை வாரியாக விற்பனை <small>கிளையை தொட்டால் அதன் அறிக்கை</small></h3>
+    <table class="rp-tbl"><thead><tr><th>கிளை</th><th>${esc(sel)}</th><th>${esc(mLabel(r.month))}</th></tr></thead><tbody>
+    ${bs.map(b=>`<tr class="tap" data-rbranch="${esc(b.id)}"><td>${esc(b.name)}<div class="rp-bar"><i style="width:${(b.monthTotal*100/max).toFixed(1)}%"></i></div></td>
+      <td>${inr0(b.dayTotal)}<small>${b.dayCount} பில்</small></td><td>${inr0(b.monthTotal)}<small>${b.monthCount} பில் · ${M_share(b.monthTotal,r.monthSales.total)}</small></td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+const M_share=(v,t)=>t>0?Math.round(v*100/t)+"%":"0%";
+function userSalesHtml(r){
+  const us=r.userSales; if(!us||!us.length) return "";
+  const sel=r.date===r.today?"இன்று":dShort(r.date), multi=r.scope&&r.scope.branchCount>1&&!r.scope.branch;
+  return `<div class="rp-card"><h3>👤 User வாரியாக பில்கள்</h3>
+    <table class="rp-tbl"><thead><tr><th>User</th><th>${esc(sel)}</th><th>${esc(mLabel(r.month))}</th></tr></thead><tbody>
+    ${us.map(u=>`<tr><td>${esc(u.name)}<small>@${esc(u.user)}${multi&&u.branch?" · 🏬 "+esc(u.branch):""}</small></td>
+      <td>${u.dayCount} பில்<small>${inr0(u.dayTotal)}</small></td><td>${u.monthCount} பில்<small>${inr0(u.monthTotal)} · ${u.monthPieces} pcs</small></td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+
 function reportText(r){
   const T=r.todaySales, D=r.daySales, M=r.monthSales, L=[];
-  L.push(`*${company.name}*`, `📊 விற்பனை அறிக்கை`, ``);
+  L.push(`*${company.name}*`, `📊 விற்பனை அறிக்கை${r.scope&&r.scope.branchName?" · 🏬 "+r.scope.branchName:""}`, ``);
   L.push(`*இன்று (${dLabel(r.today)})*`, `விற்பனை: ${inr(T.total)}`, `பில்கள்: ${T.count} · பீஸ்: ${T.pieces}`);
   if(r.date!==r.today) L.push(``, `*${dLabel(r.date)}*`, `விற்பனை: ${inr(D.total)}`, `பில்கள்: ${D.count} · பீஸ்: ${D.pieces}`);
   L.push(``, `*${mLabel(r.month)}*`, `மொத்தம்: ${inr(M.total)}`, `பில்கள்: ${M.count} · நாள் சராசரி: ${inr0(M.perDay)}`);
   if(M.growth!=null) L.push(`கடந்த மாதத்துடன்: ${M.growth>=0?"▲":"▼"} ${Math.abs(M.growth)}%`);
   if(r.bestDay) L.push(`சிறந்த நாள்: ${dShort(r.bestDay.d)} (${inr0(r.bestDay.total)})`);
+  if(r.branchSales&&r.branchSales.length>1){ L.push(``, `*கிளை வாரியாக (${mLabel(r.month)})*`); r.branchSales.forEach(b=>L.push(`${b.name}: ${inr0(b.monthTotal)} (${b.monthCount} பில்) · இன்று ${inr0(b.dayTotal)}`)); }
+  if(r.userSales&&r.userSales.length){ L.push(``, `*User வாரியாக (${mLabel(r.month)})*`); r.userSales.forEach(u=>L.push(`${u.name}: ${u.monthCount} பில் · ${inr0(u.monthTotal)}`)); }
   if(r.topItemsMonth&&r.topItemsMonth.length){ L.push(``, `*அதிகம் விற்றவை*`); r.topItemsMonth.slice(0,5).forEach((x,i)=>L.push(`${i+1}. ${x.name} — ${x.qty} pcs · ${inr0(x.amt)}`)); }
   L.push(``, `— ${APP_NAME}`);
   return L.join("\n");
@@ -1346,11 +1843,41 @@ function adminSalesHtml(s){
 document.addEventListener("click",e=>{
   const bar=e.target.closest&&e.target.closest("[data-rday]");
   if(bar){ loadReport(bar.getAttribute("data-rday")); return; }
+  const brow=e.target.closest&&e.target.closest("[data-rbranch]");
+  if(brow){ repBranch=brow.getAttribute("data-rbranch"); loadReport(repDate); window.scrollTo(0,0); return; }
   const t=e.target.closest("button"); if(!t) return;
   const d=t.dataset;
   /* menu & account */
   if(t.id==="menuBtn") return openMenu();
+  /* barcode */
+  if(t.id==="scanFind"||t.id==="scanHome"||t.id==="scanBill") return startCartScan();
+  if(t.id==="scClose"){ const s=scanS; if(s) s.opts.onClose=null; closeScanner(); return; }
+  if(t.id==="scDone") return closeScanner();
+  if(t.id==="scTorch") return toggleTorch();
+  if(t.id==="scAdd"){ const c=$("#scCode").value; $("#scCode").value=""; gotScan(c,true); return; }
+  if(d.scanfill) return scanFill(d.scanfill);
+  if(t.id==="cScan") return scanCustom();
+  if(t.id==="ucLink") return openLinkCode();
+  if(t.id==="ucCustom"){ const pc=pendingCode; return openCustom(pc?pc.back:"home","",{code:pc?pc.code:""}); }
+  if(t.id==="ucRescan"){ const pc=pendingCode; closeSheet(); if(pc&&pc.back==="bill"){ openBill(); } return startCartScan(); }
+  if(t.id==="ucCancel"){ const pc=pendingCode; pendingCode=null; if(pc&&pc.back==="bill"&&pieces()>0) openBill(); else closeSheet(); return; }
+  if(t.id==="lkSave") return saveLinkCode();
+  if(t.id==="lkBack"){ const pc=pendingCode; if(pc) openUnknownCode(pc.code,pc.back); return; }
   if(t.id==="mBills"||t.id==="billHist") return openBills();
+  if(t.id==="openStock"||t.id==="mStock"){ closeSheet(); stockData=null; if(location.hash!=="#stock") location.hash="stock"; else loadStock(); return; }
+  if(d.stedit) return openStockEdit(d.stedit,d.stsize);
+  if(d.stflt){ stockFlt=d.stflt; renderView(); return; }
+  if(t.id==="stScan") return stockScan();
+  if(d.stmode){ stockEdit.mode=d.stmode; document.querySelectorAll("[data-stmode]").forEach(b=>b.classList.toggle("on",b===t));
+    $("#stVal").value=d.stmode==="set"?stQty(stockEdit.id,stockEdit.size):0;
+    $("#stHint").textContent=d.stmode==="set"?"புதிய மொத்த ஸ்டாக் எண்ணை உள்ளிடவும் (மைனஸ் அனுமதி)":"வந்த பீஸ் + / விற்ற அல்லது சேதம் − (எ.கா. 10 அல்லது -2)"; stPreview(); return; }
+  if(t.id==="stSign"){ const v=stNum(); $("#stVal").value=isFinite(v)?-v:"-"; stPreview(); return; }
+  if(d.stq){ const v=stNum(); $("#stVal").value=(isFinite(v)?v:0)+Number(d.stq); stPreview(); return; }
+  if(t.id==="stSave") return saveStockEdit();
+  if(d.branches) return openBranches(d.branches);
+  if(t.id==="brAdd"){ const n=$("#brNew").value.trim(); if(!n){ $("#fBrNew").classList.add("bad"); return; } return branchApi(()=>api("admin/branch","POST",{companyId:brCo,name:n}),"கிளை சேர்க்கப்பட்டது: "+n); }
+  if(d.brsave){ const n=$("#brn_"+CSS.escape(d.brsave)).value.trim(); if(!n){ toast("பெயர் தேவை"); return; } return branchApi(()=>api("admin/branch","POST",{companyId:brCo,id:d.brsave,name:n}),"சேமிக்கப்பட்டது: "+n); }
+  if(d.brdel){ if(!confirm("இந்த கிளையை நீக்கவா?")) return; return branchApi(()=>api("admin/branch/"+encodeURIComponent(brCo)+"/"+encodeURIComponent(d.brdel),"DELETE"),"கிளை நீக்கப்பட்டது"); }
   if(t.id==="openReport"||t.id==="mReport"){ closeSheet(); if(location.hash!=="#report") location.hash="report"; else loadReport(repDate); return; }
   /* report */
   if(d.rnav){ const dt=new Date(repDate+"T00:00:00"); dt.setDate(dt.getDate()+Number(d.rnav)); return loadReport(ymd(dt)); }
@@ -1372,7 +1899,7 @@ document.addEventListener("click",e=>{
   if(t.id==="addCompany") return openCompanyForm(null);
   if(d.editcomp) return openCompanyForm(d.editcomp);
   if(d.opencomp) return openCompanyBilling(d.opencomp);
-  if(d.adduserfor){ openUserForm(null,{type:"customer",companyId:d.adduserfor}); return; }
+  if(d.adduserfor){ openUserForm(null,{type:"sales",companyId:d.adduserfor}); return; }
   if(t.id==="addUser") return openUserForm(null);
   if(d.edituser) return openUserForm(d.edituser);
   if(d.deluser) return deleteUser(d.deluser);
@@ -1434,14 +1961,19 @@ document.addEventListener("click",e=>{
 });
 $("#veil").addEventListener("click",closeSheet);
 document.addEventListener("keydown",e=>{
-  if(e.key==="Escape") closeSheet();
+  if(e.key==="Escape"){ if($("#scan").classList.contains("on")) closeScanner(); else closeSheet(); }
+  if(e.key==="Enter" && e.target.id==="scCode"){ e.preventDefault(); const c=e.target.value; e.target.value=""; gotScan(c,true); return; }
+  if(e.key==="Enter" && e.target.id==="q"){ const c=cleanCode(e.target.value); if(c.length>=3 && byCode[c]){ e.preventDefault(); e.target.value=""; renderView(); scanToCart(c); } return; }
   if(e.key==="Enter" && e.target.dataset && e.target.dataset.ri!==undefined){ e.preventDefault(); saveItemEdit(); }
 });
 $("#q").addEventListener("input",renderView);
 document.addEventListener("input",e=>{
   const f=e.target.closest&&e.target.closest(".fld"); if(f) f.classList.remove("bad");
+  if(e.target.classList && (e.target.classList.contains("bci")||e.target.id==="cCode")){ const c=cleanCode(e.target.value); if(c!==e.target.value) e.target.value=c; }
   const id=e.target.id;
   if(id==="cRate") updateCustomTotal();
+  if(id==="stVal") stPreview();
+  if(id==="stq"){ const pos=e.target.selectionStart; renderView(); const n=$("#stq"); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(x){} } }
   if(id==="gTa"||id==="gEn") groupPreview();
   if(id==="iSizes"){ keepIVals(); renderIRows(); }
   if(e.target.dataset && e.target.dataset.iri!==undefined && iForm) iForm.vals[e.target.dataset.isz]=e.target.value;
@@ -1450,12 +1982,18 @@ document.addEventListener("input",e=>{
 document.addEventListener("change",e=>{
   const id=e.target.id;
   if(id==="cPerm") togglePerm();
-  if(id==="cCat"){ if(e.target.value==="__new"){ const d={name:$("#cName").value,size:$("#cSize").value,rate:$("#cRate").value,qty:customQty}; openGroupForm(null,{type:"custom",from:customFrom,draft:d}); } else customCat=e.target.value; }
+  if(id==="lkItem") lkSizes();
+  if(id==="lkSize") lkWarn();
+  if(id==="cCat"){ if(e.target.value==="__new"){ const d={name:$("#cName").value,size:$("#cSize").value,rate:$("#cRate").value,code:$("#cCode").value,qty:customQty}; openGroupForm(null,{type:"custom",from:customFrom,draft:d}); } else customCat=e.target.value; }
   if(id==="iCat"){ if(e.target.value==="__new"){ const d=itemDraft(); d.cat=iForm.cat; openGroupForm(null,{type:"item",draft:d}); } else iForm.cat=e.target.value; }
   if(id==="rDate" && e.target.value) loadReport(e.target.value);
+  if(id==="rBranch"){ repBranch=e.target.value; loadReport(repDate); }
+  if(id==="stBranch"){ stockBr=e.target.value; stockData=null; loadStock(); }
+  if(id==="uComp" && e.target.value!=="__new") fillUBranches();
   if(id==="uComp" && e.target.value==="__new"){ const d=userDraft(); d.companyId=""; openCompanyForm(null,{type:"user",draft:d}); }
 });
 window.addEventListener("hashchange",()=>{ $("#q").value=""; renderAll(true); if(view()==="admin") loadAdmin(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Enter" && e.target.id==="stVal"){ e.preventDefault(); saveStockEdit(); } });
 
 /* ================= START ================= */
 (async function start(){

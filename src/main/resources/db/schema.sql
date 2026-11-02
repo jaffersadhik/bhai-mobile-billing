@@ -41,14 +41,29 @@ CREATE TABLE IF NOT EXISTS companies (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- users : admin (no company) or customer (exactly one company)
+-- branches : shops / outlets of a company (every company has at least one, "Main")
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS branches (
+  company_id   VARCHAR(20)  NOT NULL,
+  id           VARCHAR(20)  NOT NULL,
+  name         VARCHAR(40)  NOT NULL,
+  sort_order   INT          NOT NULL DEFAULT 0,
+  created_at   DATETIME     NOT NULL,
+  PRIMARY KEY (company_id, id),
+  CONSTRAINT fk_branches_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- users : admin (no company) | owner (company reports only) | sales (billing, one branch)
+--         | stock (sales + stock maintenance, one branch)
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
   id           VARCHAR(20)  NOT NULL,
   username     VARCHAR(30)  NOT NULL,
   full_name    VARCHAR(60)  NOT NULL,
-  user_type    ENUM('admin','customer') NOT NULL,
+  user_type    ENUM('admin','owner','sales','stock') NOT NULL,
   company_id   VARCHAR(20)  NULL,
+  branch_id    VARCHAR(20)  NULL,
   pass_salt    VARCHAR(44)  NOT NULL,
   pass_hash    VARCHAR(64)  NOT NULL,
   active       TINYINT(1)   NOT NULL DEFAULT 1,
@@ -59,7 +74,7 @@ CREATE TABLE IF NOT EXISTS users (
   UNIQUE KEY uk_users_username (username),
   KEY idx_users_company (company_id),
   CONSTRAINT fk_users_company FOREIGN KEY (company_id) REFERENCES companies (id),
-  CONSTRAINT chk_users_company CHECK ((user_type = 'admin' AND company_id IS NULL) OR (user_type = 'customer' AND company_id IS NOT NULL))
+  CONSTRAINT chk_users_company CHECK ((user_type = 'admin' AND company_id IS NULL) OR (user_type <> 'admin' AND company_id IS NOT NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
@@ -110,15 +125,19 @@ CREATE TABLE IF NOT EXISTS items (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- item_sizes : size-wise rate of an item
+-- item_sizes : size-wise rate (and optional barcode) of an item
+--   barcode is unique inside a company (NULL = no barcode); older databases get the
+--   column from BillingService.migrate() at startup
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS item_sizes (
   company_id   VARCHAR(20)    NOT NULL,
   item_id      VARCHAR(40)    COLLATE utf8mb4_bin NOT NULL,
   size_label   VARCHAR(12)    COLLATE utf8mb4_bin NOT NULL,
   rate         DECIMAL(10,2)  NOT NULL,
+  barcode      VARCHAR(40)    NULL,
   sort_order   INT            NOT NULL DEFAULT 0,
   PRIMARY KEY (company_id, item_id, size_label),
+  UNIQUE KEY uk_sizes_barcode (company_id, barcode),
   CONSTRAINT fk_sizes_item FOREIGN KEY (company_id, item_id) REFERENCES items (company_id, id) ON DELETE CASCADE,
   CONSTRAINT chk_sizes_rate CHECK (rate > 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -129,6 +148,7 @@ CREATE TABLE IF NOT EXISTS item_sizes (
 CREATE TABLE IF NOT EXISTS bills (
   id               BIGINT         NOT NULL AUTO_INCREMENT,
   company_id       VARCHAR(20)    NOT NULL,
+  branch_id        VARCHAR(20)    NULL,
   bill_seq         BIGINT         NOT NULL,
   bill_no          VARCHAR(20)    NOT NULL,
   created_at       DATETIME       NOT NULL,
@@ -142,6 +162,7 @@ CREATE TABLE IF NOT EXISTS bills (
   UNIQUE KEY uk_bills_company_id  (company_id, id),
   UNIQUE KEY uk_bills_company_seq (company_id, bill_seq),
   KEY idx_bills_company_date (company_id, created_at),
+  KEY idx_bills_branch_date (company_id, branch_id, created_at),
   CONSTRAINT fk_bills_company FOREIGN KEY (company_id) REFERENCES companies (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -152,6 +173,7 @@ CREATE TABLE IF NOT EXISTS bill_lines (
   company_id     VARCHAR(20)    NOT NULL,
   bill_id        BIGINT         NOT NULL,
   line_no        INT            NOT NULL,
+  item_id        VARCHAR(40)    NULL,
   item_name      VARCHAR(60)    NOT NULL,
   item_name_en   VARCHAR(60)    NOT NULL DEFAULT '',
   size_label     VARCHAR(12)    NOT NULL DEFAULT '',
@@ -162,4 +184,21 @@ CREATE TABLE IF NOT EXISTS bill_lines (
   KEY idx_lines_company_bill (company_id, bill_id),
   CONSTRAINT fk_lines_bill FOREIGN KEY (company_id, bill_id) REFERENCES bills (company_id, id) ON DELETE CASCADE,
   CONSTRAINT chk_lines_qty CHECK (qty BETWEEN 1 AND 999)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- stock : pieces in hand per branch, item and size. Bills reduce it,
+--   stock users set / adjust it. Negative values are allowed.
+--   No FK to item_sizes on purpose: the catalog is re-written on every save.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS stock (
+  company_id   VARCHAR(20)  NOT NULL,
+  branch_id    VARCHAR(20)  NOT NULL,
+  item_id      VARCHAR(40)  COLLATE utf8mb4_bin NOT NULL,
+  size_label   VARCHAR(12)  COLLATE utf8mb4_bin NOT NULL,
+  qty          INT          NOT NULL DEFAULT 0,
+  updated_at   DATETIME     NOT NULL,
+  updated_by   VARCHAR(60)  NOT NULL DEFAULT '',
+  PRIMARY KEY (company_id, branch_id, item_id, size_label),
+  CONSTRAINT fk_stock_branch FOREIGN KEY (company_id, branch_id) REFERENCES branches (company_id, id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
