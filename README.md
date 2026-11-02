@@ -56,6 +56,20 @@ WantedBy=multi-user.target
 ```
 `sudo systemctl enable --now bmb` — put Nginx/Apache with HTTPS in front of port 8080.
 
+## Sales report / statistics (விற்பனை அறிக்கை)
+
+Open from the home screen (📊 விற்பனை அறிக்கை), the ☰ menu, or directly at `/#report`.
+Admin panel shows all-company sales at the top; 📊 next to a company opens that company's report.
+
+| API | Who | Returns |
+|---|---|---|
+| `GET /api/report?date=yyyy-MM-dd` | customer (own company), admin (opened company) | today / selected day / month totals, growth vs yesterday and vs same days last month, month-end projection, day-wise trend, hour-wise sales, top items (day + month), size-wise, staff-wise, unique customers, bills of the selected day with lines |
+| `GET /api/admin/sales?date=yyyy-MM-dd` | admin only | today / selected day / month count + total for every company, plus grand totals |
+
+`date` is optional (default today in `bmb.zone`); future dates and dates before 2020 return 400.
+Company is always taken from the session, never from the request. No schema change — uses the
+existing `idx_bills_company_date` index. Report page lets you share the summary on WhatsApp, copy it, or print.
+
 ## Tables (src/main/resources/db/schema.sql)
 | Table | Holds | Company separation |
 |---|---|---|

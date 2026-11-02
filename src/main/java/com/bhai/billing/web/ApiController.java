@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** REST API used by the app page (static/index.html). The session token comes in the X-Auth header. */
@@ -64,7 +65,17 @@ public class ApiController {
     public ResponseEntity<Object> addBill(@RequestHeader(value = AUTH, required = false) String auth,
                                           @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.addBill(auth, nn(body))); }
 
+    /** Sales report / statistics of the session company. ?date=yyyy-MM-dd (default today) */
+    @GetMapping("/report")
+    public ResponseEntity<Object> report(@RequestHeader(value = AUTH, required = false) String auth,
+                                         @RequestParam(value = "date", required = false) String date) { return run(() -> svc.report(auth, date)); }
+
     // ---- admin
+    /** Today / selected day / month sales of all companies. ?date=yyyy-MM-dd (default today) */
+    @GetMapping("/admin/sales")
+    public ResponseEntity<Object> adminSales(@RequestHeader(value = AUTH, required = false) String auth,
+                                             @RequestParam(value = "date", required = false) String date) { return run(() -> svc.adminSales(auth, date)); }
+
     @GetMapping("/admin/overview")
     public ResponseEntity<Object> overview(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.overview(auth)); }
 

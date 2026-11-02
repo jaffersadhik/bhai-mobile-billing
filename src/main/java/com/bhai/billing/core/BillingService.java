@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -368,6 +369,21 @@ public class BillingService {
         Ctx c = ctx(auth);
         String cid = requireCompany(c);
         List<Map<String, Object>> rows = db.query("SELECT * FROM bills WHERE company_id = ? ORDER BY id DESC LIMIT 100", cid);
+        List<Object> list = billList(cid, rows);
+        LocalDateTime day = LocalDate.now(zone).atStartOfDay();
+        Map<String, Object> td = db.one("SELECT COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ?",
+                cid, day, day.plusDays(1));
+        Map<String, Object> today = new LinkedHashMap<>();
+        today.put("count", lng(td.get("cnt")));
+        today.put("total", round2(dbl(td.get("tot"))));
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("bills", list);
+        o.put("today", today);
+        return o;
+    }
+
+    /** Bills with their lines, in the JSON shape used by the app (bill history, WhatsApp re-send, report). */
+    private List<Object> billList(String cid, List<Map<String, Object>> rows) {
         Map<Long, List<Object>> lines = new LinkedHashMap<>();
         if (!rows.isEmpty()) {
             StringBuilder in = new StringBuilder();
@@ -403,16 +419,218 @@ public class BillingService {
             b.put("total", dbl(r.get("total")));
             list.add(b);
         }
-        LocalDateTime day = LocalDate.now(zone).atStartOfDay();
-        Map<String, Object> td = db.one("SELECT COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ?",
-                cid, day, day.plusDays(1));
-        Map<String, Object> today = new LinkedHashMap<>();
-        today.put("count", lng(td.get("cnt")));
-        today.put("total", round2(dbl(td.get("tot"))));
+        return list;
+    }
+
+    // ================================================================ sales report / statistics
+    static final int REPORT_BILL_LIMIT = 500;
+
+    /** "2026-11-02" -> date; blank -> today. Future dates and dates before 2020 are refused. */
+    private LocalDate reportDate(String s) {
+        LocalDate today = LocalDate.now(zone);
+        if (blank(s)) return today;
+        LocalDate d;
+        try { d = LocalDate.parse(s.trim()); } catch (DateTimeParseException e) { throw new ApiException(400, "தவறான தேதி (Invalid date)"); }
+        if (d.isAfter(today)) throw new ApiException(400, "எதிர்கால தேதி அனுமதி இல்லை (Future date)");
+        if (d.getYear() < 2020) throw new ApiException(400, "தவறான தேதி (Invalid date)");
+        return d;
+    }
+
+    /** count / total / avg / max / pieces of bills in [from, to) */
+    private Map<String, Object> salesSummary(String cid, LocalDateTime from, LocalDateTime to) {
+        Map<String, Object> r = db.one("SELECT COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot, COALESCE(MAX(total), 0) AS mx, "
+                + "COALESCE(SUM(pieces), 0) AS pcs FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ?", cid, from, to);
+        long cnt = lng(r.get("cnt"));
+        double tot = round2(dbl(r.get("tot")));
         Map<String, Object> o = new LinkedHashMap<>();
-        o.put("bills", list);
-        o.put("today", today);
+        o.put("count", cnt);
+        o.put("total", tot);
+        o.put("avg", cnt == 0 ? 0.0 : round2(tot / cnt));
+        o.put("max", round2(dbl(r.get("mx"))));
+        o.put("pieces", lng(r.get("pcs")));
         return o;
+    }
+
+    private static Double growth(double cur, double prev) {
+        if (prev <= 0) return null;                  // no base to compare
+        return Math.round((cur - prev) * 1000.0 / prev) / 10.0;
+    }
+
+    /**
+     * Sales statistics of the company in the session (customer: own company, admin: the opened company).
+     * date = the selected day (yyyy-MM-dd, default today). Month figures are for the month of that day.
+     */
+    public Map<String, Object> report(String auth, String date) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        LocalDate today = LocalDate.now(zone);
+        LocalDate sel = reportDate(date);
+        LocalDateTime dFrom = sel.atStartOfDay(), dTo = sel.plusDays(1).atStartOfDay();
+        LocalDate m1 = sel.withDayOfMonth(1);
+        LocalDateTime mFrom = m1.atStartOfDay(), mTo = m1.plusMonths(1).atStartOfDay();
+        LocalDateTime pFrom = m1.minusMonths(1).atStartOfDay();
+        boolean curMonth = m1.equals(today.withDayOfMonth(1));
+        // same-period comparison: 1..N of previous month when the current month is still running
+        LocalDateTime pSameTo = curMonth ? pFrom.plusDays(Math.min(today.getDayOfMonth(), m1.minusMonths(1).lengthOfMonth())) : mFrom;
+
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("date", sel.toString());
+        o.put("today", today.toString());
+        o.put("month", m1.toString().substring(0, 7));
+
+        Map<String, Object> todayS = salesSummary(cid, today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        Map<String, Object> yest = salesSummary(cid, today.minusDays(1).atStartOfDay(), today.atStartOfDay());
+        todayS.put("growth", growth(dbl(todayS.get("total")), dbl(yest.get("total"))));
+        todayS.put("yesterday", yest.get("total"));
+        o.put("todaySales", todayS);
+        o.put("daySales", salesSummary(cid, dFrom, dTo));
+
+        Map<String, Object> monthS = salesSummary(cid, mFrom, mTo);
+        Map<String, Object> prevS = salesSummary(cid, pFrom, mFrom);
+        Map<String, Object> prevSame = curMonth ? salesSummary(cid, pFrom, pSameTo) : prevS;
+        int days = curMonth ? today.getDayOfMonth() : m1.lengthOfMonth();
+        monthS.put("days", days);
+        monthS.put("perDay", round2(dbl(monthS.get("total")) / days));
+        monthS.put("prevTotal", prevS.get("total"));
+        monthS.put("prevSamePeriod", prevSame.get("total"));
+        monthS.put("growth", growth(dbl(monthS.get("total")), dbl(prevSame.get("total"))));
+        if (curMonth) monthS.put("projected", round2(dbl(monthS.get("total")) / days * m1.lengthOfMonth()));
+        o.put("monthSales", monthS);
+
+        // day-wise trend of the month (every day present, 0 when no sale)
+        Map<String, double[]> byDay = new LinkedHashMap<>();
+        for (Map<String, Object> r : db.query("SELECT DATE(created_at) AS d, COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot FROM bills "
+                + "WHERE company_id = ? AND created_at >= ? AND created_at < ? GROUP BY DATE(created_at)", cid, mFrom, mTo))
+            byDay.put(str(r.get("d")).substring(0, 10), new double[]{lng(r.get("cnt")), dbl(r.get("tot"))});
+        List<Object> trend = new ArrayList<>();
+        Map<String, Object> best = null;
+        for (int i = 1; i <= days; i++) {
+            String k = m1.withDayOfMonth(i).toString();
+            double[] v = byDay.getOrDefault(k, new double[2]);
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("d", k);
+            p.put("count", (long) v[0]);
+            p.put("total", round2(v[1]));
+            trend.add(p);
+            if (v[1] > 0 && (best == null || v[1] > dbl(best.get("total")))) best = p;
+        }
+        o.put("trend", trend);
+        o.put("bestDay", best);
+
+        // hour-wise sales of the selected day
+        long[] hc = new long[24];
+        double[] ht = new double[24];
+        for (Map<String, Object> r : db.query("SELECT HOUR(created_at) AS h, COUNT(*) AS cnt, COALESCE(SUM(total), 0) AS tot FROM bills "
+                + "WHERE company_id = ? AND created_at >= ? AND created_at < ? GROUP BY HOUR(created_at)", cid, dFrom, dTo)) {
+            int h = (int) lng(r.get("h"));
+            hc[h] = lng(r.get("cnt"));
+            ht[h] = round2(dbl(r.get("tot")));
+        }
+        List<Object> hours = new ArrayList<>();
+        for (int h = 0; h < 24; h++) {
+            if (hc[h] == 0) continue;
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("h", h);
+            p.put("count", hc[h]);
+            p.put("total", ht[h]);
+            hours.add(p);
+        }
+        o.put("hours", hours);
+
+        o.put("topItemsDay", topItems(cid, dFrom, dTo, 5));
+        o.put("topItemsMonth", topItems(cid, mFrom, mTo, 10));
+        o.put("sizesMonth", rows("SELECT l.size_label AS k, SUM(l.qty) AS qty, SUM(l.amount) AS amt FROM bill_lines l JOIN bills b ON b.company_id = l.company_id AND b.id = l.bill_id "
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ? AND l.size_label <> '' GROUP BY l.size_label ORDER BY qty DESC LIMIT 8", cid, mFrom, mTo));
+        o.put("staffMonth", rows("SELECT CASE WHEN billed_by_name = '' THEN billed_by_user ELSE billed_by_name END AS k, COUNT(*) AS qty, SUM(total) AS amt FROM bills "
+                + "WHERE company_id = ? AND created_at >= ? AND created_at < ? GROUP BY k ORDER BY amt DESC", cid, mFrom, mTo));
+        Map<String, Object> cust = db.one("SELECT COUNT(DISTINCT NULLIF(customer_phone, '')) AS uniq, SUM(customer_phone <> '') AS withPhone, COUNT(*) AS cnt "
+                + "FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ?", cid, mFrom, mTo);
+        Map<String, Object> cu = new LinkedHashMap<>();
+        cu.put("unique", lng(cust.get("uniq")));
+        cu.put("withPhone", lng(cust.get("withphone")));
+        cu.put("bills", lng(cust.get("cnt")));
+        o.put("customersMonth", cu);
+
+        List<Map<String, Object>> billRows = db.query("SELECT * FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ? ORDER BY id DESC LIMIT " + REPORT_BILL_LIMIT,
+                cid, dFrom, dTo);
+        o.put("bills", billList(cid, billRows));
+        o.put("billsTruncated", billRows.size() >= REPORT_BILL_LIMIT);
+        return o;
+    }
+
+    private List<Object> topItems(String cid, LocalDateTime from, LocalDateTime to, int limit) {
+        return rows("SELECT l.item_name AS k, MAX(l.item_name_en) AS en, SUM(l.qty) AS qty, SUM(l.amount) AS amt FROM bill_lines l "
+                + "JOIN bills b ON b.company_id = l.company_id AND b.id = l.bill_id "
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ? GROUP BY l.item_name ORDER BY amt DESC LIMIT " + limit, cid, from, to);
+    }
+
+    /** rows of k / en / qty / amt as JSON maps */
+    private List<Object> rows(String sql, Object... args) {
+        List<Object> out = new ArrayList<>();
+        for (Map<String, Object> r : db.query(sql, args)) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("name", str(r.get("k")));
+            if (r.containsKey("en")) p.put("en", str(r.get("en")));
+            p.put("qty", lng(r.get("qty")));
+            p.put("amt", round2(dbl(r.get("amt"))));
+            out.add(p);
+        }
+        return out;
+    }
+
+    /** Admin: today / selected day / month sales of every company, plus grand totals. */
+    public Map<String, Object> adminSales(String auth, String date) {
+        admin(auth);
+        LocalDate today = LocalDate.now(zone);
+        LocalDate sel = reportDate(date);
+        LocalDate m1 = sel.withDayOfMonth(1);
+        Object[] a = {today.atStartOfDay(), today.plusDays(1).atStartOfDay(), sel.atStartOfDay(), sel.plusDays(1).atStartOfDay(),
+                m1.atStartOfDay(), m1.plusMonths(1).atStartOfDay()};
+        List<Object> list = new ArrayList<>();
+        double[] g = new double[6];
+        for (Map<String, Object> r : db.query("SELECT c.id, c.name, c.city, "
+                + "SUM(b.created_at >= ? AND b.created_at < ?) AS t_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.total END), 0) AS t_tot, "
+                + "SUM(b.created_at >= ? AND b.created_at < ?) AS d_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.total END), 0) AS d_tot, "
+                + "SUM(b.created_at >= ? AND b.created_at < ?) AS m_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.total END), 0) AS m_tot "
+                + "FROM companies c LEFT JOIN bills b ON b.company_id = c.id AND b.created_at >= ? AND b.created_at < ? "
+                + "WHERE c.archived = 0 GROUP BY c.id, c.name, c.city ORDER BY m_tot DESC, c.name",
+                a[0], a[1], a[0], a[1], a[2], a[3], a[2], a[3], a[4], a[5], a[4], a[5],
+                earliest(a[0], a[2], a[4]), latest(a[1], a[3], a[5]))) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("id", str(r.get("id")));
+            p.put("name", str(r.get("name")));
+            p.put("city", str(r.get("city")));
+            String[] keys = {"t_cnt", "t_tot", "d_cnt", "d_tot", "m_cnt", "m_tot"};
+            String[] out = {"todayCount", "todayTotal", "dayCount", "dayTotal", "monthCount", "monthTotal"};
+            for (int i = 0; i < 6; i++) {
+                double v = i % 2 == 0 ? lng(r.get(keys[i])) : round2(dbl(r.get(keys[i])));
+                g[i] += v;
+                p.put(out[i], i % 2 == 0 ? (Object) (long) v : (Object) v);
+            }
+            list.add(p);
+        }
+        Map<String, Object> tot = new LinkedHashMap<>();
+        String[] out = {"todayCount", "todayTotal", "dayCount", "dayTotal", "monthCount", "monthTotal"};
+        for (int i = 0; i < 6; i++) tot.put(out[i], i % 2 == 0 ? (Object) (long) g[i] : (Object) round2(g[i]));
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("date", sel.toString());
+        o.put("today", today.toString());
+        o.put("month", m1.toString().substring(0, 7));
+        o.put("companies", list);
+        o.put("totals", tot);
+        return o;
+    }
+
+    private static LocalDateTime earliest(Object... t) {
+        LocalDateTime m = null;
+        for (Object o : t) if (m == null || ((LocalDateTime) o).isBefore(m)) m = (LocalDateTime) o;
+        return m;
+    }
+
+    private static LocalDateTime latest(Object... t) {
+        LocalDateTime m = null;
+        for (Object o : t) if (m == null || ((LocalDateTime) o).isAfter(m)) m = (LocalDateTime) o;
+        return m;
     }
 
     // ================================================================ admin
