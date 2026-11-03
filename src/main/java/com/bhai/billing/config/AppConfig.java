@@ -24,7 +24,7 @@ public class AppConfig {
         if (service == null) return;
         try {
             int n = service.generateDueInvoices();
-            log.info("Bhai Mobile Billing: monthly invoices generated: {}", n);
+            log.info("MBill (Mobile Bill): monthly invoices generated: {}", n);
         } catch (RuntimeException e) {
             log.error("Monthly invoice generation failed", e);
         }
@@ -36,7 +36,7 @@ public class AppConfig {
         return new BillingService(new JdbcDb(dataSource), ZoneId.of(zone));
     }
 
-    /** Runs after schema.sql has created the tables: creates admin / admin123 on an empty database. */
+    /** Runs after schema.sql has created the tables: creates admin / admin1234 on an empty database. */
     @Bean
     public ApplicationRunner createDefaultAdmin(BillingService service) {
         return args -> {
@@ -44,12 +44,12 @@ public class AppConfig {
             this.service = service;
             try {
                 int n = service.generateDueInvoices();          // catch up if the server was down on the 2nd
-                if (n > 0) log.info("Bhai Mobile Billing: {} pending monthly invoices generated at start-up", n);
+                if (n > 0) log.info("MBill (Mobile Bill): {} pending monthly invoices generated at start-up", n);
             } catch (RuntimeException e) {
                 log.error("Invoice catch-up failed", e);
             }
             if (service.ensureDefaultAdmin())
-                log.warn("Bhai Mobile Billing: first start - created login admin / admin123. Change this password immediately after login.");
+                log.warn("MBill (Mobile Bill): first start - created login admin / admin1234. Change this password immediately after login.");
         };
     }
 }

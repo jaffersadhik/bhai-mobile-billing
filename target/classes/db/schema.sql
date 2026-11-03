@@ -1,5 +1,5 @@
 -- =====================================================================
--- Bhai Mobile Billing - MySQL schema (MySQL 8.0.16 or newer)
+-- MBill (Mobile Bill) - MySQL schema (MySQL 8.0.16 or newer)
 -- Runs automatically at application start (spring.sql.init.mode=always).
 -- Every statement is CREATE TABLE IF NOT EXISTS, so re-running is safe.
 --
@@ -355,7 +355,7 @@ CREATE TABLE IF NOT EXISTS transfer_lines (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
--- platform_invoices : what each company owes for using Bhai Mobile Billing.
+-- platform_invoices : what each company owes for using MBill (Mobile Bill).
 --   one invoice per company per month = bills of that month x the per-bill fee
 --   (companies.bill_fee, default 0.25, snapshotted on each bill as bills.platform_fee).
 --   Generated on the 2nd of every month at 8 AM for the previous month.
@@ -450,6 +450,8 @@ CREATE TABLE IF NOT EXISTS shop_orders (
   status_note   VARCHAR(120)   NOT NULL DEFAULT '',
   handled_by    VARCHAR(60)    NOT NULL DEFAULT '',
   bill_no       VARCHAR(30)    NOT NULL DEFAULT '',
+  source        VARCHAR(10)    NOT NULL DEFAULT 'online',   -- online (shop page) | staff (taken by a sales / stock user)
+  taken_by      VARCHAR(60)    NOT NULL DEFAULT '',
   created_at    DATETIME       NOT NULL,
   updated_at    DATETIME       NOT NULL,
   PRIMARY KEY (id),
@@ -457,5 +459,61 @@ CREATE TABLE IF NOT EXISTS shop_orders (
   UNIQUE KEY uk_orders_seq (company_id, order_seq),
   KEY idx_orders_branch (company_id, branch_id, status),
   CONSTRAINT fk_orders_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- parties : wholesale customers (retail shops that buy from this company on credit).
+--   Their tax invoices are rows in bills with bill_kind = 'invoice' (party_id, due_date, taxable, gst_*, paid_amount).
+-- party_payments : money received from a retailer, each row applied to one invoice.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS parties (
+  company_id    VARCHAR(20)   NOT NULL,
+  id            VARCHAR(20)   NOT NULL,
+  name          VARCHAR(80)   NOT NULL,
+  contact       VARCHAR(60)   NOT NULL DEFAULT '',
+  phone         VARCHAR(10)   NOT NULL,
+  gstin         VARCHAR(20)   NOT NULL DEFAULT '',
+  address       VARCHAR(300)  NOT NULL DEFAULT '',
+  city          VARCHAR(40)   NOT NULL DEFAULT '',
+  credit_days   INT           NOT NULL DEFAULT 30,
+  created_at    DATETIME      NOT NULL,
+  PRIMARY KEY (company_id, id),
+  CONSTRAINT fk_parties_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS party_payments (
+  id            BIGINT         NOT NULL AUTO_INCREMENT,
+  company_id    VARCHAR(20)    NOT NULL,
+  party_id      VARCHAR(20)    NOT NULL,
+  bill_id       BIGINT         NULL,
+  amount        DECIMAL(12,2)  NOT NULL,
+  paid_on       DATE           NOT NULL,
+  mode          VARCHAR(30)    NOT NULL DEFAULT 'Cash',
+  ref           VARCHAR(60)    NOT NULL DEFAULT '',
+  created_at    DATETIME       NOT NULL,
+  by_name       VARCHAR(60)    NOT NULL DEFAULT '',
+  PRIMARY KEY (id),
+  KEY idx_pp_party (company_id, party_id),
+  CONSTRAINT fk_pp_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- po_payments : every payment made to a supplier against a purchase order (date, amount, mode, ref).
+--   purchase_orders.paid = SUM(amount) of its rows.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS po_payments (
+  id            BIGINT         NOT NULL AUTO_INCREMENT,
+  company_id    VARCHAR(20)    NOT NULL,
+  po_id         BIGINT         NOT NULL,
+  amount        DECIMAL(14,2)  NOT NULL,
+  paid_on       DATE           NOT NULL,
+  mode          VARCHAR(30)    NOT NULL DEFAULT 'Cash',
+  ref           VARCHAR(60)    NOT NULL DEFAULT '',
+  created_at    DATETIME       NOT NULL,
+  by_name       VARCHAR(60)    NOT NULL DEFAULT '',
+  PRIMARY KEY (id),
+  KEY idx_pop_po (po_id),
+  KEY idx_pop_company (company_id, paid_on),
+  CONSTRAINT fk_pop_po FOREIGN KEY (po_id) REFERENCES purchase_orders (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

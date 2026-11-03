@@ -16,10 +16,11 @@ Run the NEW app version once before importing (it adds the branch / payment / st
 """
 import base64, hashlib, os, random
 from demo_photos import photo_sql, demo_orders_sql
+from demo_b2b import b2b_sql
 
 random.seed(20261102)
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "liba-demo.sql")
-DEMO_PASSWORD = "Liba@123"
+DEMO_PASSWORD = "admin1234"
 DAYS = 60
 
 CID = "clibademo01"
@@ -121,6 +122,7 @@ for i, (bid, bname) in enumerate(BR):
 w(f"INSERT INTO branches (company_id, id, name, kind, sort_order, created_at) VALUES ({q(CID)}, {q(WH[0])}, {q(WH[1])}, 'warehouse', 9, NOW() - INTERVAL {DAYS + 5} DAY);")
 for sid, sn, sp, sg, sa in SUPPLIERS:
     w(f"INSERT INTO suppliers (company_id, id, name, phone, gstin, address, created_at) VALUES ({q(CID)}, {q(sid)}, {q(sn)}, {q(sp)}, {q(sg)}, {q(sa)}, NOW() - INTERVAL {DAYS} DAY);")
+w(f"UPDATE companies SET gstin = '33AAKFL1234M1Z5' WHERE id = {q(CID)};")   # demo GSTIN (for tax invoices)
 w(f"UPDATE companies SET shop_code = 'libademo', shop_enabled = 1 WHERE id = {q(CID)};")   # online shop: shop.html?s=libademo
 for i, (pid, pname, kind) in enumerate(PAY):
     w(f"INSERT INTO pay_modes (company_id, id, name, kind, sort_order, active) VALUES ({q(CID)}, {q(pid)}, {q(pname)}, {q(kind)}, {i}, 1);")
@@ -130,6 +132,7 @@ for i, (un, name, typ, bid, _) in enumerate(USERS):
       f"('ulibademo{i:02d}', {q(un)}, {q(name)}, {q(typ)}, {q(CID)}, {q(bid)}, {q(salt)}, {q(h)}, 1, 0, NOW() - INTERVAL {DAYS + 5} DAY, NOW());")
 
 # ---- catalog ----
+WRATE = {}          # (item_id, size) -> wholesale price
 sizes = []          # (item_id, ta, en, size, rate, popularity)
 barcode_labels = []
 code_no = 0
@@ -147,7 +150,9 @@ for gi, (gid, gta, gen, emo, col, items) in enumerate(CAT):
             rate = base + step * si
             # cost (அடக்க விலை) is optional: most items 55-68 % of the rate, a few left blank on purpose
             cost = None if gid in ("dupatta",) or (gid, ii) == ("saree", 3) else round(rate * cost_pc / 5) * 5
-            w(f"INSERT INTO item_sizes (company_id, item_id, size_label, rate, cost, barcode, sort_order) VALUES ({q(CID)}, {q(iid)}, {q(sz)}, {rate}, {q(cost)}, {q(code)}, {si});")
+            wrate = max(int(round(rate * 0.78 / 5) * 5), int(cost or 0) + 5)       # wholesale selling price ~22 % below retail
+            WRATE[(iid, sz)] = wrate
+            w(f"INSERT INTO item_sizes (company_id, item_id, size_label, rate, wrate, cost, barcode, sort_order) VALUES ({q(CID)}, {q(iid)}, {q(sz)}, {rate}, {wrate}, {q(cost)}, {q(code)}, {si});")
             mid = 1.4 if sz in ("L", "XL", "38", "40", "Free size", "54", "56", "34", "36") else 0.8
             sizes.append((iid, ta, en, sz, rate, pop * mid, cost))
             barcode_labels.append((code, ta, en, sz, rate))
@@ -220,7 +225,12 @@ for seq, (when, bid, u, lines, pay, cust, phone) in enumerate(bills, 1):
         k = (bid, s[0], s[3])
         stock_out[k] = stock_out.get(k, 0) + qn
     w("INSERT INTO bill_lines (company_id, bill_id, line_no, item_id, item_name, item_name_en, size_label, qty, rate, cost, amount) VALUES " + ", ".join(vals) + ";")
-w(f"UPDATE companies SET bill_seq = {len(bills)} WHERE id = {q(CID)};")
+# wholesale: retailers buying on credit, tax invoices (PREFIX-W....) and their payments
+_b2b, _last = b2b_sql(CID, CO["prefix"], q, sizes, [b[0] for b in BR], {BR[0][0]: (USERS[3][0], USERS[3][1]), BR[1][0]: (USERS[4][0], USERS[4][1])},
+                      len(bills), stock_out, random.Random(21), WRATE)
+for _l in _b2b:
+    w(_l)
+w(f"UPDATE companies SET bill_seq = {_last} WHERE id = {q(CID)};")
 
 # ---- stock: received - sold (a few negative / zero / low on purpose) ----
 stock_rows = []
@@ -272,6 +282,12 @@ for n, (si, ago, status, lines, paidf, recvf) in enumerate(po_plan, 1):
       f"{q('Warehouse-க்கு டெலிவரி · எண்ணி சரிபார்த்து பெறவும்')}, {q(status)}, {sub}, {gst}, {other}, 0, {total}, {paid}, NOW() - INTERVAL {ago} DAY, 'liba.wh', 'Imran (Warehouse)', "
       f"{recv}, {q('Imran (Warehouse)' if status != 'ordered' else '')}, NOW() - INTERVAL {max(ago - 2, 0)} DAY);")
     w("SET @po = LAST_INSERT_ID();")
+    _pd = paid
+    if _pd > 0:                                            # supplier payments with dates (advance, then the rest)
+        _parts = [_pd] if _pd < 20000 else [round(_pd * 0.4, 2), round(_pd - round(_pd * 0.4, 2), 2)]
+        for _i, _a in enumerate(_parts):
+            w(f"INSERT INTO po_payments (company_id, po_id, amount, paid_on, mode, ref, created_at, by_name) VALUES ({q(CID)}, @po, {_a}, "
+              f"CURDATE() - INTERVAL {max(ago - _i * 7, 0)} DAY, {q(['Bank (NEFT)', 'UPI', 'Cheque'][_i % 3])}, {q('Ref ' + str(5100 + n * 10 + _i))}, NOW(), 'Demo');")
     w("INSERT INTO po_lines (po_id, company_id, line_no, item_id, item_name, size_label, qty, received_qty, unit_cost, gst_pct, amount) VALUES " + ", ".join(rows) + ";")
 w(f"UPDATE companies SET po_seq = {len(po_plan)} WHERE id = {q(CID)};")
 

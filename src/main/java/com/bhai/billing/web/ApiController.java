@@ -118,6 +118,42 @@ public class ApiController {
     public ResponseEntity<Object> orders(@RequestHeader(value = AUTH, required = false) String auth,
                                          @RequestParam(value = "status", required = false) String status) { return run(() -> svc.orders(auth, status)); }
 
+    // ---- money reports: payables (suppliers / POs) and receivables (retailer invoices)
+    @PostMapping("/po/{id}/pay")
+    public ResponseEntity<Object> poPayment(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id,
+                                            @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.poPayment(auth, id, nn(body))); }
+
+    @GetMapping("/payables")
+    public ResponseEntity<Object> payables(@RequestHeader(value = AUTH, required = false) String auth,
+                                           @RequestParam(value = "branch", required = false) String branch) { return run(() -> svc.payables(auth, branch)); }
+
+    @GetMapping("/receivables")
+    public ResponseEntity<Object> receivables(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.receivables(auth)); }
+
+    // ---- wholesale: retailers, sales invoices, payments
+    @GetMapping("/parties")
+    public ResponseEntity<Object> parties(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.parties(auth)); }
+
+    @PostMapping("/parties")
+    public ResponseEntity<Object> saveParty(@RequestHeader(value = AUTH, required = false) String auth,
+                                            @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.saveParty(auth, nn(body))); }
+
+    @GetMapping("/parties/{id}")
+    public ResponseEntity<Object> party(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") String id) { return run(() -> svc.party(auth, id)); }
+
+    @PostMapping("/parties/{id}/payments")
+    public ResponseEntity<Object> partyPayment(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") String id,
+                                               @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.partyPayment(auth, id, nn(body))); }
+
+    @PostMapping("/sales-invoices")
+    public ResponseEntity<Object> createInvoice(@RequestHeader(value = AUTH, required = false) String auth,
+                                                @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.createInvoice(auth, nn(body))); }
+
+    /** sales / stock user takes an order for a customer (phone / WhatsApp / counter) */
+    @PostMapping("/orders")
+    public ResponseEntity<Object> takeOrder(@RequestHeader(value = AUTH, required = false) String auth,
+                                            @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.takeOrder(auth, nn(body))); }
+
     @PostMapping("/orders/{id}")
     public ResponseEntity<Object> orderUpdate(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id,
                                               @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.orderUpdate(auth, id, nn(body))); }
@@ -194,6 +230,10 @@ public class ApiController {
                                                 @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.addCancelBill(auth, nn(body))); }
 
     /** bills of a mobile number (this month + last 2 months) with what is left to cancel on each line */
+    @GetMapping("/bills/for-cancel")
+    public ResponseEntity<Object> billForCancel(@RequestHeader(value = AUTH, required = false) String auth,
+                                                @RequestParam(value = "no", required = false) String no) { return run(() -> svc.billForCancel(auth, no)); }
+
     @GetMapping("/bills/by-phone")
     public ResponseEntity<Object> billsByPhone(@RequestHeader(value = AUTH, required = false) String auth,
                                                @RequestParam(value = "phone", required = false) String phone,

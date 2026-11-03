@@ -28,7 +28,7 @@ short; 2 still in transit — one for each shop, so both stock users have someth
 Bill dates are relative to the day you import, so "today" always has sales.
 **Running it again resets the demo** (deletes the old Liba data first). Other companies are not touched.
 
-## Logins (password for all: `Liba@123`)
+## Logins (password for all: `admin1234`)
 
 | Username | Who | Type | Branch |
 |---|---|---|---|

@@ -21,7 +21,7 @@ Get-Content db\demo\rasi-demo.sql -Encoding UTF8 | docker compose exec -T mysql 
 ```
 Running it again resets the Rasi demo (dates are relative to the import day). Other companies are not touched.
 
-## Logins (password for all: `Rasi@123`)
+## Logins (password for all: `admin1234`)
 
 | Username | Who | Type | Where |
 |---|---|---|---|

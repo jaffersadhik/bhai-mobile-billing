@@ -10,7 +10,11 @@ EMOJI_FONT = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
 TEXT_FONT = next((p for p in ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                               "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"] if os.path.exists(p)), None)
 # keyword in the English name -> emoji (first match wins)
-PICK = [("teddy", "🧸"), ("toy car", "🚗"), ("remote", "🏎️"), ("doll", "🪆"), ("puzzle", "🧩"), ("balloon", "🎈"),
+PICK = [("t-shirt", "👕"), ("party wear", "🤵"), ("veshti shirt", "🤵"), ("shirt", "👔"), ("trouser", "👖"), ("jeans", "👖"),
+        ("chinos", "👖"), ("cargo", "👖"), ("veshti", "🪷"), ("lungi", "🪷"), ("kurta", "🥻"), ("gym vest", "🎽"), ("vest", "🎽"),
+        ("brief", "🩲"), ("trunk", "🩲"), ("track", "🏃"), ("bermuda", "🩳"), ("shorts", "🩳"), ("joggers", "🏃"),
+        ("belt", "🪢"), ("wallet", "👛"), ("socks", "🧦"), ("handkerchief", "🤧"), ("tie", "👔"), ("cap", "🧢"), ("sunglasses", "🕶️"),
+        ("teddy", "🧸"), ("toy car", "🚗"), ("remote", "🏎️"), ("doll", "🪆"), ("puzzle", "🧩"), ("balloon", "🎈"),
         ("notebook", "📒"), ("pen box", "🖊️"), ("pencil box", "✏️"), ("geometry", "📐"), ("colour", "🖍️"), ("wrap", "🎁"),
         ("school bag", "🎒"), ("photo frame", "🖼️"), ("show piece", "🏺"), ("mug", "☕"), ("hamper", "🧺"), ("clock", "🕰️"),
         ("body spray", "🧴"), ("perfume", "🌸"), ("attar", "🪔"), ("roll-on", "🧴"), ("hair clip", "📎"), ("hair band", "🎀"),

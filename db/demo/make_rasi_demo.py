@@ -22,7 +22,7 @@ from demo_photos import photo_sql, demo_orders_sql
 random.seed(20261103)
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "rasi-demo.sql")
-DEMO_PASSWORD = "Rasi@123"
+DEMO_PASSWORD = "admin1234"
 DAYS = 45
 
 CID = "crasidemo01"
@@ -302,6 +302,12 @@ for n, (si, ago, status, paidf, recvf) in enumerate(po_plan, 1):
       f"{q('கொளத்தூர் warehouse-க்கு டெலிவரி')}, {q(status)}, {round(sub, 2)}, {round(gst, 2)}, 0, 0, {total}, {round(total * paidf, 2)}, NOW() - INTERVAL {ago} DAY, 'rasi.wh', 'Murugan (Warehouse)', "
       f"{recv}, {q('Murugan (Warehouse)' if status != 'ordered' else '')}, NOW() - INTERVAL {max(ago - 1, 0)} DAY);")
     w("SET @po = LAST_INSERT_ID();")
+    _pd = round(total * paidf, 2)
+    if _pd > 0:                                            # supplier payments with dates (advance, then the rest)
+        _parts = [_pd] if _pd < 20000 else [round(_pd * 0.4, 2), round(_pd - round(_pd * 0.4, 2), 2)]
+        for _i, _a in enumerate(_parts):
+            w(f"INSERT INTO po_payments (company_id, po_id, amount, paid_on, mode, ref, created_at, by_name) VALUES ({q(CID)}, @po, {_a}, "
+              f"CURDATE() - INTERVAL {max(ago - _i * 7, 0)} DAY, {q(['Bank (NEFT)', 'UPI', 'Cheque'][_i % 3])}, {q('Ref ' + str(5100 + n * 10 + _i))}, NOW(), 'Demo');")
     w("INSERT INTO po_lines (po_id, company_id, line_no, item_id, item_name, size_label, qty, received_qty, unit_cost, gst_pct, amount) VALUES " + ", ".join(rows) + ";")
 w(f"UPDATE companies SET po_seq = {len(po_plan)} WHERE id = {q(CID)};")
 

@@ -174,14 +174,14 @@ function render(){
           <span class="cnt">${its.length} பொருட்கள்</span>${ph?`<img class="ph" loading="lazy" src="${esc(photoUrl(ph))}" alt="">`:""}</button>`; }).join("")}</div>`;
   }
   $("#app").innerHTML=`
-    <section class="hero"><b>வணக்கம் 🙂 Online-ல் ஆர்டர் செய்யுங்கள்</b><p>${esc([c.address,c.city].filter(Boolean).join(", "))}<br>வகையை தேர்வு செய்யுங்கள் → படம் பார்த்து சைஸ் தேர்வு → Cart → ஆர்டர். கடை உறுதி செய்து டெலிவரி / பிக்அப் செய்யும்.</p>
+    <section class="hero"><b>அந்த ஏக இறைவனின் சாந்தியும் சமாதானமும் உண்டாவதாக 🤲</b><p style="margin-top:6px;font-weight:700">Online-ல் ஆர்டர் செய்யுங்கள்</p><p>${esc([c.address,c.city].filter(Boolean).join(", "))}<br>வகையை தேர்வு செய்யுங்கள் → படம் பார்த்து சைஸ் தேர்வு → Cart → ஆர்டர். கடை உறுதி செய்து டெலிவரி / பிக்அப் செய்யும்.</p>
       ${ls.get("orders",[]).length?`<button class="myo" id="myOrders">📦 என் ஆர்டர்கள் (${ls.get("orders",[]).length})</button>`:""}</section>
     <div class="lbl">எந்த கடையின் இருப்பை பார்க்க வேண்டும்?</div>
     <div class="locs"><button data-loc="all" class="${loc==="all"?"on":""}">🌐 எல்லா இடங்களும்</button>${S.branches.map(b=>`<button data-loc="${esc(b.id)}" class="${loc===b.id?"on":""}">${b.kind==="warehouse"?"🏭":"🏬"} ${esc(b.name)}</button>`).join("")}</div>
     <div class="find"><input id="q" type="search" placeholder="🔎 பொருள் தேடு (Search)" value="${esc(q)}" autocomplete="off"></div>
     <label class="tog"><input type="checkbox" id="inOnly"${inOnly?" checked":""}> இருப்பு உள்ளவை மட்டும் காட்டு</label>
     ${body}
-    <footer>${esc(c.name)} · Powered by Bhai Mobile Billing</footer>`;
+    <footer>${esc(c.name)} · Powered by MBill · Mobile Bill</footer>`;
   const qi=$("#q"); if(q){ qi.focus(); qi.setSelectionRange(q.length,q.length); }
 }
 function card(it){
@@ -255,7 +255,7 @@ async function placeOrder(){
     $("#sb").innerHTML=`<div class="ok"><div class="tick">✓</div><h2>ஆர்டர் ${esc(r.no)} பெறப்பட்டது</h2>
       <p class="sub">${inr(r.total)} · கடை உறுதி செய்தவுடன் நிலை மாறும். இந்த link-ல் எப்போதும் நிலையை பார்க்கலாம்.</p>
       <a class="cta" href="${esc(link)}">📦 ஆர்டர் நிலை பார் (Track)</a>
-      ${S.company.phone?`<a class="cta ghost" href="https://wa.me/91${esc(S.company.phone)}?text=${encodeURIComponent("வணக்கம், Online ஆர்டர் "+r.no+" ("+inr(r.total)+") செய்துள்ளேன். நிலை: "+link)}" target="_blank" rel="noopener">💬 கடைக்கு WhatsApp</a>`:""}
+      ${S.company.phone?`<a class="cta ghost" href="https://wa.me/91${esc(S.company.phone)}?text=${encodeURIComponent("அந்த ஏக இறைவனின் சாந்தியும் சமாதானமும் உண்டாவதாக. Online ஆர்டர் "+r.no+" ("+inr(r.total)+") செய்துள்ளேன். நிலை: "+link)}" target="_blank" rel="noopener">💬 கடைக்கு WhatsApp</a>`:""}
       <button class="cta ghost" id="closeSheet2">மேலும் ஷாப்பிங்</button></div>`;
   }catch(e){ toast(e.message); btn.disabled=false; }
 }
@@ -275,7 +275,7 @@ async function showOrder(token){
       <div class="tot"><span>மொத்தம்</span><span>${inr(o.total)}</span></div></div>
     <button class="cta ghost" id="refresh">🔄 நிலையை புதுப்பி</button>
     <a class="cta" href="${esc(location.pathname+"?s="+encodeURIComponent(CODE))}">🛍 மேலும் ஷாப்பிங்</a>
-    <footer>${esc(S.company.name)} · Powered by Bhai Mobile Billing</footer>`;
+    <footer>${esc(S.company.name)} · Powered by MBill · Mobile Bill</footer>`;
 }
 async function openMyOrders(){
   const L=ls.get("orders",[]);

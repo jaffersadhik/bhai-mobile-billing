@@ -4,9 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0e6b4a">
-<title>Bhai Mobile Billing | பாய் மொபைல் பில்லிங்</title>
-<meta name="description" content="Bhai Mobile Billing (பாய் மொபைல் பில்லிங்): நைட்டி, சுடிதார், குர்தா, பட்டியாலா, இன்னர் மற்றும் லேடீஸ் ஐட்டங்கள். சைஸ் தேர்வு செய்து பில் WhatsApp-ல் பெறுங்கள்.">
-<meta property="og:title" content="Bhai Mobile Billing">
+<title>MBill | Mobile Bill</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%2064%2064%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2216%22%20fill%3D%22%230e6b4a%22/%3E%3Cpath%20d%3D%22M18%2012h28a3%203%200%200%201%203%203v37l-5-3-5%203-5-3-5%203-5-3-5%203V15a3%203%200%200%201%203-3z%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M23%2038V22l9%2010%209-10v16%22%20fill%3D%22none%22%20stroke%3D%22%23e9b431%22%20stroke-width%3D%224.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%2064%2064%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2216%22%20fill%3D%22%230e6b4a%22/%3E%3Cpath%20d%3D%22M18%2012h28a3%203%200%200%201%203%203v37l-5-3-5%203-5-3-5%203-5-3-5%203V15a3%203%200%200%201%203-3z%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M23%2038V22l9%2010%209-10v16%22%20fill%3D%22none%22%20stroke%3D%22%23e9b431%22%20stroke-width%3D%224.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E">
+<meta name="description" content="MBill (Mobile Bill): நைட்டி, சுடிதார், குர்தா, பட்டியாலா, இன்னர் மற்றும் லேடீஸ் ஐட்டங்கள். சைஸ் தேர்வு செய்து பில் WhatsApp-ல் பெறுங்கள்.">
+<meta property="og:title" content="MBill · Mobile Bill">
 <meta property="og:description" content="கடைகளுக்கான மொபைல் பில்லிங் · சைஸ், ரேட், WhatsApp பில்.">
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -602,13 +604,15 @@ footer .pw-by b{color:var(--leaf)}
 .trsug .szs{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px}
 .trsug .szs button{border:1px solid var(--line);border-radius:9px;padding:5px 8px;font-size:12px;background:#fff}
 .trsug .szs button.zero{opacity:.45}
+.lmark.mlogo{background:none;padding:0;overflow:hidden}.lmark.mlogo svg{width:100%;height:100%;display:block}
 .brkind{font-size:11px;font-weight:800;border-radius:7px;padding:2px 6px;background:#dff1ff;color:#0b4f80;margin-left:4px}
+.whcats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.whcat{border:0;border-radius:12px;padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:4px;font:inherit;cursor:pointer}.whcat span{font-size:24px}.whcat b{font-size:12px}
 </style>
 </head>
 <body>
 <section class="login" id="login" aria-label="Login">
   <div class="brand">
-    <div class="lmark" aria-hidden="true">ப</div>
+    <div class="lmark mlogo" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="16" fill="#0e6b4a"/><path d="M18 12h28a3 3 0 0 1 3 3v37l-5-3-5 3-5-3-5 3-5-3-5 3V15a3 3 0 0 1 3-3z" fill="#fff"/><path d="M23 38V22l9 10 9-10v16" fill="none" stroke="#e9b431" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <div class="bis" id="lBis"></div>
     <h1 class="appn" id="lApp"></h1>
     <p class="appta" id="lAppTa"></p>
@@ -658,8 +662,9 @@ footer .pw-by b{color:var(--leaf)}
 
 <script>
 /* ================= EDIT HERE ================= */
-const APP_NAME     = "Bhai Mobile Billing";
-const APP_NAME_TA  = "பாய் மொபைல் பில்லிங்";
+const APP_NAME     = "MBill";
+const DEFAULT_PW   = "admin1234";        // default password for new users (same as the server default)
+const APP_NAME_TA  = "Mobile Bill · மொபைல் பில்";
 const BISMILLAH    = "அல்லாஹ்வின் திருப்பெயரால்";
 const COUNTRY_CODE = "91";          // WhatsApp bills go to COUNTRY_CODE + customer's 10-digit mobile
 const API_BASE     = "api/";        // server API inside the same WAR (users, companies, groups, items, bills are stored on the server)
@@ -742,6 +747,7 @@ const isAdmin = () => !!(me && me.type==="admin");
 const isOwner = () => !!(me && me.type==="owner");   // reports only
 const isStock = () => !!(me && me.type==="stock");   // sales + stock
 const isWh = () => !!(me && me.type==="warehouse");
+const isSales = () => !!(me && me.type==="sales");    // sales staff: no sales report, no wholesale (retailers / invoices / payments)
 const canRate = () => !!(me && me.type!=="sales");      // sales staff cannot change the rate of an existing item    // warehouse: PO receive, warehouse stock, transfers to shops (no billing)
 const canEdit = () => !!(me && company && !isOwner());     // admin (inside an opened company), sales and stock users manage groups / items
 const canStock = () => !!(me && company && (isAdmin()||isStock()||isWh()));
@@ -755,7 +761,7 @@ function buildCatalog(){
   catById={}; CATS.forEach(c=>catById[c[0]]=c);
   ITEMS=[]; byId={}; byCode={};
   CATS.forEach(c=>(catalog.items||[]).filter(x=>x.cat===c[0]).forEach(x=>{
-    const it={id:x.id,cat:x.cat,ta:x.ta,en:x.en||"",emoji:c[3],photo:x.photo||0,sizes:x.sizes.map(z=>({size:z.size,rate:Number(z.rate),code:z.code||"",cost:z.cost==null?null:Number(z.cost)}))};
+    const it={id:x.id,cat:x.cat,ta:x.ta,en:x.en||"",emoji:c[3],photo:x.photo||0,sizes:x.sizes.map(z=>({size:z.size,rate:Number(z.rate),wrate:z.wrate==null?null:Number(z.wrate),code:z.code||"",cost:z.cost==null?null:Number(z.cost)}))};
     ITEMS.push(it); byId[it.id]=it;
     it.sizes.forEach(z=>{ if(z.code) byCode[z.code]={id:it.id,size:z.size}; });
   }));
@@ -803,6 +809,7 @@ async function commitCatalog(mutate,okMsg){
 
 /* ================= CART HELPERS ================= */
 const rateOf = (id,size) => byId[id].sizes.find(z=>z.size===size).rate;
+const wrateOf = (id,size) => { const z=byId[id]&&byId[id].sizes.find(x=>x.size===size); return z?(z.wrate!=null?z.wrate:z.rate):0; };   // wholesale selling price (blank = retail)
 const selSize = id => (byId[id].sizes.some(z=>z.size===sel[id]) ? sel[id] : byId[id].sizes[0].size);
 const lines = () => {
   const cat = Object.keys(cart).filter(k=>{ const [id,size]=parseKey(k); return byId[id]&&byId[id].sizes.some(z=>z.size===size); })
@@ -821,12 +828,16 @@ function view(){
   if(h==="admin" && isAdmin()) return "admin";
   if(h==="inv" && (isAdmin()||isOwner())) return "inv";
   if(!company) return isAdmin() ? "admin" : "nocompany";
+  if(isWh()&&catalog.setup&&catById[h]) return "cat";
+  if(isWh()&&(h==="parties"||h==="money")) return h;
   if(isWh()) return ["stock","po","stockrep","tr","labels"].includes(h) && ((h!=="stock"&&h!=="labels")||catalog.setup) ? h : "wh";
   if(h==="tr" && (isOwner()||isAdmin()||isStock())) return "tr";
   if(h==="orders" && !isWh()) return "orders";
+  if(h==="parties" && !isSales()) return "parties";
+  if(h==="money" && (canPay()||canRecv())) return "money";
   if(h==="stockrep" && (isOwner()||isAdmin()||isStock())) return "stockrep";
   if(h==="po" && (isOwner()||isAdmin()||isStock())) return "po";
-  if(isOwner() || h==="report") return "report";
+  if(isOwner() || (h==="report" && !isSales())) return "report";
   if(!catalog.setup) return "setup";
   if(h==="stock" && canStock()) return "stock";
   if(h==="labels" && canEdit()) return "labels";
@@ -854,7 +865,9 @@ function renderBar(){
   else if(v==="admin") left=`${company?`<button class="back" id="toHome" aria-label="Back to billing">←</button>`:`<div class="mark" aria-hidden="true">⚙</div>`}<div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">Admin Panel</h1></div>`;
   else if(v==="report") left=`${isOwner()?`<div class="mark" aria-hidden="true">📊</div>`:`<button class="back" id="toHome" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">விற்பனை அறிக்கை</h1></div>`;
   else if(v==="stock") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">${isWh()?"🏭 Warehouse ஸ்டாக்":"📦 ஸ்டாக் (Stock)"}</h1></div>`;
-  else if(v==="orders") left=`${isOwner()?`<div class="mark" aria-hidden="true">🛒</div>`:`<button class="back" id="toHome" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">🛒 Online ஆர்டர்கள்</h1></div>`;
+  else if(v==="money") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">💳 பணம் — வர / செலுத்த வேண்டியது</h1></div>`;
+  else if(v==="parties") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">📒 Wholesale / Retailers</h1></div>`;
+  else if(v==="orders") left=`${isOwner()?`<div class="mark" aria-hidden="true">🛒</div>`:`<button class="back" id="toHome" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">🛒 ஆர்டர்கள் (Online + கடை)</h1></div>`;
   else if(v==="inv") left=`<button class="back" id="${isAdmin()?"toAdmin":"toHome"}" aria-label="Back">←</button><div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">🧾 Software Invoice</h1></div>`;
   else if(v==="labels") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}</span><h1 class="co">🏷 Barcode Labels</h1></div>`;
   else if(v==="tr") left=`${isOwner()?`<div class="mark" aria-hidden="true">🚚</div>`:`<button class="back" id="toHome" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">🚚 Stock Transfers</h1></div>`;
@@ -884,7 +897,7 @@ function card(it){
     <div class="lbl">சைஸ் (Size)</div>
     <div class="sizes" role="group" aria-label="Size">${it.sizes.map(z=>{ const q=cart[it.id+"|"+z.size];
       return `<button class="sz ${z.size===s?'on':''}" data-size="${esc(z.size)}" aria-pressed="${z.size===s}">${esc(z.size)}${q?`<i>${q}</i>`:""}</button>`;}).join("")}</div>
-    <div class="buy"><div class="rate"><b>${inr(rateOf(it.id,s))}</b><small>ஒரு துண்டு (per piece)</small></div><div>${ctl(it.id)}</div></div>
+    <div class="buy"><div class="rate"><b>${inr(rateOf(it.id,s))}</b><small>ஒரு துண்டு (per piece)${wrateOf(it.id,s)!==rateOf(it.id,s)?` · Wholesale ${inr(wrateOf(it.id,s))}`:""}</small></div><div>${ctl(it.id)}</div></div>
   </article>`;
 }
 function manualBtn(sub,prefill){
@@ -905,6 +918,8 @@ function renderView(){
   else if(v==="labels") html=renderLabels();
   else if(v==="inv") html=renderInv();
   else if(v==="orders") html=renderOrders();
+  else if(v==="parties") html=renderParties();
+  else if(v==="money") html=renderMoney();
   else if(v==="wh") html=renderWh();
   else if(v==="nocompany") html=`<div class="none"><b>🏬</b>உங்கள் கணக்கில் கம்பெனி இணைக்கப்படவில்லை.<br>Admin-ஐ தொடர்பு கொள்ளவும்.</div>`;
   else if(v==="setup"){
@@ -935,10 +950,11 @@ function renderView(){
       <button class="admin" id="scanHome"><span class="pl" aria-hidden="true">📷</span><div><b>Barcode Scan செய்து பில் போடு</b><small>Mobile camera அல்லது USB / Bluetooth scanner · ஒவ்வொரு scan-உம் பில்லில் சேரும்</small></div></button>
       ${manualBtn("பட்டியலில் இல்லாத பொருளை பெயர், சைஸ், ரேட் கொடுத்து சேர்க்கவும்")}
       <button class="admin" id="billHist"><span class="pl" aria-hidden="true">🧾</span><div><b>பில் வரலாறு (Bills)</b><small>இந்த கம்பெனியின் பில்கள், இன்றைய விற்பனை, மீண்டும் WhatsApp</small></div></button>
-      <button class="admin" id="mOrders"><span class="pl" aria-hidden="true">🛒</span><div><b>Online ஆர்டர்கள் <span class="pill" style="background:#fdecea;color:#9b1c1c" id="ordHomeN">${ordNew}</span> புதியவை</b><small>வாடிக்கையாளர் shop link மூலம் செய்த ஆர்டர்கள் · ஏற்று → பில் → டோர் டெலிவரி</small></div></button>
+      ${isSales()?"":`<button class="admin" id="mParties"><span class="pl" aria-hidden="true">📒</span><div><b>Wholesale — Retailers</b><small>கடைகளுக்கு Invoice (கடன் / GST) · நிலுவை · பணம் பெற்றது</small></div></button>`}
+      <button class="admin" id="mOrders"><span class="pl" aria-hidden="true">🛒</span><div><b>ஆர்டர்கள் <span class="pill" style="background:#fdecea;color:#9b1c1c" id="ordHomeN">${ordNew}</span> புதியவை</b><small>வாடிக்கையாளர் shop link மூலம் செய்த ஆர்டர்கள் · ஏற்று → பில் → டோர் டெலிவரி</small></div></button>
       ${canEdit()?`<button class="admin" id="openLabels"><span class="pl" aria-hidden="true">🏷</span><div><b>Barcode Labels Print</b><small>ஐட்டம் / சைஸ் வாரியாக sticker அச்சிட்டு ஒட்டுங்கள் → 📷 ஸ்கேன் செய்து பில்</small></div></button>`:""}
       ${canStock()?`<button class="admin" id="openStock"><span class="pl" aria-hidden="true">📦</span><div><b>ஸ்டாக் (Stock)</b><small>ஐட்டம் / சைஸ் வாரியாக கையிருப்பு · மாற்றலாம் · பில் போட்டால் தானாக குறையும்</small></div></button>`:""}
-      <button class="admin" id="openReport"><span class="pl" aria-hidden="true">📊</span><div><b>விற்பனை அறிக்கை (Sales Report)</b><small>இன்றைய / தேதி வாரியான / மாத விற்பனை, அதிகம் விற்ற பொருட்கள்</small></div></button>
+      ${isSales()?"":`<button class="admin" id="openReport"><span class="pl" aria-hidden="true">📊</span><div><b>விற்பனை அறிக்கை (Sales Report)</b><small>இன்றைய / தேதி வாரியான / மாத விற்பனை, அதிகம் விற்ற பொருட்கள்</small></div></button>`}
       <h2 class="h2">என்ன வேண்டும்?</h2>
       ${CATS.length?"":`<p class="hint" style="margin:-4px 0 10px">முதலில் ஒரு குரூப் உருவாக்கவும் (எ.கா. சேலை, நைட்டி)</p>`}
       <div class="tiles">${CATS.map(cc=>{
@@ -1017,6 +1033,8 @@ function openBill(pre){
     <button class="cta pend" id="savePending">⏸ சேமிக்க மட்டும் (Pending)</button>
     <p class="hint" style="text-align:center">Pending: மொபைல் எண்ணுக்கு சேமிக்கப்படும் · அதே எண்ணுக்கு "சேமித்து WhatsApp" அழுத்தும்போது இன்றைய எல்லா pending-களும் ஒரே பில்லாகும்</p>
     <div class="two-b"><button class="cta ghost" id="freshBill">🆕 புதிய பில்</button><button class="cta ghost" id="clearAll">🗑 எல்லாவற்றையும் நீக்கு</button></div>
+    ${isSales()?"":`<button class="cta ghost" id="openWInv" style="color:#4c1d95;border-color:#d9ccf5">📒 Wholesale Invoice (Retailer-க்கு கடன் / GST)</button>`}
+    <button class="cta ghost" id="openTakeOrder" style="color:#075985;border-color:#bfe0f5">📝 ஆர்டராக எடு (Take order) — பின்னர் பில் / டெலிவரி</button>
     <button class="cta ghost" id="openCancelBill" style="color:var(--bad);border-color:#f3c4c4">✖ இவற்றை ரத்து பில்லாக சேமி (Cancel bill)</button>
     <button class="cta ghost" id="openCfb" style="color:var(--bad);border-color:#f3c4c4">📱 மொபைல் எண் மூலம் பழைய பில்லிலிருந்து ரத்து</button>
     <p class="hint" style="text-align:center">ரத்து பில்: திருப்பி கொடுத்த / ரத்து செய்த ஐட்டங்களை மேலே சேர்த்து இதை அழுத்தவும் · பழைய பில் மாறாது · ஸ்டாக் திரும்ப சேரும்</p>`;
@@ -1024,6 +1042,9 @@ function openBill(pre){
   else if(exNext){ $("#iPhone").value=exNext.phone; }
   exOpen=null; exPick=new Set();
   renderBillList(); showSheet();
+  if(isWh()){ ["#paySel","#iName","#pendBox","#exBox","#send","#savePending","#openTakeOrder","#openCancelBill","#openCfb"].forEach(q=>{ const e=$(q); if(!e) return; (e.closest(".box")||e).style.display="none"; });
+    $("#sheetBody").querySelectorAll("p.hint").forEach(e=>e.style.display="none");
+    const w=$("#openWInv"); if(w){ w.className="cta"; w.style.cssText=""; } }
   if(pre.phone||$("#iPhone").value) checkPending();
 }
 /* pending of the typed mobile number (today, this branch) — shown before sending, joined into the bill by the server */
@@ -1266,6 +1287,8 @@ function openCancelFromBill(phone){
     <div class="box frm"><label class="fld" id="fCfbPhone">மொபைல் எண்<div class="pre"><b>+${COUNTRY_CODE}</b><div class="fldin"><input id="cfbPhone" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="10 இலக்க எண்" value="${esc(cfb.phone)}"></div></div><span class="err">சரியான 10 இலக்க எண்</span></label>
       <div class="chips">${[[1,"இந்த மாதம்"],[3,"3 மாதம்"],[6,"6 மாதம்"],[12,"1 வருடம்"]].map(([m,l])=>`<button type="button" data-cfbm="${m}" class="${cfb.months===m?"on":""}">${l}</button>`).join("")}</div></div>
     <button class="cta leaf" id="cfbFind">🔎 பில்களை காட்டு</button>
+    <div class="box frm"><label class="fld">அல்லது பில் / Invoice எண்<input id="cfbNo" maxlength="30" autocomplete="off" placeholder="எ.கா. LIBA-0123 / LIBA-W1042" style="text-transform:uppercase"></label>
+      <button class="cta ghost" id="cfbNoGo" style="margin-top:6px">🔎 இந்த எண்ணின் பில்</button></div>
     <div id="cfbList"></div>
     <button class="cta ghost" data-close>மூடு</button>`;
   showSheet();
@@ -1284,14 +1307,20 @@ async function cfbFind(){
       ${b.leftPieces?"":`<small style="color:var(--bad);font-weight:700">எல்லா ஐட்டமும் ஏற்கனவே ரத்து செய்யப்பட்டது</small>`}</button>`).join("")
     :`<div class="none" style="padding:18px"><b>🧾</b>இந்த எண்ணுக்கு இந்த காலத்தில் பில் இல்லை</div>`;
 }
+async function cfbByNo(no){
+  no=String(no||"").trim().toUpperCase(); if(!no){ toast("பில் எண் தேவை"); return; }
+  busy(true); let r;
+  try{ r=await api("bills/for-cancel?no="+encodeURIComponent(no)); }catch(e){ apiErr(e); return; } finally{ busy(false); }
+  cfb.bill=r.bill; cfb.q={}; cfb.fromNo=true; renderCfbBill(); showSheet();
+}
 function cfbOpenBill(i){
-  const b=cfb.data.bills[i]; if(!b) return; cfb.bill=b; cfb.q={};
+  const b=cfb.data.bills[i]; if(!b) return; cfb.bill=b; cfb.q={}; cfb.fromNo=false;
   renderCfbBill(); showSheet();
 }
 function renderCfbBill(){
   const b=cfb.bill;
   $("#sheetBody").innerHTML=`<h2 style="color:var(--bad)">✖ ${esc(b.no)} — ரத்து செய்ய ஐட்டங்கள்</h2>
-    <p class="sub">${esc(fmtDate(b.at))} · ${inr(b.total)}${b.customer?" · "+esc(b.customer):""} · +${COUNTRY_CODE} ${esc(b.phone)}<br>ரத்து செய்ய வேண்டிய ஐட்டத்தின் எண்ணிக்கையை தேர்வு செய்யவும்</p>
+    <p class="sub">${esc(fmtDate(b.at))} · ${inr(b.total)}${b.customer?" · "+esc(b.customer):""}${b.phone?` · +${COUNTRY_CODE} ${esc(b.phone)}`:""}${b.kind==="invoice"?`<br><b style="color:#4c1d95">📒 Wholesale Invoice · GST ${b.gstPct}% சேர்த்து ரத்து · Retailer நிலுவையில் கழிக்கப்படும் (Credit note) · ஸ்டாக் ${esc(b.branch||"")}-க்கு திரும்பும்</b>`:""}<br>ரத்து செய்ய வேண்டிய ஐட்டத்தின் எண்ணிக்கையை தேர்வு செய்யவும்</p>
     <div class="box">${b.lines.map((l,i)=>{ const q=cfb.q[i]||0;
       return `<div class="lb-row"><div><b>${esc(l.name)}</b>${l.size?" · "+esc(l.size):""}<small>வாங்கியது ${l.qty} × ${inr(l.rate)}${l.cancelled?` · <span style="color:var(--bad)">ஏற்கனவே ரத்து ${l.cancelled}</span>`:""} · மீதம் ${l.left}</small></div>
         ${l.left?`<div class="lb-q"><button type="button" data-cfbq="${i}" data-n="-1" aria-label="Less">−</button><input readonly value="${q}" class="${q?"on":""}" aria-label="Cancel qty"><button type="button" data-cfbq="${i}" data-n="1" aria-label="More">+</button></div>`:`<small style="color:var(--bad)">ரத்து ஆனது</small>`}</div>`; }).join("")}
@@ -1303,7 +1332,7 @@ function renderCfbBill(){
     <button class="cta ghost" id="cfbBack">← பில்கள் பட்டியல்</button>`;
 }
 const cfbPcs=()=>Object.values(cfb.q).reduce((a,v)=>a+v,0);
-const cfbTotal=()=>cfb.bill?cfb.bill.lines.reduce((a,l,i)=>a+(cfb.q[i]||0)*l.rate,0):0;
+const cfbTotal=()=>cfb.bill?Math.round(cfb.bill.lines.reduce((a,l,i)=>a+(cfb.q[i]||0)*l.rate,0)*(1+(cfb.bill.kind==="invoice"?(cfb.bill.gstPct||0)/100:0))*100)/100:0;
 async function cfbSave(){
   const b=cfb.bill, reason=$("#cfbReason").value.trim();
   $("#fCfbReason").classList.toggle("bad",!reason); if(!reason){ toast("காரணம் தேவை"); return; }
@@ -1311,7 +1340,7 @@ async function cfbSave(){
   if(!lines.length){ toast("ரத்து செய்ய ஐட்டத்தை தேர்வு செய்யவும்"); return; }
   const btn=$("#cfbSave"); btn.disabled=true; busy(true);
   let cx;
-  try{ cx=(await api("cancel-bills","POST",{reason,refBill:b.no,customer:b.customer||"",phone:b.phone||"",lines})).cancel; stockData=null; srData=null; repData=null; }
+  try{ cx=(await api("cancel-bills","POST",{reason,refBill:b.no,customer:b.customer||"",phone:b.phone||"",lines})).cancel; stockData=null; srData=null; repData=null; ptData=null; mnData=null; if(b.kind==="invoice"&&b.partyId&&typeof ptCur!=="undefined"&&ptCur&&ptCur.party&&ptCur.party.id===b.partyId){ try{ ptCur=await api("parties/"+b.partyId); }catch(_){} } }
   catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; } finally{ busy(false); }
   cfb.reason=""; const text=cancelText(cx);
   $("#sheetBody").innerHTML=`<div class="ok"><div class="tick" style="background:var(--bad)">✖</div>
@@ -1322,6 +1351,228 @@ async function cfbSave(){
     <button class="cta ghost" id="cfbAgain">✖ இதே எண்ணுக்கு மேலும் ரத்து</button>
     <button class="cta ghost" id="mCancels">✖ ரத்து பில் வரலாறு</button></div>`;
   $("#sum").textContent=text;
+}
+/* ---- sales / stock user takes an order for a customer (phone call, WhatsApp, counter) ---- */
+let toMode="delivery";
+function openTakeOrder(){
+  const L=lines(); if(!L.length){ toast("ஆர்டருக்கு ஐட்டங்களை முதலில் சேர்க்கவும்"); return; }
+  const ph=($("#iPhone")||{}).value||"", nm=($("#iName")||{}).value||"";
+  $("#sheetBody").innerHTML=`<h2>📝 ஆர்டர் எடு (Take order)</h2><p class="sub">${esc(company.name)}${myBranch?" · "+esc(myBranch):""} · ஸ்டாக் இப்போது குறையாது — பில் போடும்போது குறையும்</p>
+    <div class="box">${L.map(l=>`<div class="bl"><div class="r1"><div class="nm">${esc(l.it.ta)}<small>${l.it.custom?"✏️ Custom item":esc(l.it.en||"")}</small></div><div class="amt">${inr(l.amt)}</div></div>
+      <div class="r2"><span>Size: <b>${esc(l.size||"-")}</b> | ${l.qty} × ${inr(l.rate)}</span></div></div>`).join("")}</div>
+    <div class="sum"><div><span>எண்ணிக்கை</span><span>${pieces()} pcs</span></div><div class="gt"><span>ஆர்டர் தொகை</span><span>${inr(grand())}</span></div></div>
+    <div class="box frm">
+      <label class="fld" id="fToName">வாடிக்கையாளர் பெயர் *<input id="toName" maxlength="60" autocomplete="off" value="${esc(nm)}"><span class="err">பெயர் தேவை</span></label>
+      <label class="fld" id="fToPhone">மொபைல் *<input id="toPhone" inputmode="numeric" maxlength="10" autocomplete="off" value="${esc(ph)}"><span class="err">10 இலக்க எண்</span></label>
+      <div class="chips"><button type="button" data-tomode="delivery" class="${toMode==="delivery"?"on":""}">🚚 டோர் டெலிவரி</button><button type="button" data-tomode="pickup" class="${toMode==="pickup"?"on":""}">🏬 கடையில் பெறுவார்</button></div>
+      <label class="fld" id="fToAddr"${toMode==="pickup"?" hidden":""}>டெலிவரி முகவரி *<textarea id="toAddr" rows="3" maxlength="300"></textarea><span class="err">முகவரி தேவை</span></label>
+      <label class="fld">குறிப்பு (optional)<input id="toNotes" maxlength="300" autocomplete="off" placeholder="எ.கா. நாளை மாலை 6 மணிக்கு / Advance ₹200 பெறப்பட்டது"></label></div>
+    <button class="cta leaf" id="saveTakeOrder">📝 ஆர்டரை சேமி</button>
+    <button class="cta ghost" id="backToBill">← பில்லுக்கு திரும்பு</button>`;
+  showSheet();
+}
+async function saveTakeOrder(){
+  const name=$("#toName").value.trim(), phone=$("#toPhone").value.replace(/\D/g,""), addr=$("#toAddr").value.trim();
+  $("#fToName").classList.toggle("bad",!name); $("#fToPhone").classList.toggle("bad",!/^[6-9]\d{9}$/.test(phone)); $("#fToAddr").classList.toggle("bad",toMode==="delivery"&&addr.length<8);
+  if(!name||!/^[6-9]\d{9}$/.test(phone)||(toMode==="delivery"&&addr.length<8)){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
+  const L=lines(), btn=$("#saveTakeOrder"); btn.disabled=true; busy(true);
+  let o;
+  try{ o=(await api("orders","POST",{name,phone,mode:toMode,address:addr,notes:$("#toNotes").value.trim(),
+      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate}))})).order; }
+  catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; } finally{ busy(false); }
+  cart={}; customs={}; save(); renderAll(); ordData=null; loadOrderCount();
+  const url=company.shopCode?location.origin+location.pathname.replace(/[^/]*$/,"")+"shop.html?s="+encodeURIComponent(company.shopCode)+"&o="+o.token:"";
+  const msg=orderMsg(o,url);
+  $("#sheetBody").innerHTML=`<div class="ok"><div class="tick" style="background:#075985">📝</div>
+    <h2 style="padding:0">ஆர்டர் ${esc(o.no)} சேமிக்கப்பட்டது</h2><p class="sub">${esc(o.name)} · ${inr(o.total)} · ${o.mode==="pickup"?"🏬 பிக்அப்":"🚚 டெலிவரி"}<br>🛒 ஆர்டர்கள் (Online + கடை) பட்டியலில் உள்ளது → தயாரானதும் "பில்லாக மாற்று"</p>
+    <a class="cta" href="${esc(waUrl(o.phone,msg))}" target="_blank" rel="noopener">💬 வாடிக்கையாளருக்கு WhatsApp (நிலை link)</a>
+    <pre id="sum"></pre><button class="cta ghost" id="copySum">Copy</button>
+    <button class="cta ghost" id="mOrders">🛒 ஆர்டர்கள் பட்டியல்</button>
+    <button class="cta ghost" id="newBill">புதிய பில் (New bill)</button></div>`;
+  $("#sum").textContent=msg;
+}
+/* ================= WHOLESALE: RETAILERS (PARTIES), TAX INVOICES ON CREDIT, PAYMENTS ================= */
+let ptData=null, ptLoading=false, ptCur=null, invFormParty="", invForm=null;
+const INV_ST={paid:"✅ செலுத்தப்பட்டது",partial:"🟡 பகுதி",unpaid:"⏳ நிலுவை"};
+async function loadParties(){
+  if(ptLoading||!company) return; ptLoading=true; busy(true);
+  try{ const r=await api("parties"); r.co=company.id; ptData=r; }catch(e){ apiErr(e); ptData={co:company.id,error:e.message}; }
+  finally{ ptLoading=false; busy(false); }
+  if(view()==="parties") renderView();
+}
+function renderParties(){
+  if(!ptData||ptData.co!==company.id){ if(!ptLoading) setTimeout(loadParties,0); return `<div class="none"><b>⏳</b>ஏற்றுகிறது…</div>`; }
+  if(ptData.error) return `<div class="none"><b>⚠️</b>${esc(ptData.error)}</div>`;
+  const q=(($("#ptq")||{}).value||"").trim().toLowerCase(), L=ptData.parties.filter(p=>!q||(p.name+" "+p.phone+" "+p.city+" "+p.contact).toLowerCase().includes(q));
+  const tot=ptData.parties.reduce((a,p)=>a+p.billed,0), pd=ptData.parties.reduce((a,p)=>a+p.paid,0), cnt=ptData.parties.reduce((a,p)=>a+p.invoices,0);
+  return `<section class="rp-hero"><div class="l">📒 Wholesale — retailers-இடம் வர வேண்டிய தொகை</div><div class="v">${inr(ptData.pending)}</div>
+      <div class="row"><div><b>${ptData.parties.length}</b>Retailers</div><div><b>${cnt}</b>Invoices</div><div><b>${inr0(pd)}</b>பெற்றது</div><div><b style="color:#ffd2cc">${inr0(ptData.overdue)}</b>காலம் கடந்தது</div></div>
+      <span class="rp-chg">மொத்த invoice ${inr0(tot)}</span></section>
+    <button class="cta ghost" id="openMoney">💳 நிலுவை Invoices + பெற்ற தொகை (தேதி வாரியாக)</button>
+    ${ptData.canEdit?`<button class="cta leaf" id="ptNew">➕ புதிய Retailer / கடை</button><p class="hint">Invoice போட: ஐட்டங்களை Cart-ல் சேர்த்து → View bill → "📒 Wholesale Invoice"</p>`:""}
+    <div class="st-tools"><input id="ptq" type="search" placeholder="Retailer பெயர் / மொபைல் / ஊர் தேடு" value="${esc(q)}" autocomplete="off"></div>
+    ${L.length?L.map(p=>`<button class="ordc" data-ptopen="${esc(p.id)}"><div class="r1"><b>${esc(p.name)}</b><b style="color:${p.pending>0?"var(--bad)":"#137a3f"}">${p.pending>0?inr(p.pending):"✅ நிலுவை இல்லை"}</b></div>
+      <small>${esc([p.contact,p.phone,p.city].filter(Boolean).join(" · "))}${p.gstin?" · GST "+esc(p.gstin):""}</small>
+      <small>🧾 ${p.invoices} invoice · மொத்தம் ${inr0(p.billed)} · பெற்றது ${inr0(p.paid)}${p.overdue>0?` · <b style="color:var(--bad)">காலம் கடந்தது ${inr0(p.overdue)}</b>`:""}</small></button>`).join("")
+      :`<div class="none"><b>📒</b>${q?"பொருந்தும் retailer இல்லை":"இன்னும் retailer இல்லை"}</div>`}`;
+}
+function openPartyForm(p){
+  p=p||{};
+  $("#sheetBody").innerHTML=`<h2>${p.id?"✏️ Retailer விவரம்":"➕ புதிய Retailer"}</h2><p class="sub">Wholesale-ஆக வாங்கும் கடை / நிறுவனம்</p>
+    <div class="box frm">
+      <label class="fld" id="fPtName">கடை / நிறுவனம் பெயர் *<input id="ptName" maxlength="80" value="${esc(p.name||"")}"><span class="err">பெயர் தேவை</span></label>
+      <label class="fld">தொடர்பு நபர்<input id="ptContact" maxlength="60" value="${esc(p.contact||"")}"></label>
+      <label class="fld" id="fPtPhone">மொபைல் *<input id="ptPhone" inputmode="numeric" maxlength="10" value="${esc(p.phone||"")}"><span class="err">10 இலக்க எண்</span></label>
+      <label class="fld" id="fPtGst">GSTIN (optional)<input id="ptGst" maxlength="15" style="text-transform:uppercase" value="${esc(p.gstin||"")}"><span class="err">15 எழுத்து</span></label>
+      <label class="fld">முகவரி<textarea id="ptAddr" rows="2" maxlength="300">${esc(p.address||"")}</textarea></label>
+      <label class="fld">ஊர்<input id="ptCity" maxlength="40" value="${esc(p.city||"")}"></label>
+      <label class="fld">கடன் நாட்கள் (Credit days)<input id="ptDays" inputmode="numeric" maxlength="3" value="${p.creditDays!=null?p.creditDays:30}"></label></div>
+    <button class="cta leaf" id="ptSave" data-ptid="${esc(p.id||"")}">சேமி</button><button class="cta ghost" data-close>ரத்து</button>`;
+  showSheet();
+}
+async function saveParty(id){
+  const b={id:id||"",name:$("#ptName").value.trim(),contact:$("#ptContact").value.trim(),phone:$("#ptPhone").value.replace(/\D/g,""),gstin:$("#ptGst").value.trim().toUpperCase(),
+    address:$("#ptAddr").value.trim(),city:$("#ptCity").value.trim(),creditDays:parseInt($("#ptDays").value,10)||0};
+  $("#fPtName").classList.toggle("bad",!b.name); $("#fPtPhone").classList.toggle("bad",!/^[6-9]\d{9}$/.test(b.phone)); $("#fPtGst").classList.toggle("bad",!!b.gstin&&!/^[0-9]{2}[A-Z0-9]{13}$/.test(b.gstin));
+  if(!b.name||!/^[6-9]\d{9}$/.test(b.phone)||(b.gstin&&!/^[0-9]{2}[A-Z0-9]{13}$/.test(b.gstin))){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
+  busy(true);
+  try{ const r=await api("parties","POST",b); ptData=null; toast("சேமிக்கப்பட்டது: "+r.party.name);
+    if(invForm&&invForm.pickNew){ invFormParty=r.party.id; invForm=null; await openInvoiceForm(); } else { openParty(r.party.id); if(view()==="parties") loadParties(); } }
+  catch(e){ apiErr(e); } finally{ busy(false); }
+}
+async function openParty(id){
+  busy(true);
+  try{ ptCur=await api("parties/"+encodeURIComponent(id)); }catch(e){ apiErr(e); return; } finally{ busy(false); }
+  const P=ptCur.party, S=ptCur.summary, can=ptCur.canEdit;
+  $("#sheetBody").innerHTML=`<h2>📒 ${esc(P.name)}</h2><p class="sub">${esc([P.contact,P.phone,P.city].filter(Boolean).join(" · "))}${P.gstin?"<br>GSTIN: "+esc(P.gstin):""}<br>கடன் நாட்கள்: ${P.creditDays}</p>
+    <div class="sum"><div><span>Invoices</span><span>${S.invoices}</span></div><div><span>மொத்த invoice தொகை</span><span>${inr(S.billed)}</span></div>
+      <div><span>செலுத்தியது</span><span style="color:#137a3f">${inr(S.paid)}</span></div>
+      <div class="gt" style="color:${S.pending>0?"var(--bad)":"#137a3f"}"><span>நிலுவை (வர வேண்டியது)</span><span>${inr(S.pending)}</span></div>
+      ${S.overdue>0?`<div style="color:var(--bad);font-weight:800"><span>காலம் கடந்தது (Overdue)</span><span>${inr(S.overdue)}</span></div>`:""}</div>
+    ${can&&S.pending>0?`<button class="cta leaf" id="ptPay">💰 பணம் பெற்றது — பதிவு செய்</button>`:""}
+    ${can?`<button class="cta" id="ptInv">🧾 இவருக்கு புதிய Invoice</button>`:""}
+    <a class="cta ghost" href="${esc(waUrl(P.phone,partyStatement(ptCur)))}" target="_blank" rel="noopener">📤 Statement WhatsApp</a>
+    <h3 style="margin:14px 2px 4px">🧾 Invoices</h3>
+    ${ptCur.invoices.length?ptCur.invoices.map((v,i)=>`<button class="ordc" data-ptinv="${i}"><div class="r1"><b>${esc(v.no)}</b><span class="ost ${v.status==="paid"?"delivered":v.status==="partial"?"out":"new"}">${INV_ST[v.status]}${v.overdue?" · காலம் கடந்தது":""}</span></div>
+      <small>${esc(fmtDate(v.at))} · ${v.pieces} pcs${v.due?" · கடைசி தேதி "+esc(v.due):""}</small>
+      <small>தொகை <b>${inr(v.total)}</b> · செலுத்தியது ${inr(v.paid)} · <b style="color:${v.balance>0?"var(--bad)":"#137a3f"}">மீதம் ${inr(v.balance)}</b></small></button>`).join(""):`<p class="hint">Invoice இல்லை</p>`}
+    <h3 style="margin:14px 2px 4px">💰 பெற்ற தொகைகள்</h3>
+    <div class="box">${ptCur.payments.length?ptCur.payments.map(x=>`<div class="r1" style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line)"><span>${esc(x.on)} · ${esc(x.mode)}${x.ref?" · "+esc(x.ref):""}<small style="display:block;color:#777">${x.billNo?esc(x.billNo)+" · ":""}${esc(x.by)}</small></span><b style="color:#137a3f">${inr(x.amount)}</b></div>`).join(""):`<p class="hint" style="margin:0">இன்னும் பணம் பெறவில்லை</p>`}</div>
+    ${can?`<button class="cta ghost" id="ptEdit">✏️ Retailer விவரம் மாற்று</button>`:""}
+    <button class="cta ghost" data-close>மூடு</button>`;
+  showSheet();
+}
+function partyStatement(d){
+  const P=d.party, S=d.summary, L=[`*${company.name}*`,`📒 கணக்கு விவரம் (Statement) — ${P.name}`,fmtDate(new Date().toISOString()),""];
+  d.invoices.slice().reverse().forEach(v=>L.push(`${v.no} · ${String(v.at).slice(0,10)} · ${inr(v.total)} · செலுத்தியது ${inr(v.paid)} · மீதம் ${inr(v.balance)}${v.overdue?" ⚠️":""}`));
+  L.push("",`மொத்த invoice: ${inr(S.billed)}`,`செலுத்தியது: ${inr(S.paid)}`,`*நிலுவை: ${inr(S.pending)}*`);
+  if(S.overdue>0) L.push(`காலம் கடந்தது: ${inr(S.overdue)}`);
+  L.push("","நன்றி ❤️"); return L.join("\n");
+}
+function openPayForm(billIdx){
+  const P=ptCur.party, v=billIdx!=null?ptCur.invoices[billIdx]:null, max=v?v.balance:ptCur.summary.pending;
+  $("#sheetBody").innerHTML=`<h2>💰 பணம் பெற்றது</h2><p class="sub">${esc(P.name)}${v?" · "+esc(v.no):" · பழைய invoice-களிலிருந்து முதலில் கழிக்கப்படும்"}<br>நிலுவை: <b>${inr(max)}</b></p>
+    <div class="box frm"><label class="fld" id="fPpAmt">தொகை ₹ *<input id="ppAmt" inputmode="decimal" value="${max}"><span class="err">0 – ${max}</span></label>
+      <label class="fld">தேதி<input type="date" id="ppDate" value="${todayIso()}" max="${todayIso()}"></label>
+      <div class="chips" style="flex-wrap:wrap">${["Cash","UPI","Bank (NEFT)","Cheque"].map((m,i)=>`<button type="button" data-ppmode="${m}" class="${i===0?"on":""}">${m}</button>`).join("")}</div>
+      <label class="fld">Reference (UPI ref / Cheque no.)<input id="ppRef" maxlength="60" autocomplete="off"></label></div>
+    <button class="cta leaf" id="ppSave" data-ppbill="${v?v.id:""}">சேமி</button><button class="cta ghost" id="ppBack">← திரும்பு</button>`;
+  showSheet();
+}
+async function savePayment(billId){
+  const amt=Number($("#ppAmt").value), mode=(document.querySelector("[data-ppmode].on")||{}).dataset.ppmode||"Cash";
+  if(!(amt>0)){ $("#fPpAmt").classList.add("bad"); toast("தொகை தவறு"); return; }
+  busy(true);
+  try{ ptCur=await api("parties/"+encodeURIComponent(ptCur.party.id)+"/payments","POST",{amount:amt,date:$("#ppDate").value,mode,ref:$("#ppRef").value.trim(),billId:billId||undefined});
+    toast(inr(amt)+" பதிவானது"); ptData=null; openParty(ptCur.party.id); if(view()==="parties") loadParties(); }
+  catch(e){ apiErr(e); } finally{ busy(false); }
+}
+function openInvoiceView(i){
+  const v=ptCur.invoices[i], P=ptCur.party;
+  $("#sheetBody").innerHTML=`<h2>🧾 ${esc(v.no)} <span class="ost ${v.status==="paid"?"delivered":v.status==="partial"?"out":"new"}">${INV_ST[v.status]}</span></h2>
+    <p class="sub">${esc(P.name)} · ${esc(fmtDate(v.at))}${v.due?" · கடைசி தேதி "+esc(v.due):""} · ${esc(v.by)}</p>
+    <div class="box">${v.lines.map(l=>`<div class="bl"><div class="r1"><div class="nm">${esc(l.name)}<small>${esc(l.en||"")}</small></div><div class="amt">${inr(l.amt)}</div></div><div class="r2"><span>Size: <b>${esc(l.size||"-")}</b> | ${l.qty} × ${inr(l.rate)}</span></div></div>`).join("")}</div>
+    <div class="sum"><div><span>Taxable</span><span>${inr(v.taxable)}</span></div>${v.gst>0?`<div><span>GST ${v.gstPct}% (CGST ${v.gstPct/2}% + SGST ${v.gstPct/2}%)</span><span>${inr(v.gst)}</span></div>`:""}
+      <div class="gt"><span>Invoice தொகை</span><span>${inr(v.total)}</span></div><div><span>செலுத்தியது</span><span style="color:#137a3f">${inr(v.paid)}</span></div>
+      <div style="font-weight:800;color:${v.balance>0?"var(--bad)":"#137a3f"}"><span>மீதம்</span><span>${inr(v.balance)}</span></div></div>
+    ${ptCur.canEdit&&v.balance>0?`<button class="cta leaf" data-ppfor="${i}">💰 இந்த invoice-க்கு பணம் பெற்றது</button>`:""}
+    <button class="cta" data-invprint="${i}">🖨 Invoice Print / PDF</button>
+    ${ptCur.canEdit?`<button class="cta ghost" data-cfbno="${esc(v.no)}" style="color:var(--bad);border-color:#f3c4c4">✖ இந்த Invoice-ல் ரத்து (Return / Credit note)</button>`:""}
+    <a class="cta ghost" href="${esc(waUrl(P.phone,invoiceText(v,P)))}" target="_blank" rel="noopener">📤 WhatsApp</a>
+    <button class="cta ghost" id="ppBack">← ${esc(P.name)}</button>`;
+  showSheet();
+}
+function invoiceText(v,P){
+  const c=company, L=[`*${c.name}*`,[c.address,c.city].filter(Boolean).join(", "),c.gstin?"GSTIN: "+c.gstin:"","",`*TAX INVOICE ${v.no}*`,fmtDate(v.at),`To: ${P.name}${P.gstin?" (GSTIN "+P.gstin+")":""}`,""];
+  v.lines.forEach((l,i)=>L.push(`${i+1}. ${l.name}${l.size?" ("+l.size+")":""} — ${l.qty} × ${inr(l.rate)} = ${inr(l.amt)}`));
+  L.push("",`Taxable: ${inr(v.taxable)}`); if(v.gst>0) L.push(`GST ${v.gstPct}%: ${inr(v.gst)}`);
+  L.push(`*மொத்தம்: ${inr(v.total)}*`,`செலுத்தியது: ${inr(v.paid)}`,`*மீதம்: ${inr(v.balance)}*`); if(v.due) L.push(`கடைசி தேதி: ${v.due}`);
+  L.push("","நன்றி ❤️"); return L.filter((x,i)=>x!==""||i>0).join("\n");
+}
+function printInvoice(i){
+  const v=ptCur.invoices[i], P=ptCur.party, c=company, w=window.open("","_blank"); if(!w){ toast("Popup அனுமதி தேவை"); return; }
+  const half=v.gstPct/2, cg=Math.round(v.gst*50)/100;
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(v.no)}</title><style>
+    body{font-family:Arial,"Noto Sans Tamil",sans-serif;color:#111;margin:24px;font-size:13px}h1{margin:0;font-size:22px}table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{border:1px solid #999;padding:6px;text-align:left}th{background:#eef5f1}td.r,th.r{text-align:right}.hd{display:flex;justify-content:space-between;gap:20px}.box{border:1px solid #999;padding:8px;margin-top:10px}
+    .tot td{font-weight:bold}.ttl{text-align:center;font-size:16px;font-weight:bold;margin:12px 0 0;letter-spacing:1px}@media print{body{margin:10mm}}</style></head><body>
+    <div class="hd"><div><h1>${esc(c.name)}</h1><div>${esc([c.address,c.city].filter(Boolean).join(", "))}</div><div>📞 ${esc(c.phone||"")}${c.gstin?" · GSTIN: "+esc(c.gstin):""}</div></div>
+      <div style="text-align:right"><b>Invoice No:</b> ${esc(v.no)}<br><b>Date:</b> ${esc(String(v.at).slice(0,10))}${v.due?`<br><b>Due:</b> ${esc(v.due)}`:""}</div></div>
+    <div class="ttl">TAX INVOICE</div>
+    <div class="box"><b>Bill To:</b> ${esc(P.name)}${P.contact?" ("+esc(P.contact)+")":""}<br>${esc([P.address,P.city].filter(Boolean).join(", "))}<br>📞 ${esc(P.phone)}${P.gstin?" · GSTIN: "+esc(P.gstin):""}</div>
+    <table><tr><th>#</th><th>Item</th><th>Size</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr>
+    ${v.lines.map((l,k)=>`<tr><td>${k+1}</td><td>${esc(l.name)}${l.en?" / "+esc(l.en):""}</td><td>${esc(l.size||"")}</td><td class="r">${l.qty}</td><td class="r">${l.rate.toFixed(2)}</td><td class="r">${l.amt.toFixed(2)}</td></tr>`).join("")}
+    <tr class="tot"><td colspan="5" class="r">Taxable value</td><td class="r">${v.taxable.toFixed(2)}</td></tr>
+    ${v.gst>0?`<tr><td colspan="5" class="r">CGST ${half}%</td><td class="r">${cg.toFixed(2)}</td></tr><tr><td colspan="5" class="r">SGST ${half}%</td><td class="r">${(v.gst-cg).toFixed(2)}</td></tr>`:""}
+    <tr class="tot"><td colspan="5" class="r">Invoice total</td><td class="r">₹ ${v.total.toFixed(2)}</td></tr>
+    <tr><td colspan="5" class="r">Paid</td><td class="r">${v.paid.toFixed(2)}</td></tr><tr class="tot"><td colspan="5" class="r">Balance due</td><td class="r">₹ ${v.balance.toFixed(2)}</td></tr></table>
+    ${v.notes?`<p>Note: ${esc(v.notes)}</p>`:""}<p style="margin-top:40px;text-align:right">For ${esc(c.name)}<br><br>Authorised signatory</p>
+    <p style="color:#777;font-size:11px">Generated by ${esc(APP_NAME)}</p><script>setTimeout(()=>print(),300)<\/script></body></html>`);
+  w.document.close();
+}
+/* new invoice from the cart */
+async function openInvoiceForm(){
+  const L=lines(); if(!L.length){ toast("Invoice-க்கு ஐட்டங்களை Cart-ல் சேர்க்கவும்"); return; }
+  if(!ptData||ptData.co!==company.id){ busy(true); try{ const r=await api("parties"); r.co=company.id; ptData=r; }catch(e){ apiErr(e); return; } finally{ busy(false); } }
+  const P=ptData.parties, canR=ptData.canRate;
+  invForm=invForm||{gst:5,rates:{},paid:"",mode:"Cash"};
+  const pid=invFormParty||(P[0]&&P[0].id)||"", party=P.find(x=>x.id===pid);
+  $("#sheetBody").innerHTML=`<h2>📒 Wholesale Invoice</h2><p class="sub">${esc(company.name)} → Retailer · கடனுக்கு / GST உடன் · ஸ்டாக் குறையும்</p>
+    <div class="box frm"><label class="fld" id="fIfParty">Retailer *<select id="ifParty"><option value="">— தேர்வு செய்யவும் —</option>${P.map(x=>`<option value="${esc(x.id)}"${x.id===pid?" selected":""}>${esc(x.name)}${x.pending>0?" · நிலுவை "+inr0(x.pending):""}</option>`).join("")}<option value="__new">➕ புதிய Retailer…</option></select></label>
+      ${party&&party.pending>0?`<p class="hint" style="color:var(--bad)">⚠️ ஏற்கனவே நிலுவை ${inr(party.pending)}${party.overdue>0?" (காலம் கடந்தது "+inr(party.overdue)+")":""}</p>`:""}</div>
+    <div class="box">${L.map(l=>`<div class="bl"><div class="r1"><div class="nm">${esc(l.it.ta)}<small>Size: ${esc(l.size||"-")} · ${l.qty} pcs</small></div>
+      ${canR?`<div style="display:flex;align-items:center;gap:4px">₹<input class="bci" style="width:86px;text-align:right" data-ifrate="${esc(l.k)}" inputmode="decimal" value="${invForm.rates[l.k]!=null?invForm.rates[l.k]:lwRate(l)}"></div>`:`<div class="amt">${inr(money(lwRate(l)*l.qty))}<small style="display:block;font-weight:600;color:#777;font-size:11px">${l.qty} × ${inr(lwRate(l))}</small></div>`}</div>
+      <div class="r2"><span>Retail ${inr(l.rate)} · <b>Wholesale ${inr(lwRate(l))}</b></span></div></div>`).join("")}
+      <p class="hint">Wholesale விலை தானாக வரும்${canR?" · இந்த invoice-க்கு மட்டும் மாற்றலாம்":""}</p></div>
+    <div class="box frm"><div class="fld">GST %<div class="chips" style="flex-wrap:wrap">${[0,5,12,18].map(g=>`<button type="button" data-ifgst="${g}" class="${invForm.gst===g?"on":""}">${g}%</button>`).join("")}</div></div>
+      <label class="fld">கடன் நாட்கள் (Due)<input id="ifDays" inputmode="numeric" maxlength="3" value="${party?party.creditDays:30}"></label>
+      <label class="fld">இப்போது பெற்ற தொகை ₹ (optional)<input id="ifPaid" inputmode="decimal" value="${esc(invForm.paid)}" placeholder="0"></label>
+      <div class="chips">${["Cash","UPI","Bank (NEFT)","Cheque"].map(m=>`<button type="button" data-ifmode="${m}" class="${invForm.mode===m?"on":""}">${m}</button>`).join("")}</div>
+      <label class="fld">குறிப்பு<input id="ifNotes" maxlength="300" placeholder="எ.கா. Transport: KPN · LR 1234"></label></div>
+    <div class="sum" id="ifSum"></div>
+    <button class="cta leaf" id="ifSave">📒 Invoice சேமி</button><button class="cta ghost" id="backToBill">← பில்லுக்கு திரும்பு</button>`;
+  showSheet(); ifTotals();
+}
+const lwRate=l=>l.it.custom?l.rate:wrateOf(l.it.id,l.size);   // wholesale price of a cart line
+function ifRates(){ document.querySelectorAll("[data-ifrate]").forEach(i=>{ invForm.rates[i.dataset.ifrate]=i.value; }); }
+function ifTotals(){
+  if(!invForm) return; ifRates();
+  let tx=0; lines().forEach(l=>{ const r=invForm.rates[l.k]!=null?Number(invForm.rates[l.k]):lwRate(l); tx+=money((isFinite(r)?r:0)*l.qty); });
+  const g=money(tx*invForm.gst/100), t=money(tx+g), pd=Number(($("#ifPaid")||{}).value)||0;
+  const el=$("#ifSum"); if(el) el.innerHTML=`<div><span>Taxable</span><span>${inr(tx)}</span></div>${g>0?`<div><span>GST ${invForm.gst}%</span><span>${inr(g)}</span></div>`:""}<div class="gt"><span>Invoice தொகை</span><span>${inr(t)}</span></div>${pd>0?`<div><span>இப்போது பெற்றது</span><span>${inr(pd)}</span></div><div style="font-weight:800;color:var(--bad)"><span>கடன் (மீதம்)</span><span>${inr(money(t-pd))}</span></div>`:`<div style="font-weight:800;color:var(--bad)"><span>முழுவதும் கடன்</span><span>${inr(t)}</span></div>`}`;
+}
+async function saveInvoice(){
+  ifRates();
+  const pid=$("#ifParty").value; $("#fIfParty").classList.toggle("bad",!pid||pid==="__new"); if(!pid||pid==="__new"){ toast("Retailer-ஐ தேர்வு செய்யவும்"); return; }
+  const L=lines(), body={partyId:pid,gstPct:invForm.gst,dueDays:parseInt($("#ifDays").value,10)||0,notes:$("#ifNotes").value.trim(),
+    paid:{amount:Number($("#ifPaid").value)||0,mode:invForm.mode},
+    lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:invForm.rates[l.k]!=null?Number(invForm.rates[l.k]):lwRate(l)}))};
+  if(body.lines.some(x=>!(x.rate>0))){ toast("ரேட் தவறு"); return; }
+  const btn=$("#ifSave"); btn.disabled=true; busy(true);
+  try{ ptCur=await api("sales-invoices","POST",body); }catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; } finally{ busy(false); }
+  cart={}; customs={}; save(); renderAll(); invForm=null; invFormParty=""; ptData=null; stockData=null; srData=null; repData=null;
+  const i=ptCur.invoices.findIndex(v=>v.id===ptCur.invoiceId); toast("Invoice "+ptCur.invoices[i].no+" சேமிக்கப்பட்டது");
+  openInvoiceView(i);
 }
 async function openCancels(){
   $("#sheetBody").innerHTML=`<h2>✖ ரத்து பில் வரலாறு</h2><div class="box"><p class="sub">ஏற்றுகிறது…</p></div>`; showSheet();
@@ -1526,7 +1777,8 @@ function marginHint(el,rate,cost){
   el.className="mg "+(m>=0?"up":"dn"); el.textContent=`லாபம் ${inr(m)} · ${pc}%`;
 }
 function keepIVals(){ document.querySelectorAll("[data-isz]").forEach(i=>{ iForm.vals[i.dataset.isz]=i.value; }); iForm.codes=iForm.codes||{}; document.querySelectorAll("[data-icode]").forEach(i=>{ iForm.codes[i.dataset.icode]=i.value; });
-  iForm.costs=iForm.costs||{}; document.querySelectorAll("[data-icost]").forEach(i=>{ iForm.costs[i.dataset.icost]=i.value; }); }
+  iForm.costs=iForm.costs||{}; document.querySelectorAll("[data-icost]").forEach(i=>{ iForm.costs[i.dataset.icost]=i.value; });
+  iForm.wr=iForm.wr||{}; document.querySelectorAll("[data-iw]").forEach(i=>{ iForm.wr[i.dataset.iw]=i.value; }); }
 function newCostHint(i){ const c=$("#icost"+i), r=$("[data-iri='"+i+"']"); if(c&&r) marginHint($("#icm"+i),money(numIn(r.value)),parseCost(c.value)); }
 function renderIRows(){
   const list=curISizes();
@@ -1535,11 +1787,13 @@ function renderIRows(){
     : `<p class="hint">மேலே சைஸ்களை எழுதவும்</p>`;
   if(list.length) $("#iRows").innerHTML = list.map((sz,i)=>`<div class="rrow hasbc"><span class="szb">${esc(sz)}</span>
       <label class="fld" id="if${i}"><input data-isz="${esc(sz)}" data-iri="${i}" inputmode="decimal" autocomplete="off" placeholder="₹" aria-label="Rate for size ${esc(sz)}"><span class="err">சரியான ரேட்</span></label></div>
+    <div class="bcrow"><span class="bcl">Wholesale ₹</span><input class="bci" id="iw${i}" data-iw="${esc(sz)}" inputmode="decimal" autocomplete="off" placeholder="காலி = Retail ரேட்" aria-label="Wholesale price for size ${esc(sz)}"></div>
     ${canSeeCost()?`<div class="bcrow"><span class="bcl">அடக்கம் ₹</span><input class="bci cst" id="icost${i}" data-icost="${esc(sz)}" data-cri="${i}" inputmode="decimal" autocomplete="off" placeholder="optional" aria-label="Cost for size ${esc(sz)}"><span class="mg" id="icm${i}"></span></div>`:""}
     <div class="bcrow"><span class="bcl">Barcode</span><input class="bci" id="ic${i}" data-icode="${esc(sz)}" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="optional" aria-label="Barcode for size ${esc(sz)}"><button type="button" class="scbtn2" data-scanfill="ic${i}" aria-label="Scan barcode for size ${esc(sz)}">📷</button></div>`).join("");
   iForm.codes=iForm.codes||{}; iForm.costs=iForm.costs||{};
   document.querySelectorAll("[data-isz]").forEach(i=>{ const v=iForm.vals[i.dataset.isz]; if(v!==undefined) i.value=v; });
   document.querySelectorAll("[data-icost]").forEach(i=>{ const v=iForm.costs[i.dataset.icost]; if(v!==undefined) i.value=v; });
+  iForm.wr=iForm.wr||{}; document.querySelectorAll("[data-iw]").forEach(i=>{ const v=iForm.wr[i.dataset.iw]; if(v!==undefined) i.value=v; });
   list.forEach((sz,i)=>newCostHint(i));
   document.querySelectorAll("[data-icode]").forEach(i=>{ const v=iForm.codes[i.dataset.icode]; if(v!==undefined) i.value=v; });
 }
@@ -1552,7 +1806,8 @@ async function saveItem(){
   document.querySelectorAll("[data-isz]").forEach((inp,i)=>{
     const v=money(numIn(inp.value)), good=isFinite(v)&&v>0&&v<=999999;
     const cost=parseCost(($("#icost"+i)||{}).value), cbad=Number.isNaN(cost); if($("#icost"+i)) $("#icost"+i).style.borderColor=cbad?"var(--bad)":"";
-    $("#if"+i).classList.toggle("bad",!good); if(!good||cbad) ok=false; else { const code=cleanCode(($("#ic"+i)||{}).value); const z={size:inp.dataset.isz,rate:v}; if(code) z.code=code; if(cost!=null) z.cost=cost; sizes.push(z); }
+    const wraw=(($("#iw"+i)||{}).value||"").trim(), w=wraw===""?null:money(numIn(wraw)), wbad=w!=null&&!(isFinite(w)&&w>0&&w<=999999); if($("#iw"+i)) $("#iw"+i).style.borderColor=wbad?"var(--bad)":"";
+    $("#if"+i).classList.toggle("bad",!good); if(!good||cbad||wbad) ok=false; else { const code=cleanCode(($("#ic"+i)||{}).value); const z={size:inp.dataset.isz,rate:v}; if(code) z.code=code; if(cost!=null) z.cost=cost; if(w!=null&&w!==v) z.wrate=w; sizes.push(z); }
   });
   if(!ok){ toast("பெயர், சைஸ், ரேட், அடக்க விலையை சரி பார்க்கவும்"); return; }
   const clash=codeClash(sizes,null); if(clash){ toast(clash); return; }
@@ -1581,10 +1836,11 @@ function openItemEdit(id){
     <div class="box"><h3>📷 ஐட்டம் படம் (Online shop-ல் தெரியும்)</h3><div class="phbox"><div class="pv" id="phPrev">${it.photo?`<img src="${esc(photoSrc(it))}" alt="">`:esc(it.emoji)}</div>
       <div class="b"><label class="cta leaf" style="margin:0;text-align:center;cursor:pointer">📷 படம் எடு / தேர்வு செய்<input type="file" id="phFile" accept="image/*" hidden></label>
       ${it.photo?`<button class="cta ghost" id="phDel" style="margin:0">🗑 படத்தை நீக்கு</button>`:""}</div></div></div>
-    <div class="box"><h3>ரேட் (Rate)${canRate()?"":` <small style="font-weight:600;color:var(--muted)">🔒 Sales user ரேட் மாற்ற முடியாது</small>`}</h3>${it.sizes.map((z,i)=>`
+    <div class="box"><h3>ரேட் — Retail & Wholesale விலை${canRate()?"":` <small style="font-weight:600;color:var(--muted)">🔒 Sales user ரேட் மாற்ற முடியாது</small>`}</h3>${it.sizes.map((z,i)=>`
       <div class="rrow hasbc"><span class="szb">${esc(z.size)}</span>
         <label class="fld" id="rf${i}"><input id="r${i}" data-ri="${i}" inputmode="decimal" autocomplete="off" value="${z.rate}" aria-label="Rate for size ${esc(z.size)}"${canRate()?"":` readonly style="background:#f1f1f1;color:#666"`}>
           <span class="def" id="rd${i}"></span><span class="err">சரியான ரேட்டை உள்ளிடவும்</span></label></div>
+      <div class="bcrow"><span class="bcl">Wholesale ₹</span><input class="bci" id="ew${i}" inputmode="decimal" autocomplete="off" placeholder="காலி = Retail ரேட்" value="${z.wrate==null?"":z.wrate}"${canRate()?"":` readonly style="background:#f1f1f1;color:#666"`} aria-label="Wholesale price for size ${esc(z.size)}"></div>
       ${canSeeCost()?`<div class="bcrow"><span class="bcl">அடக்கம் ₹</span><input class="bci cst" id="ec${i}" data-eci="${i}" inputmode="decimal" autocomplete="off" placeholder="optional" value="${z.cost==null?"":z.cost}" aria-label="Cost for size ${esc(z.size)}"><span class="mg" id="ecm${i}"></span></div>`:""}
       <div class="bcrow"><span class="bcl">Barcode</span><input class="bci" id="bc${i}" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="optional" value="${esc(z.code||"")}" aria-label="Barcode for size ${esc(z.size)}"><button type="button" class="scbtn2" data-scanfill="bc${i}" aria-label="Scan barcode for size ${esc(z.size)}">📷</button></div>`).join("")}
     </div>
@@ -1600,8 +1856,9 @@ function openItemEdit(id){
 }
 async function saveItemEdit(){
   const it=byId[editItem]; if(!it) return;
-  let ok=true; const vals={}, codes={}, costs={};
+  let ok=true; const vals={}, codes={}, costs={}, wrs={};
   it.sizes.forEach((z,i)=>{
+    if($("#ew"+i)){ const raw=$("#ew"+i).value.trim(), w=raw===""?null:money(numIn(raw)); if(w!=null&&!(isFinite(w)&&w>0&&w<=999999)){ ok=false; $("#ew"+i).style.borderColor="var(--bad)"; } else { wrs[z.size]=w; $("#ew"+i).style.borderColor=""; } }
     if($("#ec"+i)){ const cost=parseCost($("#ec"+i).value); if(Number.isNaN(cost)){ ok=false; $("#ec"+i).style.borderColor="var(--bad)"; } else { costs[z.size]=cost; $("#ec"+i).style.borderColor=""; } }
     const v=money(numIn($("#r"+i).value)), good=isFinite(v)&&v>0&&v<=999999;
     $("#rf"+i).classList.toggle("bad",!good); if(!good) ok=false; else vals[z.size]=v;
@@ -1616,6 +1873,7 @@ async function saveItemEdit(){
     const x=d.items.find(i=>i.id===id); if(!x) return false;
     x.ta=ta; x.en=en; if(d.cats.some(c=>c.id===cat)) x.cat=cat;
     x.sizes=x.sizes.map(z=>{ const n={size:z.size,rate:vals[z.size]!==undefined?vals[z.size]:z.rate}, c=codes[z.size]!==undefined?codes[z.size]:(z.code||"");
+      const wv=wrs[z.size]!==undefined?wrs[z.size]:(z.wrate==null?null:z.wrate); if(wv!=null&&wv!==n.rate) n.wrate=wv;
       const k=costs[z.size]!==undefined?costs[z.size]:(z.cost==null?null:z.cost); if(c) n.code=c; if(k!=null) n.cost=k; return n; });
   },"சேமிக்கப்பட்டது: "+ta);
   if(!done) return;
@@ -1640,10 +1898,12 @@ function openMenu(){
   $("#sheetBody").innerHTML=`<h2>${esc(me.name)}</h2>
     <p class="sub">@${esc(me.user)} · ${TYPE_LABEL[me.type]||esc(me.type)}${company?" · "+esc(company.name):""}${myBranch?" · 🏬 "+esc(myBranch):""}</p>
     ${company&&!isOwner()&&!isWh()?`<button class="mrow" id="mBills">🧾 பில் வரலாறு (Bills)</button><button class="mrow" id="mPending">⏳ Pending பில்கள் (${pendCount})</button>`:""}
-    ${company&&!isWh()?`<button class="mrow" id="mOrders">🛒 Online ஆர்டர்கள்${ordNew?` (🆕 ${ordNew})`:""}</button><button class="mrow" id="mShop">🔗 Online shop link</button>`:""}
+    ${company&&(isAdmin()||isOwner()||isStock()||isWh())?`<button class="mrow" id="mMoney">💳 பணம் அறிக்கை — வர வேண்டியது / செலுத்த வேண்டியது</button>`:""}
+    ${company&&!isSales()?`<button class="mrow" id="mParties">📒 Wholesale — Retailers / Invoices / நிலுவை</button>`:""}
+    ${company&&!isWh()?`<button class="mrow" id="mOrders">🛒 ஆர்டர்கள் (Online + கடை)${ordNew?` (🆕 ${ordNew})`:""}</button><button class="mrow" id="mShop">🔗 Online shop link</button>`:""}
     ${company&&!isWh()&&!isOwner()?`<button class="mrow" id="openCfb">✖ பில் ரத்து — மொபைல் எண் மூலம்</button>`:""}
     ${company&&!isWh()?`<button class="mrow" id="mCancels">✖ ரத்து பில் வரலாறு (Cancel bills)</button>`:""}
-    ${company&&!isWh()?`<button class="mrow" id="mReport">📊 விற்பனை அறிக்கை (Report)</button>`:""}
+    ${company&&!isWh()&&!isSales()?`<button class="mrow" id="mReport">📊 விற்பனை அறிக்கை (Report)</button>`:""}
     ${canEdit()&&catalog.setup?`<button class="mrow" id="mLabels">🏷 Barcode Labels Print</button>`:""}
     ${canStock()&&catalog.setup?`<button class="mrow" id="mStock">${isWh()?"🏭 Warehouse ஸ்டாக்":"📦 ஸ்டாக் (Stock)"}</button>`:""}
     ${company&&(isOwner()||isAdmin()||isStock()||isWh())?`<button class="mrow" id="mStockRep">📋 ஸ்டாக் அறிக்கை (Stock report)</button><button class="mrow" id="mPo">📥 Purchase Orders</button><button class="mrow" id="mTr">🚚 Stock Transfers (Warehouse → கிளை)</button>`:""}
@@ -1792,6 +2052,7 @@ function openUserForm(id,draft){
     <button class="cta leaf" id="userSave">${u?"சேமி":"User-ஐ உருவாக்கு"}</button>
     <button class="cta ghost" id="userCancel">ரத்து (Cancel)</button>`;
   if(u){ $("#uName").value=u.name; $("#uUser").value=u.user; $("#uActive").checked=!!u.active; }
+  else $("#uPass").value=DEFAULT_PW;              // new users get the default password (demo phase); change it here if needed
   if(draft){ if(draft.name!==undefined) $("#uName").value=draft.name; if(draft.user!==undefined) $("#uUser").value=draft.user; if(draft.password) $("#uPass").value=draft.password; if($("#uActive")&&draft.active!==undefined) $("#uActive").checked=draft.active; }
   syncUType(); showSheet();
 }
@@ -1880,7 +2141,7 @@ async function doLogin(e){
     const r=await api("login","POST",{user:u,pass:p,remember:$("#lRem").checked});
     setToken(r.token,$("#lRem").checked); $("#lPass").value="";
     await enter(r);
-    toast("வணக்கம், "+me.name+(company?" · "+company.name:""));
+    toast("அந்த ஏக இறைவனின் சாந்தியும் சமாதானமும் உண்டாவதாக · "+me.name+(company?" · "+company.name:""));
   }catch(err){ lerr(err.message); $("#lPass").value=""; $("#lPass").focus(); }
   finally{ $("#lBtn").disabled=false; busy(false); }
 }
@@ -2262,6 +2523,10 @@ function renderWh(){
     <button class="admin" id="openPo" style="margin-top:10px"><span class="pl" aria-hidden="true">📥</span><div><b>Purchase Orders — சரக்கு வரவு</b><small>Supplier-க்கு ஆர்டர் · வந்த சரக்கை எண்ணி சரிபார்த்து பெறு → warehouse ஸ்டாக்கில் சேரும்</small></div></button>
     <button class="admin" id="trNew" style="margin-top:10px"><span class="pl" aria-hidden="true">🚚</span><div><b>கிளைக்கு சரக்கு அனுப்பு (New transfer)</b><small>Warehouse ஸ்டாக் குறையும் · கிளை பெற்றதும் அதன் ஸ்டாக்கில் சேரும்</small></div></button>
     <button class="admin" id="openTr" style="margin-top:10px"><span class="pl" aria-hidden="true">📋</span><div><b>Transfers பட்டியல்</b><small>வழியில் / பெறப்பட்டது / குறைவு வந்தது</small></div></button>
+    <button class="admin" id="mParties" style="margin-top:10px"><span class="pl" aria-hidden="true">📒</span><div><b>Wholesale — Retailer விற்பனை</b><small>Warehouse ஸ்டாக்கிலிருந்து கடைகளுக்கு GST Invoice · நிலுவை · பணம் வரவு</small></div></button>
+    ${catalog.setup&&CATS.length?`<h2 class="h2">📒 Retailer-க்கு விற்க — பிரிவு தேர்வு</h2><div class="whcats">${CATS.map(c=>`<button class="whcat" data-whcat="${esc(c[0])}" style="background:${esc(c[4])}"><span>${esc(c[3])}</span><b>${esc(c[1])}</b></button>`).join("")}</div>
+    ${lines().length?`<button class="cta" id="openWInv" style="margin-top:10px">📒 Cart (${lines().length}) → Retailer Invoice</button>`:""}`:""}
+    <button class="admin" id="openMoney" style="margin-top:10px"><span class="pl" aria-hidden="true">💳</span><div><b>பணம் அறிக்கை</b><small>Supplier-க்கு கொடுக்க வேண்டியது · Retailer-களிடம் வர வேண்டியது</small></div></button>
     <button class="admin" id="openLabels" style="margin-top:10px"><span class="pl" aria-hidden="true">🏷</span><div><b>Barcode Labels Print</b><small>வந்த சரக்கில் ஒட்ட sticker · PO / Transfer-லிருந்தும் அச்சிடலாம்</small></div></button>
     <button class="admin" id="whStock" style="margin-top:10px"><span class="pl" aria-hidden="true">📦</span><div><b>Warehouse ஸ்டாக்</b><small>ஐட்டம் / சைஸ் வாரியாக · மாற்றலாம்</small></div></button>
     <button class="admin" id="openStockRep" style="margin-top:10px"><span class="pl" aria-hidden="true">📊</span><div><b>எல்லா கிளை ஸ்டாக் அறிக்கை</b><small>எந்த கிளைக்கு எது தேவை என்று பார்த்து அனுப்ப</small></div></button>
@@ -2580,7 +2845,7 @@ function barcodeSvg(code){
   return `<svg viewBox="0 0 ${W} 40" preserveAspectRatio="none" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><path d="${path}" fill="#000"/></svg>`;
 }
 
-/* ================= SOFTWARE INVOICES (Bhai Mobile Billing -> company) ================= */
+/* ================= SOFTWARE INVOICES (MBill -> company) ================= */
 let invData=null, invLoading=false, invCo="", invMonth="", invCur=null;
 const ymNow=()=>{ const d=new Date(Date.now()+330*60000); return d.toISOString().slice(0,7); };   // India month
 const ymPrev=()=>{ const [y,m]=ymNow().split("-").map(Number); const d=new Date(Date.UTC(y,m-2,1)); return d.toISOString().slice(0,7); };
@@ -2724,9 +2989,10 @@ function renderOrders(){
   const L=ordData.orders||[];
   return `${ownTabs("orders")}
     <div class="st-flt" style="margin-top:10px">${[["open","நடப்பில் உள்ளவை"],["done","முடிந்தவை"],["all","எல்லாம்"]].map(f=>`<button data-ordflt="${f[0]}" class="${ordFlt===f[0]?"on":""}">${f[1]}</button>`).join("")}</div>
+    ${!isOwner()&&!isAdmin()?`<p class="hint" style="margin:8px 2px 0">📝 போன் / WhatsApp ஆர்டர்: ஐட்டங்களை Cart-ல் சேர்த்து → View bill → "ஆர்டராக எடு"</p>`:""}
     <button class="admin" id="mShop" style="margin-top:6px"><span class="pl" aria-hidden="true">🔗</span><div><b>Online shop link</b><small>வாடிக்கையாளருக்கு அனுப்ப · ஒவ்வொரு பில்லின் WhatsApp-லும் தானாக சேரும்</small></div></button>
     ${L.length?L.map(o=>`<button class="ordc" data-ordopen="${o.id}"><div class="r1"><b>${esc(o.no)} · ${esc(o.name)}</b><span class="ost ${esc(o.status)}">${OST[o.status]||esc(o.status)}</span></div>
-      <small>${esc(fmtDate(o.at))} · ${o.pieces} pcs · <b>${inr(o.total)}</b> · ${o.mode==="pickup"?"🏬 பிக்அப்":"🚚 டெலிவரி"}${o.branch?" · "+esc(o.branch):""}</small>
+      <small>${o.source==="staff"?`📝 ${esc(o.takenBy)} எடுத்தது · `:"🌐 Online · "}${esc(fmtDate(o.at))} · ${o.pieces} pcs · <b>${inr(o.total)}</b> · ${o.mode==="pickup"?"🏬 பிக்அப்":"🚚 டெலிவரி"}${o.branch?" · "+esc(o.branch):""}</small>
       <small>${(o.lines||[]).map(l=>`${esc(l.name)} (${esc(l.size)}) × ${l.qty}`).join(" · ")}</small></button>`).join("")
       :`<div class="none"><b>🛒</b>${ordFlt==="open"?"நடப்பில் ஆர்டர் இல்லை":"ஆர்டர் இல்லை"}</div>`}`;
 }
@@ -2735,7 +3001,7 @@ function openOrder(id){
   const can=ordData.canAct, done=o.status==="delivered"||o.status==="cancelled";
   const statusUrl=company.shopCode?location.origin+location.pathname.replace(/[^/]*$/,"")+"shop.html?s="+encodeURIComponent(company.shopCode)+"&o="+o.token:"";
   $("#sheetBody").innerHTML=`<h2>🛒 ${esc(o.no)} <span class="ost ${esc(o.status)}">${OST[o.status]||""}</span></h2>
-    <p class="sub">${esc(fmtDate(o.at))}${o.handledBy?" · 👤 "+esc(o.handledBy):""}${o.billNo?" · 🧾 "+esc(o.billNo):""}</p>
+    <p class="sub">${o.source==="staff"?`📝 ${esc(o.takenBy)} எடுத்த ஆர்டர் · `:"🌐 Online ஆர்டர் · "}${esc(fmtDate(o.at))}${o.handledBy?" · 👤 "+esc(o.handledBy):""}${o.billNo?" · 🧾 "+esc(o.billNo):""}</p>
     <div class="box"><dl class="dl"><dt>பெயர்</dt><dd>${esc(o.name)}</dd><dt>மொபைல்</dt><dd><a href="tel:+${COUNTRY_CODE}${esc(o.phone)}">${esc(o.phone)}</a></dd>
       <dt>முறை</dt><dd>${o.mode==="pickup"?"🏬 கடையில் பெறுவார்":"🚚 டோர் டெலிவரி"}</dd>${o.mode!=="pickup"?`<dt>முகவரி</dt><dd>${esc(o.address)}</dd>`:""}
       <dt>கடை</dt><dd>${esc(o.branch||"-")}</dd>${o.notes?`<dt>குறிப்பு</dt><dd>${esc(o.notes)}</dd>`:""}</dl></div>
@@ -2753,7 +3019,7 @@ function openOrder(id){
   if(canStock()&&(!stockData||stockData.co!==company.id)) loadStock();
 }
 function orderMsg(o,url){
-  return [`*${company.name}*`,`வணக்கம் ${o.name} 🙂`,`உங்கள் ஆர்டர் ${o.no} · ${inr(o.total)}`,`நிலை: ${OST[o.status]||o.status}`,o.billNo?`பில்: ${o.billNo}`:"",url?`ஆர்டர் நிலை பார்க்க: ${url}`:"","","நன்றி ❤️"].filter(x=>x!=="").join("\n");
+  return [`*${company.name}*`,`அந்த ஏக இறைவனின் சாந்தியும் சமாதானமும் உண்டாவதாக 🤲`,`${o.name} அவர்களே,`,`உங்கள் ஆர்டர் ${o.no} · ${inr(o.total)}`,`நிலை: ${OST[o.status]||o.status}`,o.billNo?`பில்: ${o.billNo}`:"",url?`ஆர்டர் நிலை பார்க்க: ${url}`:"","","நன்றி ❤️"].filter(x=>x!=="").join("\n");
 }
 async function setOrder(body){
   busy(true);
@@ -2784,6 +3050,55 @@ async function shopToggle(){
   busy(true);
   try{ const r=await api("shop-settings","POST",{enabled:company.shopEnabled===false}); company=r.company; openShopLink(); }
   catch(e){ apiErr(e); } finally{ busy(false); }
+}
+/* ================= SUPPLIER PAYMENTS (PO) + MONEY REPORT: payables / receivables ================= */
+function openPoPay(){
+  const po=poCur;
+  $("#sheetBody").innerHTML=`<h2>💰 Supplier-க்கு பணம் செலுத்து</h2><p class="sub">${esc(po.no)} · ${esc(po.supplier)}<br>மொத்தம் ${inr(po.total)} · செலுத்தியது ${inr(po.paid)} · <b style="color:var(--bad)">பாக்கி ${inr(po.balance)}</b></p>
+    <div class="box frm"><label class="fld" id="fPopAmt">தொகை ₹ *<input id="popAmt" inputmode="decimal" value="${po.balance}"><span class="err">0 – ${po.balance}</span></label>
+      <label class="fld">செலுத்திய தேதி *<input type="date" id="popDate" value="${todayIso()}" max="${todayIso()}"></label>
+      <div class="chips" style="flex-wrap:wrap">${["Cash","UPI","Bank (NEFT)","Cheque"].map((m,i)=>`<button type="button" data-popmode="${m}" class="${i===0?"on":""}">${m}</button>`).join("")}</div>
+      <label class="fld">Reference (UPI ref / Cheque no.)<input id="popRef" maxlength="60" autocomplete="off"></label></div>
+    <button class="cta leaf" id="poPaySave">சேமி</button><button class="cta ghost" id="poPayBack">← ${esc(po.no)}</button>`;
+  showSheet();
+}
+async function savePoPay(){
+  const amt=Number($("#popAmt").value), mode=(document.querySelector("[data-popmode].on")||{}).dataset.popmode||"Cash";
+  if(!(amt>0)){ $("#fPopAmt").classList.add("bad"); toast("தொகை தவறு"); return; }
+  busy(true);
+  try{ const r=await api("po/"+poCur.id+"/pay","POST",{amount:amt,date:$("#popDate").value,mode,ref:$("#popRef").value.trim()});
+    poData=null; mnData=null; toast(inr(amt)+" செலுத்தியது பதிவானது"); openPoDetail(r.po); if(view()==="po") loadPoList(); }
+  catch(e){ apiErr(e); } finally{ busy(false); }
+}
+let mnData=null, mnLoading=false, mnTab=null;
+const canPay=()=>isAdmin()||isOwner()||isStock()||isWh(), canRecv=()=>!isSales();
+async function loadMoney(){
+  if(mnLoading||!company) return; mnLoading=true; busy(true);
+  if(!mnTab) mnTab=canRecv()?"recv":"pay";
+  try{ const r=await api(mnTab==="pay"?"payables":"receivables"); r.co=company.id; r.tab=mnTab; mnData=r; }
+  catch(e){ apiErr(e); mnData={co:company.id,tab:mnTab,error:e.message}; } finally{ mnLoading=false; busy(false); }
+  if(view()==="money") renderView();
+}
+function renderMoney(){
+  if(!mnData||mnData.co!==company.id){ if(!mnLoading) setTimeout(loadMoney,0); return `<div class="none"><b>⏳</b>ஏற்றுகிறது…</div>`; }
+  const tabs=[...(canRecv()?[["recv","📥 வர வேண்டியது (Retailers)"]]:[]),...(canPay()?[["pay","📤 செலுத்த வேண்டியது (Suppliers)"]]:[])];
+  const T=`<div class="owntabs" style="grid-template-columns:repeat(${tabs.length},1fr)">${tabs.map(([k,l])=>`<button data-mntab="${k}" class="${mnData.tab===k?"on":""}" style="font-size:12.5px">${l}</button>`).join("")}</div>`;
+  if(mnData.error) return T+`<div class="none"><b>⚠️</b>${esc(mnData.error)}</div>`;
+  const r=mnData, pay=r.tab==="pay";
+  const payRows=r.payments.map(x=>`<tr${pay?` class="tap" data-mnpo="${x.poId}"`:` class="tap" data-mnparty="${esc(x.partyId)}"`}><td>${esc(x.on)}<small>${esc(x.mode)}${x.ref?" · "+esc(x.ref):""}</small></td><td>${esc(pay?x.supplier:x.party)}<small>${esc(x.no||"")}</small></td><td style="color:${x.amount<0?"var(--bad)":"#137a3f"};font-weight:800">${inr(x.amount)}</td></tr>`).join("");
+  // payments grouped per day for a quick "how much on which date"
+  const byDay={}; r.payments.forEach(x=>{ byDay[x.on]=(byDay[x.on]||0)+x.amount; });
+  return `${T}
+    <section class="rp-hero"><div class="l">${pay?"📤 Supplier-களுக்கு செலுத்த வேண்டிய பாக்கி":"📥 Retailer-களிடமிருந்து வர வேண்டியது"}</div><div class="v">${inr(r.due)}</div>
+      <div class="row"><div><b>${r.pendingCount}</b>${pay?"பாக்கி உள்ள PO":"நிலுவை Invoice"}</div><div><b>${inr0(r.total)}</b>மொத்தம்</div><div><b>${inr0(r.paid)}</b>${pay?"செலுத்தியது":"பெற்றது"}</div>${!pay?`<div><b style="color:#ffd2cc">${inr0(r.overdue)}</b>காலம் கடந்தது</div>`:""}</div></section>
+    ${pay?`<div class="rp-card"><h3>🏭 Supplier வாரியாக</h3><table class="rp-tbl"><thead><tr><th>Supplier</th><th>மொத்தம்</th><th>செலுத்தியது</th><th>பாக்கி</th></tr></thead><tbody>
+      ${r.suppliers.map(x=>`<tr><td>${esc(x.name)}<small>${x.pendingPos} PO பாக்கி</small></td><td>${inr0(x.total)}</td><td>${inr0(x.paid)}</td><td style="color:${x.balance>0?"var(--bad)":"#137a3f"};font-weight:800">${inr0(x.balance)}</td></tr>`).join("")}</tbody></table></div>`:""}
+    <div class="rp-card"><h3>${pay?"⏳ பாக்கி உள்ள Purchase Orders":"⏳ நிலுவை Invoices"} (${r.pendingCount})</h3>
+      ${r.pending.length?`<table class="rp-tbl"><thead><tr><th>${pay?"PO / Supplier":"Invoice / Retailer"}</th><th>மொத்தம்</th><th>${pay?"செலுத்தியது":"பெற்றது"}</th><th>பாக்கி</th></tr></thead><tbody>
+      ${r.pending.map(x=>`<tr class="tap" ${pay?`data-mnpo="${x.id}"`:`data-mnparty="${esc(x.partyId)}"`}><td>${esc(x.no)}<small>${esc(pay?x.supplier:x.party)} · ${esc(pay?x.date:String(x.at).slice(0,10))}${!pay&&x.due?" · கடைசி "+esc(x.due):""}${!pay&&x.overdue?" ⚠️":""}</small></td><td>${inr0(x.total)}</td><td>${inr0(x.paid)}</td><td style="color:var(--bad);font-weight:800">${inr0(x.balance)}</td></tr>`).join("")}</tbody></table>`:`<p class="hint">✅ பாக்கி இல்லை</p>`}</div>
+    <div class="rp-card"><h3>📅 ${pay?"செலுத்திய":"பெற்ற"} தொகை — தேதி வாரியாக</h3>
+      ${Object.keys(byDay).length?`<table class="rp-tbl"><thead><tr><th>தேதி</th><th>தொகை</th></tr></thead><tbody>${Object.keys(byDay).slice(0,31).map(k=>`<tr><td>${esc(k)}</td><td style="font-weight:800">${inr(byDay[k])}</td></tr>`).join("")}</tbody></table>
+      <h3 style="margin-top:12px">விவரம்</h3><table class="rp-tbl"><thead><tr><th>தேதி / முறை</th><th>${pay?"Supplier / PO":"Retailer / Invoice"}</th><th>தொகை</th></tr></thead><tbody>${payRows}</tbody></table>`:`<p class="hint">இன்னும் பதிவு இல்லை</p>`}</div>`;
 }
 /* ================= STOCK REPORT ================= */
 let srData=null, srLoading=false, srBranch="", srFlt="all", srMode="stock";
@@ -2829,14 +3144,21 @@ function priceListHtml(r,q){
     if(srFlt==="nocost"&&x.cost!=null) return false; if(srFlt==="lowm"&&!(m!=null&&m<25)) return false; if(srFlt==="in"&&x.total<=0) return false;
     return !q||(x.name+" "+x.en+" "+x.group).toLowerCase().includes(q); };
   let lastG=null;
-  const body=r.rows.filter(keep).map(x=>{ let h=""; if(x.group!==lastG){ lastG=x.group; h=`<tr class="grp"><td colspan="5">${esc(x.emoji+" "+x.group)}</td></tr>`; }
+  const body=r.rows.filter(keep).map(x=>{ let h=""; if(x.group!==lastG){ lastG=x.group; h=`<tr class="grp"><td colspan="6">${esc(x.emoji+" "+x.group)}</td></tr>`; }
     const m=x.cost==null?null:money(x.rate-x.cost), pc=m==null?null:Math.round(m*100/x.rate);
+    const wm=x.cost==null?null:money(x.wrate-x.cost), wpc=wm==null||!x.wrate?null:Math.round(wm*100/x.wrate);
     return h+`<tr><td>${esc(x.name)}<small>${esc(x.size)}</small></td><td>${x.cost==null?`<span class="zero">—</span>`:inr0(x.cost)}</td><td>${inr0(x.rate)}</td>
+      <td>${inr0(x.wrate)}${x.wrate!==x.rate?`<small>−${Math.round((x.rate-x.wrate)*100/x.rate)}%</small>`:`<small>= Retail</small>`}${wm!=null?`<small class="${wm>=0?"mgp":"mgn"}">லாபம் ${inr0(wm)}${wpc!=null?" · "+wpc+"%":""}</small>`:""}</td>
       <td class="${m==null?"":m>=0?"mgp":"mgn"}">${m==null?"—":inr0(m)}<small>${pc==null?"":pc+"%"}</small></td><td class="${x.total<0?"neg":x.total===0?"zero":""}">${x.total}</td></tr>`; }).join("");
-  return `<div class="sr-wrap"><table class="sr-tbl"><thead><tr><th>ஐட்டம் / சைஸ்</th><th>அடக்கம்</th><th>விற்பனை</th><th>லாபம்</th><th>ஸ்டாக்</th></tr></thead>
-    <tbody>${body||`<tr><td colspan="5" style="text-align:center;padding:20px">பொருந்தும் ஐட்டம் இல்லை</td></tr>`}</tbody></table></div>`;
+  return `<div class="sr-wrap"><table class="sr-tbl"><thead><tr><th>ஐட்டம் / சைஸ்</th><th>அடக்கம்</th><th>Retail</th><th>Wholesale</th><th>லாபம் (Retail)</th><th>ஸ்டாக்</th></tr></thead>
+    <tbody>${body||`<tr><td colspan="6" style="text-align:center;padding:20px">பொருந்தும் ஐட்டம் இல்லை</td></tr>`}</tbody></table></div>`;
 }
 function stockRepText(r){
+  if(srMode==="price"){                              // price list: Retail + Wholesale for each item / size
+    const P=[`*${company.name}*`,`💲 விலை பட்டியல் (Retail / Wholesale) · ${fmtDate(r.at)}`,""]; let g=null;
+    r.rows.forEach(x=>{ if(x.group!==g){ g=x.group; P.push("",`*${x.emoji} ${x.group}*`); } P.push(`${x.name} (${x.size}): Retail ${inr0(x.rate)} · Wholesale ${inr0(x.wrate)}`); });
+    P.push("",`— ${APP_NAME}`); return P.join("\n");
+  }
   const L=[`*${company.name}*`,`📦 ஸ்டாக் அறிக்கை · ${fmtDate(r.at)}`,""];
   r.branches.forEach(b=>L.push(`🏬 ${b.name}: ${b.pieces} பீஸ் · ${inr0(b.value)}${b.negative?` · மைனஸ் ${b.negative}`:""}`));
   L.push(`*மொத்தம்: ${r.summary.pieces} பீஸ் · ${inr0(r.summary.value)}*`);
@@ -2890,6 +3212,7 @@ function renderPoList(){
   return `${tabs}
     ${poData.branches&&poData.branches.length>1?`<div class="rp-br"><select id="poBranch" aria-label="Branch"><option value="">🏬 எல்லா கிளைகளும்</option>${poData.branches.map(b=>`<option value="${esc(b.id)}"${b.id===poBr?" selected":""}>${brIco(b)} ${esc(b.name)}</option>`).join("")}</select></div>`:myBranch?`<span class="brchip">🏬 கிளை: ${esc(myBranch)}</span>`:""}
     ${poData.canEdit&&catalog.setup?`<button class="cta leaf" id="poNew">➕ புதிய Purchase Order</button>`:""}
+    <button class="cta ghost" id="openMoney">💳 Supplier பாக்கி + செலுத்திய தொகை (தேதி வாரியாக)</button>
     <div class="st-flt" style="margin-top:12px">${[["open","நிலுவையில் (வர வேண்டியவை)"],["received","வந்தவை"],["cancelled","ரத்து"],["all","எல்லாம்"]].map(f=>`<button data-poflt="${f[0]}" class="${poFlt===f[0]?"on":""}">${f[1]}</button>`).join("")}</div>
     ${os.length&&due>0?`<p class="hint">இந்த பட்டியலில் supplier-க்கு செலுத்த வேண்டிய பாக்கி: <b style="color:var(--bad)">${inr(due)}</b></p>`:""}
     ${os.length?os.map(o=>`<button class="po-card" data-poopen="${o.id}">
@@ -3009,8 +3332,9 @@ async function openPoDetail(po){
       ${po.other?`<div><span>இதர செலவு</span><span>+ ${inr(po.other)}</span></div>`:""}${po.discount?`<div><span>தள்ளுபடி</span><span>− ${inr(po.discount)}</span></div>`:""}
       <div class="gt"><span>மொத்தம்</span><span>${inr(po.total)}</span></div><div><span>செலுத்தியது</span><span>${inr(po.paid)}</span></div>
       <div style="color:${po.balance>0?"var(--bad)":"#137a3f"}"><span>பாக்கி</span><span>${inr(po.balance)}</span></div></div></div>
+    ${(po.payments||[]).length?`<div class="box"><h3>💰 செலுத்திய விவரம்</h3>${po.payments.map(x=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--line)"><span>${esc(x.on)} · ${esc(x.mode)}${x.ref?" · "+esc(x.ref):""}<small style="display:block;color:#777">${esc(x.by)}</small></span><b style="color:${x.amount<0?"var(--bad)":"#137a3f"}">${inr(x.amount)}</b></div>`).join("")}</div>`:""}
     ${can&&(po.status==="ordered"||po.status==="partial")?`<button class="cta leaf" id="poRecv">📥 சரக்கு வந்தது (Receive)</button>`:""}
-    ${can&&po.status!=="cancelled"?`<button class="cta ghost" id="poPay">💰 செலுத்திய தொகை மாற்று</button>`:""}
+    ${can&&po.status!=="cancelled"&&po.balance>0?`<button class="cta ghost" id="poPay">💰 Supplier-க்கு பணம் செலுத்து (தேதியுடன்)</button>`:""}
     ${canEdit()&&rq>0?`<button class="cta ghost" id="poLabels">🏷 வந்த சரக்குக்கு Barcode Labels (${rq})</button>`:""}
     <button class="cta" id="poWa">📤 Supplier-க்கு WhatsApp</button>
     ${can&&po.status==="ordered"&&!rq?`<div class="two-b"><button class="cta ghost" id="poEdit">✏️ மாற்று</button><button class="cta warn" id="poCancel">❌ ரத்து</button></div>`:""}
@@ -3272,6 +3596,8 @@ function adminSalesHtml(s){
 document.addEventListener("click",e=>{
   const bar=e.target.closest&&e.target.closest("[data-rday]");
   if(bar){ loadReport(bar.getAttribute("data-rday")); return; }
+  const mrow=e.target.closest&&e.target.closest("tr[data-mnpo],tr[data-mnparty]");
+  if(mrow){ if(mrow.dataset.mnpo) openPoDetail(+mrow.dataset.mnpo); else openParty(mrow.dataset.mnparty); return; }
   const srow=e.target.closest&&e.target.closest("[data-srbranch]");
   if(srow){ srBranch=srow.getAttribute("data-srbranch"); srData=null; loadStockRep(); window.scrollTo(0,0); return; }
   const brow=e.target.closest&&e.target.closest("[data-rbranch]");
@@ -3468,8 +3794,14 @@ document.addEventListener("click",e=>{
   if(t.id==="rcvBack") return openPoDetail(poCur);
   if(t.id==="poEdit") return openPoForm(poCur);
   if(t.id==="poWa"){ const p=poCur; if(p) window.open(waUrl(p.supplierPhone||"",poText(p)),"_blank","noopener"); return; }
-  if(t.id==="poPay"){ const v=prompt(`செலுத்திய மொத்த தொகை ₹ (மொத்தம் ${inr(poCur.total)}):`,poCur.paid); if(v===null) return;
-    busy(true); api("po/"+poCur.id+"/update","POST",{paid:v}).then(r=>{ poData=null; openPoDetail(r.po); toast("சேமிக்கப்பட்டது"); if(view()==="po") loadPoList(); }).catch(apiErr).finally(()=>busy(false)); return; }
+  if(t.id==="poPay"){ openPoPay(); return; }
+  if(d.popmode){ document.querySelectorAll("[data-popmode]").forEach(x=>x.classList.toggle("on",x===t)); return; }
+  if(t.id==="poPaySave"){ savePoPay(); return; }
+  if(t.id==="poPayBack"){ openPoDetail(poCur); return; }
+  if(t.id==="mMoney"||t.id==="openMoney"){ closeSheet(); mnData=null; if(location.hash!=="#money") location.hash="money"; else loadMoney(); return; }
+  if(d.mntab){ mnTab=d.mntab; mnData=null; loadMoney(); return; }
+  if(d.mnpo){ openPoDetail(+d.mnpo); return; }
+  if(d.mnparty){ openParty(d.mnparty); return; }
   if(t.id==="poCancel"){ if(!confirm("இந்த PO-ஐ ரத்து செய்யவா?")) return;
     busy(true); api("po/"+poCur.id+"/update","POST",{cancel:true}).then(r=>{ poData=null; openPoDetail(r.po); if(view()==="po") loadPoList(); }).catch(apiErr).finally(()=>busy(false)); return; }
   if(t.id==="freshBill"){ if(lines().length && !confirm("இப்போதைய ஐட்டங்கள் நீக்கப்பட்டு புதிய பில் தொடங்கும். (வைத்திருக்க: ⏸ சேமிக்க மட்டும்) தொடரவா?")) return;
@@ -3485,6 +3817,27 @@ document.addEventListener("click",e=>{
   if(d.expick){ const id=+d.expick; exPick.has(id)?exPick.delete(id):exPick.add(id); renderExBox(); return; }
   if(d.exnew){ const [ph,id]=d.exnew.split("|"); exNext={phone:ph,ids:[+id]}; closeSheet(); toast("🔁 Exchange: புதிய ஐட்டங்களை சேர்த்து View bill அழுத்தவும்"); return; }
   if(t.id==="openCancelBill"){ openCancelForm(); return; }
+  if(t.id==="openTakeOrder"){ openTakeOrder(); return; }
+  if(t.id==="mParties"){ closeSheet(); ptData=null; if(location.hash!=="#parties") location.hash="parties"; else loadParties(); return; }
+  if(t.id==="ptNew"){ openPartyForm(null); return; }
+  if(t.id==="ptSave"){ saveParty(d.ptid); return; }
+  if(d.ptopen){ openParty(d.ptopen); return; }
+  if(t.id==="ptEdit"){ openPartyForm(ptCur.party); return; }
+  if(t.id==="ptPay"){ openPayForm(null); return; }
+  if(d.ppfor!==undefined){ openPayForm(+d.ppfor); return; }
+  if(d.ppmode){ document.querySelectorAll("[data-ppmode]").forEach(b=>b.classList.toggle("on",b===t)); return; }
+  if(t.id==="ppSave"){ savePayment(d.ppbill); return; }
+  if(t.id==="ppBack"){ openParty(ptCur.party.id); return; }
+  if(d.ptinv!==undefined){ openInvoiceView(+d.ptinv); return; }
+  if(d.invprint!==undefined){ printInvoice(+d.invprint); return; }
+  if(t.id==="ptInv"){ invFormParty=ptCur.party.id; if(lines().length){ openInvoiceForm(); } else { closeSheet(); toast("ஐட்டங்களை Cart-ல் சேர்த்து → View bill → 📒 Wholesale Invoice"); location.hash=""; } return; }
+  if(d.whcat){ location.hash=d.whcat; return; }
+  if(t.id==="openWInv"){ openInvoiceForm(); return; }
+  if(d.ifgst!==undefined){ invForm.gst=+d.ifgst; document.querySelectorAll("[data-ifgst]").forEach(b=>b.classList.toggle("on",b===t)); ifTotals(); return; }
+  if(d.ifmode){ invForm.mode=d.ifmode; document.querySelectorAll("[data-ifmode]").forEach(b=>b.classList.toggle("on",b===t)); return; }
+  if(t.id==="ifSave"){ saveInvoice(); return; }
+  if(t.id==="saveTakeOrder"){ saveTakeOrder(); return; }
+  if(d.tomode){ toMode=d.tomode; document.querySelectorAll("[data-tomode]").forEach(b=>b.classList.toggle("on",b===t)); $("#fToAddr").hidden=toMode==="pickup"; return; }
   if(t.id==="openCfb"){ const ph=($("#iPhone")||{}).value||""; openCancelFromBill(/^[6-9]\d{9}$/.test(ph)?ph:""); return; }
   if(t.id==="cfbFind"){ cfbFind(); return; }
   if(d.cfbm){ cfb.months=+d.cfbm; document.querySelectorAll("[data-cfbm]").forEach(x=>x.classList.toggle("on",x===t)); if(/^[6-9]\d{9}$/.test(($("#cfbPhone")||{}).value||"")) cfbFind(); return; }
@@ -3494,7 +3847,9 @@ document.addEventListener("click",e=>{
   if(t.id==="cfbNone"){ cfb.reason=$("#cfbReason").value; cfb.q={}; renderCfbBill(); return; }
   if(d.cfbr){ $("#cfbReason").value=d.cfbr; $("#fCfbReason").classList.remove("bad"); return; }
   if(t.id==="cfbSave"){ cfbSave(); return; }
-  if(t.id==="cfbBack"){ openCancelFromBill(cfb.phone); return; }
+  if(t.id==="cfbBack"){ if(cfb.fromNo&&cfb.bill&&cfb.bill.kind==="invoice"){ closeSheet(); return; } openCancelFromBill(cfb.phone); return; }
+  if(t.id==="cfbNoGo"){ cfbByNo($("#cfbNo").value); return; }
+  if(d.cfbno){ cfbByNo(d.cfbno); return; }
   if(t.id==="cfbAgain"){ openCancelFromBill(cfb.phone); return; }
   if(t.id==="saveCancelBill"){ saveCancelBill(); return; }
   if(t.id==="backToBill"){ openBill(); return; }
@@ -3528,6 +3883,8 @@ document.addEventListener("input",e=>{
   if(id==="iPhone") checkPending();
   if(id==="trQ") renderTrSug();
   if(id==="lbq") lbRenderList();
+  if(id==="ptq"){ renderView(); const q=$("#ptq"); if(q){ q.focus(); q.setSelectionRange(q.value.length,q.value.length); } }
+  if(id==="ifPaid"||(e.target.dataset&&e.target.dataset.ifrate!==undefined)) ifTotals();
   if(id==="invMonth"&&e.target.value){ invMonth=e.target.value; invData=null; loadInv(); }
   if(id==="invCoSel"){ invCo=e.target.value; invData=null; loadInv(); }
   if(e.target.dataset && e.target.dataset.lbk!==undefined){ const k=e.target.dataset.lbk, v=parseInt(e.target.value,10); if(v>0) lb.q[k]=Math.min(v,999); else delete lb.q[k]; lbTotal();
@@ -3545,6 +3902,7 @@ document.addEventListener("input",e=>{
   if(e.target.dataset && e.target.dataset.iri!==undefined) newCostHint(Number(e.target.dataset.iri));
 });
 document.addEventListener("change",e=>{
+  if(e.target.id==="ifParty"){ ifRates(); invForm.paid=($("#ifPaid")||{}).value||""; if(e.target.value==="__new"){ invForm.pickNew=true; openPartyForm(null); } else { invFormParty=e.target.value; openInvoiceForm(); } return; }
   if(e.target.id==="phFile"&&e.target.files&&e.target.files[0]){ uploadPhoto(e.target.files[0]); e.target.value=""; return; }
   const id=e.target.id;
   if(id==="cPerm") togglePerm();
@@ -3569,7 +3927,7 @@ document.addEventListener("keydown",e=>{ if(e.key==="Enter" && e.target.id==="st
 /* ================= START ================= */
 (async function start(){
   $("#lBis").textContent=BISMILLAH;
-  $("#lApp").innerHTML=esc(APP_NAME).replace(/^(\S+)/,"<span>$1</span>");
+  $("#lApp").innerHTML="<span>M</span>Bill";
   $("#lAppTa").textContent=APP_NAME_TA;
   renderBrand();
   if(location.protocol==="file:"){ showLogin("இந்த app server-ல் (Tomcat) மட்டுமே இயங்கும். WAR-ஐ deploy செய்து http://server:8080/... வழியாக திறக்கவும்"); return; }
