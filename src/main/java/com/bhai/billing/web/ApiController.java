@@ -65,6 +65,149 @@ public class ApiController {
     public ResponseEntity<Object> addBill(@RequestHeader(value = AUTH, required = false) String auth,
                                           @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.addBill(auth, nn(body))); }
 
+    // ---- software invoices (owner: own company; admin: ?company=)
+    @GetMapping("/invoices")
+    public ResponseEntity<Object> invoices(@RequestHeader(value = AUTH, required = false) String auth,
+                                           @RequestParam(value = "company", required = false) String company) { return run(() -> svc.invoices(auth, company)); }
+
+    @GetMapping("/invoices/detail")
+    public ResponseEntity<Object> invoiceDetail(@RequestHeader(value = AUTH, required = false) String auth,
+                                                @RequestParam(value = "company", required = false) String company,
+                                                @RequestParam(value = "month", required = false) String month) { return run(() -> svc.invoiceDetail(auth, company, month)); }
+
+    @GetMapping("/admin/invoices")
+    public ResponseEntity<Object> adminInvoices(@RequestHeader(value = AUTH, required = false) String auth,
+                                                @RequestParam(value = "month", required = false) String month) { return run(() -> svc.adminInvoices(auth, month)); }
+
+    @PostMapping("/admin/invoices/generate")
+    public ResponseEntity<Object> generateInvoices(@RequestHeader(value = AUTH, required = false) String auth,
+                                                   @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.adminGenerateInvoices(auth, nn(body))); }
+
+    @PostMapping("/admin/invoices/{id}/pay")
+    public ResponseEntity<Object> payInvoice(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id,
+                                             @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.payInvoice(auth, id, nn(body))); }
+
+    // ---- item photos
+    @PostMapping("/items/{id}/photo")
+    public ResponseEntity<Object> savePhoto(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") String id,
+                                            @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.savePhoto(auth, id, nn(body))); }
+
+    /** app: ?a=<token> because an <img> tag can't send the X-Auth header */
+    @GetMapping("/items/{id}/photo")
+    public ResponseEntity<?> appPhoto(@RequestParam(value = "a", required = false) String auth, @PathVariable("id") String id) {
+        try { return image(svc.appPhoto(auth, id)); } catch (ApiException e) { return error(e.getStatus(), e.getMessage()); }
+    }
+
+    // ---- online shop (public: no login, by the company's shop code)
+    @GetMapping("/shop/{code}")
+    public ResponseEntity<Object> shop(@PathVariable("code") String code) { return run(() -> svc.shop(code)); }
+
+    @GetMapping("/shop/{code}/photo/{id}")
+    public ResponseEntity<?> shopPhoto(@PathVariable("code") String code, @PathVariable("id") String id) {
+        try { return image(svc.photo(code, id, true)); } catch (ApiException e) { return error(e.getStatus(), e.getMessage()); }
+    }
+
+    @PostMapping("/shop/{code}/orders")
+    public ResponseEntity<Object> shopOrder(@PathVariable("code") String code, @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.shopOrder(code, nn(body))); }
+
+    @GetMapping("/shop/{code}/orders/{token}")
+    public ResponseEntity<Object> shopOrderStatus(@PathVariable("code") String code, @PathVariable("token") String token) { return run(() -> svc.shopOrderStatus(code, token)); }
+
+    // ---- online orders (staff)
+    @GetMapping("/orders")
+    public ResponseEntity<Object> orders(@RequestHeader(value = AUTH, required = false) String auth,
+                                         @RequestParam(value = "status", required = false) String status) { return run(() -> svc.orders(auth, status)); }
+
+    @PostMapping("/orders/{id}")
+    public ResponseEntity<Object> orderUpdate(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id,
+                                              @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.orderUpdate(auth, id, nn(body))); }
+
+    @PostMapping("/shop-settings")
+    public ResponseEntity<Object> shopSettings(@RequestHeader(value = AUTH, required = false) String auth,
+                                               @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.shopSettings(auth, nn(body))); }
+
+    private static ResponseEntity<?> image(Object[] p) {
+        if (p == null) return ResponseEntity.status(404).build();
+        return ResponseEntity.ok().header("Content-Type", (String) p[0]).header("Cache-Control", "public, max-age=86400").body((byte[]) p[1]);
+    }
+
+    // ---- stock transfers (warehouse -> shops)
+    @GetMapping("/transfers")
+    public ResponseEntity<Object> transfers(@RequestHeader(value = AUTH, required = false) String auth,
+                                            @RequestParam(value = "status", required = false) String status) { return run(() -> svc.transfers(auth, status)); }
+
+    @GetMapping("/transfers/{id}")
+    public ResponseEntity<Object> transferGet(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id) { return run(() -> svc.transferGet(auth, id)); }
+
+    @PostMapping("/transfers")
+    public ResponseEntity<Object> sendTransfer(@RequestHeader(value = AUTH, required = false) String auth,
+                                               @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.sendTransfer(auth, nn(body))); }
+
+    @PostMapping("/transfers/{id}/receive")
+    public ResponseEntity<Object> receiveTransfer(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id,
+                                                  @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.receiveTransfer(auth, id, nn(body))); }
+
+    @PostMapping("/transfers/{id}/cancel")
+    public ResponseEntity<Object> cancelTransfer(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id) { return run(() -> svc.cancelTransfer(auth, id)); }
+
+    // ---- purchase orders (stock users; owner view only)
+    @GetMapping("/suppliers")
+    public ResponseEntity<Object> suppliers(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.suppliers(auth)); }
+
+    @GetMapping("/po")
+    public ResponseEntity<Object> poList(@RequestHeader(value = AUTH, required = false) String auth,
+                                         @RequestParam(value = "status", required = false) String status,
+                                         @RequestParam(value = "branch", required = false) String branch) { return run(() -> svc.poList(auth, status, branch)); }
+
+    @GetMapping("/po/{id}")
+    public ResponseEntity<Object> poGet(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id) { return run(() -> svc.poGet(auth, id)); }
+
+    @PostMapping("/po")
+    public ResponseEntity<Object> savePo(@RequestHeader(value = AUTH, required = false) String auth,
+                                         @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.savePo(auth, nn(body))); }
+
+    @PostMapping("/po/{id}/receive")
+    public ResponseEntity<Object> receivePo(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id,
+                                            @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.receivePo(auth, id, nn(body))); }
+
+    @PostMapping("/po/{id}/update")
+    public ResponseEntity<Object> updatePo(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") long id,
+                                           @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.updatePo(auth, id, nn(body))); }
+
+    /** Save the cart as pending for a mobile number (not a bill yet) */
+    @PostMapping("/pending")
+    public ResponseEntity<Object> savePending(@RequestHeader(value = AUTH, required = false) String auth,
+                                              @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.savePending(auth, nn(body))); }
+
+    /** ?phone= today's pending of that number; no phone = open pending of the branch */
+    @GetMapping("/pending")
+    public ResponseEntity<Object> pending(@RequestHeader(value = AUTH, required = false) String auth,
+                                          @RequestParam(value = "phone", required = false) String phone) { return run(() -> svc.pendingList(auth, phone)); }
+
+    @DeleteMapping("/pending/{id}")
+    public ResponseEntity<Object> deletePending(@RequestHeader(value = AUTH, required = false) String auth,
+                                                @PathVariable("id") long id) { return run(() -> svc.deletePending(auth, id)); }
+
+    /** ரத்து பில் (cancel bill) - a separate document made like a bill; the original bill stays */
+    @PostMapping("/cancel-bills")
+    public ResponseEntity<Object> addCancelBill(@RequestHeader(value = AUTH, required = false) String auth,
+                                                @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.addCancelBill(auth, nn(body))); }
+
+    /** bills of a mobile number (this month + last 2 months) with what is left to cancel on each line */
+    @GetMapping("/bills/by-phone")
+    public ResponseEntity<Object> billsByPhone(@RequestHeader(value = AUTH, required = false) String auth,
+                                               @RequestParam(value = "phone", required = false) String phone,
+                                               @RequestParam(value = "months", required = false) String months) { return run(() -> svc.billsByPhone(auth, phone, months)); }
+
+    /** unused cancel bills of a mobile number - exchange credit for a new bill */
+    @GetMapping("/cancel-bills/open")
+    public ResponseEntity<Object> exchangeOpen(@RequestHeader(value = AUTH, required = false) String auth,
+                                               @RequestParam(value = "phone", required = false) String phone) { return run(() -> svc.exchangeOpen(auth, phone)); }
+
+    @GetMapping("/cancel-bills")
+    public ResponseEntity<Object> cancelBills(@RequestHeader(value = AUTH, required = false) String auth,
+                                              @RequestParam(value = "branch", required = false) String branch) { return run(() -> svc.cancelBills(auth, branch)); }
+
     /** Sales report / statistics of the session company. ?date=yyyy-MM-dd (default today) */
     @GetMapping("/report")
     public ResponseEntity<Object> report(@RequestHeader(value = AUTH, required = false) String auth,
@@ -75,6 +218,11 @@ public class ApiController {
     @GetMapping("/stock")
     public ResponseEntity<Object> stock(@RequestHeader(value = AUTH, required = false) String auth,
                                         @RequestParam(value = "branch", required = false) String branch) { return run(() -> svc.stock(auth, branch)); }
+
+    /** Stock report: owner / admin all branches (or ?branch=), stock users own branch */
+    @GetMapping("/stock/report")
+    public ResponseEntity<Object> stockReport(@RequestHeader(value = AUTH, required = false) String auth,
+                                              @RequestParam(value = "branch", required = false) String branch) { return run(() -> svc.stockReport(auth, branch)); }
 
     /** {item, size, qty} = set, {item, size, add} = add / subtract; negative allowed */
     @PutMapping("/stock")
@@ -90,6 +238,10 @@ public class ApiController {
     @PostMapping("/admin/branch")
     public ResponseEntity<Object> saveBranch(@RequestHeader(value = AUTH, required = false) String auth,
                                              @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.saveBranch(auth, nn(body))); }
+
+    @PostMapping("/admin/paymode")
+    public ResponseEntity<Object> savePayMode(@RequestHeader(value = AUTH, required = false) String auth,
+                                              @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.savePayMode(auth, nn(body))); }
 
     @DeleteMapping("/admin/branch/{companyId}/{id}")
     public ResponseEntity<Object> deleteBranch(@RequestHeader(value = AUTH, required = false) String auth,

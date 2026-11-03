@@ -8,6 +8,7 @@ import java.security.SecureRandom;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -35,7 +36,7 @@ public class BillingService {
 
     static final Pattern ID = Pattern.compile("[A-Za-z0-9_-]{1,40}");
     static final Pattern USERNAME = Pattern.compile("[a-z0-9._-]{3,30}");
-    static final Set<String> USER_TYPES = Set.of("admin", "owner", "sales", "stock");
+    static final Set<String> USER_TYPES = Set.of("admin", "owner", "sales", "stock", "warehouse");
     static final Pattern MOBILE = Pattern.compile("[6-9][0-9]{9}");
     static final Pattern GSTIN = Pattern.compile("[0-9]{2}[A-Z0-9]{13}");
     static final Pattern EMAIL = Pattern.compile("[^@\\s]+@[^@\\s]+\\.[^@\\s]+");
@@ -43,7 +44,7 @@ public class BillingService {
     static final Pattern COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
     /** printable ASCII, no spaces - covers EAN/UPC/Code128/Code39/QR text used on garment tags */
     static final Pattern BARCODE = Pattern.compile("[\\x21-\\x7E]{3,40}");
-    static final String DEFAULT_FOOTER = "நன்றி! மீண்டும் வருக 🙏";
+    static final String DEFAULT_FOOTER = "நன்றி! மீண்டும் வருக ❤️";
     static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 
     private final Db db;
@@ -78,6 +79,14 @@ public class BillingService {
         /** stock: everything sales can do + stock maintenance */
         boolean stock() { return "stock".equals(type()); }
 
+        /** warehouse: receives purchase orders, keeps warehouse stock, sends stock to the shops (no billing) */
+        boolean warehouse() { return "warehouse".equals(type()); }
+
+        boolean sales() { return "sales".equals(type()); }
+
+        /** cost price (அடக்க விலை) and profit: admin, owner, stock, warehouse — never sales staff */
+        boolean seesCost() { return !"sales".equals(type()); }
+
         String uid() { return str(user.get("id")); }
     }
 
@@ -88,8 +97,34 @@ public class BillingService {
      * Safe to run at every start: each step checks information_schema first.
      */
     public void migrate() {
+        if (!hasColumn("companies", "shop_code")) {
+            db.update("ALTER TABLE companies ADD COLUMN shop_code VARCHAR(16) NULL");
+            db.update("ALTER TABLE companies ADD COLUMN shop_enabled TINYINT(1) NOT NULL DEFAULT 1");
+            db.update("UPDATE companies SET bill_footer = REPLACE(bill_footer, '🙏', '❤️') WHERE bill_footer LIKE '%🙏%'");
+        }
+        for (Map<String, Object> r : db.query("SELECT id FROM companies WHERE shop_code IS NULL"))
+            db.update("UPDATE companies SET shop_code = ? WHERE id = ?", hex(bytes(5)), str(r.get("id")));
+        if (!hasIndex("companies", "uk_companies_shop")) db.update("ALTER TABLE companies ADD UNIQUE KEY uk_companies_shop (shop_code)");
+        if (!hasColumn("bills", "exchange_amount")) {
+            db.update("ALTER TABLE bills ADD COLUMN exchange_amount DECIMAL(12,2) NOT NULL DEFAULT 0");
+            db.update("ALTER TABLE bills ADD COLUMN exchange_ref VARCHAR(200) NOT NULL DEFAULT ''");
+        }
+        if (!hasColumn("cancel_bills", "used_bill_no")) {
+            db.update("ALTER TABLE cancel_bills ADD COLUMN used_bill_no VARCHAR(30) NOT NULL DEFAULT ''");
+            db.update("ALTER TABLE cancel_bills ADD COLUMN used_at DATETIME NULL");
+        }
+        if (!hasColumn("companies", "order_seq")) db.update("ALTER TABLE companies ADD COLUMN order_seq BIGINT NOT NULL DEFAULT 0");
+        if (!hasColumn("companies", "cn_seq")) db.update("ALTER TABLE companies ADD COLUMN cn_seq BIGINT NOT NULL DEFAULT 0");
+        if (!hasColumn("platform_invoices", "cancel_count")) db.update("ALTER TABLE platform_invoices ADD COLUMN cancel_count INT NOT NULL DEFAULT 0 AFTER bill_count");
+        if (!hasColumn("companies", "bill_fee")) db.update("ALTER TABLE companies ADD COLUMN bill_fee DECIMAL(8,2) NOT NULL DEFAULT 0.25");
+        if (!hasColumn("bills", "platform_fee")) {
+            db.update("ALTER TABLE bills ADD COLUMN platform_fee DECIMAL(8,2) NULL");
+            db.update("UPDATE bills b JOIN companies c ON c.id = b.company_id SET b.platform_fee = c.bill_fee WHERE b.platform_fee IS NULL");
+        }
         if (!hasColumn("item_sizes", "barcode"))
             db.update("ALTER TABLE item_sizes ADD COLUMN barcode VARCHAR(40) NULL AFTER rate");
+        if (!hasColumn("item_sizes", "cost"))
+            db.update("ALTER TABLE item_sizes ADD COLUMN cost DECIMAL(10,2) NULL AFTER rate");
         if (!hasIndex("item_sizes", "uk_sizes_barcode"))
             db.update("ALTER TABLE item_sizes ADD UNIQUE KEY uk_sizes_barcode (company_id, barcode)");
 
@@ -103,11 +138,23 @@ public class BillingService {
             db.update("ALTER TABLE users MODIFY user_type ENUM('admin','owner','sales','stock') NOT NULL");
             db.update("ALTER TABLE users ADD CONSTRAINT chk_users_company CHECK ((user_type = 'admin' AND company_id IS NULL) OR (user_type <> 'admin' AND company_id IS NOT NULL))");
         }
+        Map<String, Object> ut2 = db.one("SELECT column_type AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'user_type'");
+        if (ut2 != null && !str(ut2.get("t")).contains("'warehouse'"))
+            db.update("ALTER TABLE users MODIFY user_type ENUM('admin','owner','sales','stock','warehouse') NOT NULL");
+        if (!hasColumn("branches", "kind")) db.update("ALTER TABLE branches ADD COLUMN kind VARCHAR(10) NOT NULL DEFAULT 'shop' AFTER name");
+        if (!hasColumn("companies", "tr_seq")) db.update("ALTER TABLE companies ADD COLUMN tr_seq BIGINT NOT NULL DEFAULT 0 AFTER bill_seq");
         if (!hasColumn("users", "branch_id")) db.update("ALTER TABLE users ADD COLUMN branch_id VARCHAR(20) NULL AFTER company_id");
         if (!hasColumn("bills", "branch_id")) db.update("ALTER TABLE bills ADD COLUMN branch_id VARCHAR(20) NULL AFTER company_id");
         if (!hasIndex("bills", "idx_bills_branch_date")) db.update("ALTER TABLE bills ADD KEY idx_bills_branch_date (company_id, branch_id, created_at)");
         if (!hasColumn("bill_lines", "item_id")) db.update("ALTER TABLE bill_lines ADD COLUMN item_id VARCHAR(40) NULL AFTER line_no");
+        if (!hasColumn("companies", "po_seq")) db.update("ALTER TABLE companies ADD COLUMN po_seq BIGINT NOT NULL DEFAULT 0 AFTER bill_seq");
+        if (!hasColumn("bill_lines", "cost")) db.update("ALTER TABLE bill_lines ADD COLUMN cost DECIMAL(10,2) NULL AFTER rate");   // unit cost at billing time
+        if (!hasColumn("bills", "pay_mode_id")) {
+            db.update("ALTER TABLE bills ADD COLUMN pay_mode_id VARCHAR(20) NULL AFTER total, ADD COLUMN pay_name VARCHAR(30) NOT NULL DEFAULT '' AFTER pay_mode_id, "
+                    + "ADD COLUMN pay_kind VARCHAR(8) NOT NULL DEFAULT '' AFTER pay_name");
+        }
         ensureBranches(null);
+        ensurePayModes(null);
     }
 
     private boolean hasColumn(String table, String col) {
@@ -129,13 +176,45 @@ public class BillingService {
             if (db.one("SELECT 1 AS x FROM branches WHERE company_id = ? LIMIT 1", id) == null)
                 db.update("INSERT INTO branches (company_id, id, name, sort_order, created_at) VALUES (?, ?, ?, 0, ?)", id, newId("b"), "Main", now());
             String first = firstBranch(id);
-            db.update("UPDATE users SET branch_id = ? WHERE company_id = ? AND user_type IN ('sales','stock') AND (branch_id IS NULL OR branch_id NOT IN (SELECT id FROM branches WHERE company_id = ?))", first, id, id);
+            db.update("UPDATE users SET branch_id = ? WHERE company_id = ? AND user_type IN ('sales','stock') AND (branch_id IS NULL OR branch_id NOT IN (SELECT id FROM branches WHERE company_id = ? AND kind = 'shop'))", first, id, id);
             db.update("UPDATE bills SET branch_id = ? WHERE company_id = ? AND branch_id IS NULL", first, id);
         }
     }
 
+    static final Set<String> PAY_KINDS = Set.of("cash", "card", "upi", "other");
+
+    /** Every company has payment modes (default Cash, Card, UPI); bills saved before payment modes count as Cash. */
+    private void ensurePayModes(String cid) {
+        List<Map<String, Object>> cs = cid == null ? db.query("SELECT id FROM companies") : db.query("SELECT id FROM companies WHERE id = ?", cid);
+        for (Map<String, Object> co : cs) {
+            String id = str(co.get("id"));
+            if (db.one("SELECT 1 AS x FROM pay_modes WHERE company_id = ? LIMIT 1", id) == null) {
+                String[][] def = {{"Cash", "cash"}, {"Card", "card"}, {"UPI", "upi"}};
+                for (int i = 0; i < def.length; i++)
+                    db.update("INSERT INTO pay_modes (company_id, id, name, kind, sort_order, active) VALUES (?, ?, ?, ?, ?, 1)", id, newId("p"), def[i][0], def[i][1], i);
+            }
+            Map<String, Object> cash = db.one("SELECT id, name FROM pay_modes WHERE company_id = ? AND kind = 'cash' ORDER BY sort_order LIMIT 1", id);
+            if (cash != null)
+                db.update("UPDATE bills SET pay_mode_id = ?, pay_name = ?, pay_kind = 'cash' WHERE company_id = ? AND pay_name = ''", str(cash.get("id")), str(cash.get("name")), id);
+        }
+    }
+
+    private List<Object> payModeList(String cid, boolean activeOnly) {
+        List<Object> out = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT id, name, kind, active FROM pay_modes WHERE company_id = ?" + (activeOnly ? " AND active = 1" : "")
+                + " ORDER BY sort_order, id", cid)) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("id", str(r.get("id")));
+            n.put("name", str(r.get("name")));
+            n.put("kind", str(r.get("kind")));
+            n.put("active", bool(r.get("active")));
+            out.add(n);
+        }
+        return out;
+    }
+
     private String firstBranch(String cid) {
-        Map<String, Object> r = db.one("SELECT id FROM branches WHERE company_id = ? ORDER BY sort_order, created_at, id LIMIT 1", cid);
+        Map<String, Object> r = db.one("SELECT id FROM branches WHERE company_id = ? ORDER BY kind = 'warehouse', sort_order, created_at, id LIMIT 1", cid);   // a shop first
         return r == null ? null : str(r.get("id"));
     }
 
@@ -143,15 +222,26 @@ public class BillingService {
         return blank(bid) ? null : db.one("SELECT * FROM branches WHERE company_id = ? AND id = ?", cid, bid);
     }
 
-    private List<Object> branchList(String cid) {
+    /** all locations: shops first, then warehouses */
+    private List<Object> branchList(String cid) { return branchList(cid, null); }
+
+    /** kind = "shop" | "warehouse" | null (all) */
+    private List<Object> branchList(String cid, String kind) {
         List<Object> out = new ArrayList<>();
-        for (Map<String, Object> r : db.query("SELECT id, name FROM branches WHERE company_id = ? ORDER BY sort_order, created_at, id", cid)) {
+        for (Map<String, Object> r : db.query("SELECT id, name, kind FROM branches WHERE company_id = ?" + (kind == null ? "" : " AND kind = ?")
+                + " ORDER BY kind = 'warehouse', sort_order, created_at, id", kind == null ? new Object[]{cid} : new Object[]{cid, kind})) {
             Map<String, Object> n = new LinkedHashMap<>();
             n.put("id", str(r.get("id")));
             n.put("name", str(r.get("name")));
+            n.put("kind", str(r.get("kind")));
             out.add(n);
         }
         return out;
+    }
+
+    private boolean isWarehouse(String cid, String bid) {
+        Map<String, Object> b = branchRow(cid, bid);
+        return b != null && "warehouse".equals(str(b.get("kind")));
     }
 
     /** Branch where this user's bills and stock go: own branch for sales / stock, the first branch for admin. */
@@ -167,6 +257,12 @@ public class BillingService {
     private String requireBilling(Ctx c) {
         if (c.owner()) throw new ApiException(403, "Owner கணக்கில் அறிக்கை மட்டுமே பார்க்கலாம் (Report only)");
         return requireCompany(c);
+    }
+
+    /** bills / pending: shops only (never owner or warehouse) */
+    private String requireSelling(Ctx c) {
+        if (c.warehouse()) throw new ApiException(403, "Warehouse-ல் பில் போட முடியாது (No billing in warehouse)");
+        return requireBilling(c);
     }
 
     public boolean ensureDefaultAdmin() {
@@ -277,11 +373,12 @@ public class BillingService {
         String cid = requireBilling(c);
         Map<String, Object> o = new LinkedHashMap<>();
         o.put("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", cid)));
-        o.put("catalog", loadCatalog(db, cid));
+        o.put("catalog", loadCatalog(db, cid, c.seesCost()));
+        o.put("payModes", payModeList(cid, true));
         return o;
     }
 
-    private Map<String, Object> loadCatalog(Db d, String cid) {
+    private Map<String, Object> loadCatalog(Db d, String cid, boolean withCost) {
         Map<String, Object> co = d.one("SELECT catalog_version, catalog_setup FROM companies WHERE id = ?", cid);
         List<Object> cats = new ArrayList<>(), items = new ArrayList<>();
         for (Map<String, Object> g : d.query("SELECT * FROM item_groups WHERE company_id = ? ORDER BY sort_order, id", cid)) {
@@ -294,13 +391,17 @@ public class BillingService {
             cats.add(n);
         }
         Map<String, List<Object>> sizes = new LinkedHashMap<>();
-        for (Map<String, Object> z : d.query("SELECT item_id, size_label, rate, barcode FROM item_sizes WHERE company_id = ? ORDER BY item_id, sort_order", cid)) {
+        for (Map<String, Object> z : d.query("SELECT item_id, size_label, rate, cost, barcode FROM item_sizes WHERE company_id = ? ORDER BY item_id, sort_order", cid)) {
             Map<String, Object> n = new LinkedHashMap<>();
             n.put("size", str(z.get("size_label")));
             n.put("rate", dbl(z.get("rate")));
             if (!blank(str(z.get("barcode")))) n.put("code", str(z.get("barcode")));
+            if (withCost && z.get("cost") != null) n.put("cost", dbl(z.get("cost")));
             sizes.computeIfAbsent(str(z.get("item_id")), k -> new ArrayList<>()).add(n);
         }
+        Map<String, Object> photos = new HashMap<>();
+        for (Map<String, Object> ph : d.query("SELECT item_id, UNIX_TIMESTAMP(updated_at) AS v FROM item_photos WHERE company_id = ?", cid))
+            photos.put(str(ph.get("item_id")), lng(ph.get("v")));
         for (Map<String, Object> x : d.query("SELECT * FROM items WHERE company_id = ? ORDER BY sort_order, id", cid)) {
             List<Object> sz = sizes.get(str(x.get("id")));
             if (sz == null) continue;
@@ -310,6 +411,8 @@ public class BillingService {
             n.put("ta", str(x.get("name_ta")));
             n.put("en", str(x.get("name_en")));
             n.put("sizes", sz);
+            Object pv = photos.get(str(x.get("id")));
+            if (pv != null) n.put("photo", pv);
             items.add(n);
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -330,12 +433,26 @@ public class BillingService {
             Map<String, Object> co = t.one("SELECT catalog_version FROM companies WHERE id = ? FOR UPDATE", cid);
             if (co == null || lng(co.get("catalog_version")) != version)
                 throw new ApiException(409, "வேறு மொபைலில் மாற்றம் நடந்துள்ளது");
+            if (!c.seesCost()) {
+                // sales staff never see cost: whatever they send is ignored, the stored cost of each item + size is kept
+                Map<String, Object> keep = new HashMap<>();
+                for (Map<String, Object> z : t.query("SELECT item_id, size_label, cost FROM item_sizes WHERE company_id = ? AND cost IS NOT NULL", cid))
+                    keep.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), z.get("cost"));
+                for (Object[] z : clean.sizes) z[5] = keep.get(z[0] + "|" + z[1]);
+            }
+            if (c.sales()) {
+                // sales staff cannot change rates: an existing item + size keeps its stored rate (new items / sizes take what they send)
+                Map<String, Object> rates = new HashMap<>();
+                for (Map<String, Object> z : t.query("SELECT item_id, size_label, rate FROM item_sizes WHERE company_id = ?", cid))
+                    rates.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), z.get("rate"));
+                for (Object[] z : clean.sizes) { Object r = rates.get(z[0] + "|" + z[1]); if (r != null) z[2] = r; }
+            }
             t.update("DELETE FROM item_groups WHERE company_id = ?", cid);   // cascades to items and item_sizes
             t.batch("INSERT INTO item_groups (company_id, id, name_ta, name_en, emoji, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)", clean.groups(cid));
             t.batch("INSERT INTO items (company_id, id, group_id, name_ta, name_en, sort_order) VALUES (?, ?, ?, ?, ?, ?)", clean.items(cid));
-            t.batch("INSERT INTO item_sizes (company_id, item_id, size_label, rate, sort_order, barcode) VALUES (?, ?, ?, ?, ?, ?)", clean.sizes(cid));
+            t.batch("INSERT INTO item_sizes (company_id, item_id, size_label, rate, sort_order, barcode, cost) VALUES (?, ?, ?, ?, ?, ?, ?)", clean.sizes(cid));
             t.update("UPDATE companies SET catalog_version = ?, catalog_setup = 1, updated_at = ? WHERE id = ?", version + 1, now(), cid);
-            return loadCatalog(t, cid);
+            return loadCatalog(t, cid, c.seesCost());
         });
         return obj("catalog", cat);
     }
@@ -400,7 +517,17 @@ public class BillingService {
                     if (owner != null)
                         throw new ApiException(400, "Barcode " + code + " ஏற்கனவே " + owner + "-க்கு உள்ளது");
                 }
-                sz.add(new Object[]{id, label, BigDecimal.valueOf(r), sz.size(), code});
+                // cost (அடக்க விலை) is optional: blank = not known
+                Object co = z.get("cost");
+                BigDecimal cost = null;
+                if (co != null && !str(co).trim().isEmpty()) {
+                    double raw = co instanceof Number ? ((Number) co).doubleValue() : dbl(str(co).replace(",", "").trim());
+                    if (Double.isNaN(raw) || Double.isInfinite(raw)) throw new ApiException(400, "அடக்க விலை தவறு: " + ta + " (" + label + ")");
+                    double cv = round2(raw);
+                    if (!(cv >= 0 && cv <= 999999)) throw new ApiException(400, "அடக்க விலை தவறு: " + ta + " (" + label + ")");
+                    cost = BigDecimal.valueOf(cv);
+                }
+                sz.add(new Object[]{id, label, BigDecimal.valueOf(r), sz.size(), code, cost});
             }
             if (sz.isEmpty()) continue;
             if (out.items.size() >= 3000) throw new ApiException(400, "அதிகபட்சம் 3000 ஐட்டங்கள்");
@@ -412,19 +539,10 @@ public class BillingService {
     }
 
     // ================================================================ bills
-    public Map<String, Object> addBill(String auth, Map<String, Object> in) {
-        Ctx c = ctx(auth);
-        String cid = requireBilling(c);
-        String branch = userBranch(c, cid);
-        String cust = clip(in.get("customer"), 60);
-        String phone = str(in.get("phone")).replaceAll("[^0-9]", "");
-        if (!phone.isEmpty() && !MOBILE.matcher(phone).matches()) throw new ApiException(400, "மொபைல் எண் தவறு");
-        List<Object> raw = list(in.get("lines"));
-        if (raw.isEmpty()) throw new ApiException(400, "பில்லில் ஐட்டம் இல்லை");
+    /** validated bill lines (catalog lines keep their item id; custom lines have none) */
+    private static List<Map<String, Object>> parseLines(List<Object> raw) {
         if (raw.size() > 300) throw new ApiException(400, "அதிக ஐட்டங்கள்");
         List<Map<String, Object>> lines = new ArrayList<>();
-        double total = 0;
-        long pcs = 0;
         for (Object o : raw) {
             if (!(o instanceof Map)) throw new ApiException(400, "பில் வரி தவறு");
             Map<String, Object> l = map(o);
@@ -433,51 +551,139 @@ public class BillingService {
             if (name.isEmpty() || !(rate > 0 && rate <= 999999) || !(q >= 1 && q <= 999) || q != Math.floor(q))
                 throw new ApiException(400, "பில் வரி தவறு: " + name);
             long qty = (long) q;
-            double amt = round2(rate * qty);
-            total += amt;
-            pcs += qty;
             Map<String, Object> n = new LinkedHashMap<>();
             String itemId = str(l.get("id"));
-            n.put("id", ID.matcher(itemId).matches() ? itemId : null);   // catalog item (custom items have none)
+            n.put("id", ID.matcher(itemId).matches() ? itemId : null);
             n.put("name", name);
             n.put("en", clip(l.get("en"), 60));
             n.put("size", clip(l.get("size"), 12));
             n.put("qty", qty);
             n.put("rate", rate);
-            n.put("amt", amt);
+            n.put("amt", round2(rate * qty));
             lines.add(n);
         }
-        final double billTotal = round2(total);
-        final long pieces = pcs;
+        return lines;
+    }
+
+    /** same item + size + rate (or same custom name + size + rate) become one line with the quantities added */
+    private static List<Map<String, Object>> mergeLines(List<Map<String, Object>> in) {
+        Map<String, Map<String, Object>> m = new LinkedHashMap<>();
+        for (Map<String, Object> l : in) {
+            String k = (l.get("id") != null ? "i:" + l.get("id") : "c:" + str(l.get("name")).toLowerCase(Locale.ROOT)) + "|" + l.get("size") + "|" + l.get("rate");
+            Map<String, Object> e = m.get(k);
+            if (e == null) m.put(k, new LinkedHashMap<>(l));
+            else {
+                long q = Math.min(999, (Long) e.get("qty") + (Long) l.get("qty"));
+                e.put("qty", q);
+                e.put("amt", round2((Double) e.get("rate") * q));
+            }
+        }
+        return new ArrayList<>(m.values());
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> jsonList(Object s) {
+        try { return JSON.readValue(str(s), List.class); } catch (Exception e) { return new ArrayList<>(); }
+    }
+
+    private static String toJson(Object o) {
+        try { return JSON.writeValueAsString(o); } catch (Exception e) { throw new IllegalStateException(e); }
+    }
+
+    public Map<String, Object> addBill(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireSelling(c);
+        String branch = userBranch(c, cid);
+        String payId = str(in.get("payMode"));
+        Map<String, Object> pay = blank(payId) ? null : db.one("SELECT id, name, kind FROM pay_modes WHERE company_id = ? AND id = ? AND active = 1", cid, payId);
+        if (!blank(payId) && pay == null) throw new ApiException(400, "பணம் செலுத்தும் முறை தவறு (Payment mode)");
+        if (pay == null) pay = db.one("SELECT id, name, kind FROM pay_modes WHERE company_id = ? AND active = 1 ORDER BY sort_order, id LIMIT 1", cid);
+        final String payModeId = pay == null ? null : str(pay.get("id")), payName = pay == null ? "Cash" : str(pay.get("name")), payKind = pay == null ? "cash" : str(pay.get("kind"));
+        String custIn = clip(in.get("customer"), 60);
+        String phone = str(in.get("phone")).replaceAll("[^0-9]", "");
+        if (!phone.isEmpty() && !MOBILE.matcher(phone).matches()) throw new ApiException(400, "மொபைல் எண் தவறு");
+        List<Map<String, Object>> newLines = parseLines(list(in.get("lines")));
         LocalDateTime at = now();
+        LocalDateTime dayStart = at.toLocalDate().atStartOfDay();
         return db.tx(t -> {
+            // today's pending bills of this mobile number (any salesman, this branch) join this bill
+            List<Map<String, Object>> pend = phone.isEmpty() ? new ArrayList<>() : t.query(
+                    "SELECT * FROM pending_bills WHERE company_id = ? AND branch_id = ? AND phone = ? AND status = 'open' AND created_at >= ? ORDER BY id FOR UPDATE",
+                    cid, branch, phone, dayStart);
+            List<Map<String, Object>> all = new ArrayList<>();
+            String cust = custIn;
+            for (Map<String, Object> p : pend) {
+                all.addAll(parseLines(jsonList(p.get("lines_json"))));
+                if (cust.isEmpty()) cust = str(p.get("customer_name"));
+            }
+            all.addAll(newLines);
+            if (all.isEmpty()) throw new ApiException(400, "பில்லில் ஐட்டம் இல்லை");
+            List<Map<String, Object>> lines = mergeLines(all);
+            if (lines.size() > 300) throw new ApiException(400, "அதிக ஐட்டங்கள்");
+            double total = 0;
+            long pieces = 0;
+            for (Map<String, Object> l : lines) { total += (Double) l.get("amt"); pieces += (Long) l.get("qty"); }
+            double billTotal = round2(total);
+
+            // exchange: unused cancel bills (ரத்து பில்) of this customer are taken off this bill; the rest is paid
+            List<Long> exIds = new ArrayList<>();
+            for (Object o : list(in.get("exchange"))) exIds.add(lng(o));
+            double exAmt = 0;
+            List<String> exNos = new ArrayList<>();
+            for (Long xid : exIds) {
+                Map<String, Object> x = t.one("SELECT * FROM cancel_bills WHERE company_id = ? AND id = ? FOR UPDATE", cid, xid);
+                if (x == null) throw new ApiException(404, "Exchange ரத்து பில் இல்லை");
+                if (!str(x.get("used_bill_no")).isEmpty())
+                    throw new ApiException(409, str(x.get("cn_no")) + " ஏற்கனவே " + str(x.get("used_bill_no")) + "-ல் exchange செய்யப்பட்டது");
+                if (!str(x.get("customer_phone")).isEmpty() && !str(x.get("customer_phone")).equals(phone))
+                    throw new ApiException(400, str(x.get("cn_no")) + " வேறு மொபைல் எண்ணுக்கானது");
+                exAmt += dbl(x.get("total"));
+                exNos.add(str(x.get("cn_no")));
+            }
+            exAmt = round2(exAmt);
+            if (exAmt > billTotal + 0.001)
+                throw new ApiException(400, "புதிய பில் தொகை (" + billTotal + ") exchange தொகையை (" + exAmt + ") விட குறைவு — மேலும் ஐட்டம் சேர்க்கவும்");
+            final double exchange = exAmt;
+            final String exRef = String.join(", ", exNos);
+            final boolean nilBalance = !exIds.isEmpty() && Math.abs(billTotal - exAmt) < 0.005;
+
             Map<String, Object> co = t.one("SELECT bill_seq, bill_prefix FROM companies WHERE id = ? FOR UPDATE", cid);
             long seq = lng(co.get("bill_seq")) + 1;
             String prefix = str(co.get("bill_prefix"));
             if (prefix.isEmpty()) prefix = "INV";
             String no = prefix + "-" + String.format("%04d", seq);
             t.update("UPDATE companies SET bill_seq = ? WHERE id = ?", seq, cid);
-            long billId = t.insert("INSERT INTO bills (company_id, branch_id, bill_seq, bill_no, created_at, customer_name, customer_phone, billed_by_user, billed_by_name, pieces, total) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    cid, branch, seq, no, at, cust, phone, str(c.user.get("username")), str(c.user.get("full_name")), pieces, BigDecimal.valueOf(billTotal));
+            long billId = t.insert("INSERT INTO bills (company_id, branch_id, bill_seq, bill_no, created_at, customer_name, customer_phone, billed_by_user, billed_by_name, pieces, total, pay_mode_id, pay_name, pay_kind, platform_fee, exchange_amount, exchange_ref) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT bill_fee FROM companies WHERE id = ?), ?, ?)",
+                    cid, branch, seq, no, at, cust, phone, str(c.user.get("username")), str(c.user.get("full_name")), pieces, BigDecimal.valueOf(billTotal),
+                    nilBalance ? null : payModeId, nilBalance ? "Exchange" : payName, nilBalance ? "exchange" : payKind, cid, BigDecimal.valueOf(exchange), exRef);
+            for (Long xid : exIds) t.update("UPDATE cancel_bills SET used_bill_no = ?, used_at = ? WHERE company_id = ? AND id = ?", no, at, cid, xid);
             // only real catalog item + size pairs are linked (and reduce stock); anything else is a custom line
             Set<String> known = new HashSet<>();
-            for (Map<String, Object> z : t.query("SELECT item_id, size_label FROM item_sizes WHERE company_id = ?", cid))
-                known.add(str(z.get("item_id")) + "|" + str(z.get("size_label")));
+            Map<String, Object> costOf = new HashMap<>();          // cost price now = the bill keeps it (later changes don't alter old profit)
+            for (Map<String, Object> z : t.query("SELECT item_id, size_label, cost FROM item_sizes WHERE company_id = ?", cid)) {
+                String k = str(z.get("item_id")) + "|" + str(z.get("size_label"));
+                known.add(k);
+                if (z.get("cost") != null) costOf.put(k, z.get("cost"));
+            }
             List<Object[]> rows = new ArrayList<>(), stockRows = new ArrayList<>();
             int ln = 1;
             for (Map<String, Object> l : lines) {
                 String iid = (String) l.get("id");
                 if (iid != null && !known.contains(iid + "|" + l.get("size"))) { iid = null; l.put("id", null); }
                 rows.add(new Object[]{cid, billId, ln++, iid, l.get("name"), l.get("en"), l.get("size"), l.get("qty"),
-                        BigDecimal.valueOf((Double) l.get("rate")), BigDecimal.valueOf((Double) l.get("amt"))});
+                        BigDecimal.valueOf((Double) l.get("rate")), iid == null ? null : costOf.get(iid + "|" + l.get("size")), BigDecimal.valueOf((Double) l.get("amt"))});
                 if (iid != null && branch != null)
                     stockRows.add(new Object[]{cid, branch, iid, l.get("size"), -((Long) l.get("qty")), at, "bill " + no, l.get("qty"), at, "bill " + no});
             }
-            t.batch("INSERT INTO bill_lines (company_id, bill_id, line_no, item_id, item_name, item_name_en, size_label, qty, rate, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
+            t.batch("INSERT INTO bill_lines (company_id, bill_id, line_no, item_id, item_name, item_name_en, size_label, qty, rate, cost, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
             if (!stockRows.isEmpty())
                 t.batch("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
                         + "ON DUPLICATE KEY UPDATE qty = qty - ?, updated_at = ?, updated_by = ?", stockRows);
+            for (Map<String, Object> p : pend)
+                t.update("UPDATE pending_bills SET status = 'billed', bill_id = ?, closed_at = ? WHERE id = ?", billId, at, lng(p.get("id")));
             Map<String, Object> b = new LinkedHashMap<>();
             b.put("no", no);
             b.put("seq", seq);
@@ -489,13 +695,88 @@ public class BillingService {
             b.put("lines", lines);
             b.put("pieces", pieces);
             b.put("total", billTotal);
+            b.put("exchange", exchange);
+            b.put("exchangeRef", exRef);
+            b.put("paid", round2(billTotal - exchange));
+            b.put("pay", nilBalance ? "Exchange" : payName);
+            b.put("payKind", nilBalance ? "exchange" : payKind);
+            b.put("mergedPending", pend.size());
             return obj("bill", b);
         });
     }
 
+    // ================================================================ pending bills (saved, not yet billed)
+    /** Save the cart as pending for a mobile number. Stock and reports change only when it becomes a bill. */
+    public Map<String, Object> savePending(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireSelling(c);
+        String branch = userBranch(c, cid);
+        String phone = str(in.get("phone")).replaceAll("[^0-9]", "");
+        if (!MOBILE.matcher(phone).matches()) throw new ApiException(400, "Pending-க்கு வாடிக்கையாளர் மொபைல் எண் தேவை");
+        List<Map<String, Object>> lines = mergeLines(parseLines(list(in.get("lines"))));
+        if (lines.isEmpty()) throw new ApiException(400, "பில்லில் ஐட்டம் இல்லை");
+        double total = 0;
+        long pcs = 0;
+        for (Map<String, Object> l : lines) { total += (Double) l.get("amt"); pcs += (Long) l.get("qty"); }
+        db.update("INSERT INTO pending_bills (company_id, branch_id, phone, customer_name, lines_json, pieces, total, status, created_at, created_by_user, created_by_name) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)", cid, branch, phone, clip(in.get("customer"), 60), toJson(lines), pcs, BigDecimal.valueOf(round2(total)),
+                now(), str(c.user.get("username")), str(c.user.get("full_name")));
+        return pendingList(c, phone);
+    }
+
+    /** ?phone= : today's open pending of that number; no phone: open pending of the branch (last 7 days) */
+    public Map<String, Object> pendingList(String auth, String phone) {
+        return pendingList(ctx(auth), str(phone).replaceAll("[^0-9]", ""));
+    }
+
+    private Map<String, Object> pendingList(Ctx c, String phone) {
+        String cid = requireSelling(c);
+        String branch = userBranch(c, cid);
+        LocalDate today = LocalDate.now(zone);
+        List<Map<String, Object>> rows = phone.isEmpty()
+                ? db.query("SELECT * FROM pending_bills WHERE company_id = ? AND branch_id = ? AND status = 'open' AND created_at >= ? ORDER BY phone, id",
+                        cid, branch, today.minusDays(6).atStartOfDay())
+                : db.query("SELECT * FROM pending_bills WHERE company_id = ? AND branch_id = ? AND phone = ? AND status = 'open' AND created_at >= ? ORDER BY id",
+                        cid, branch, phone, today.atStartOfDay());
+        List<Object> list = new ArrayList<>();
+        double total = 0;
+        long pcs = 0;
+        for (Map<String, Object> r : rows) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            LocalDateTime at = ldt(r.get("created_at"));
+            n.put("id", lng(r.get("id")));
+            n.put("phone", str(r.get("phone")));
+            n.put("customer", str(r.get("customer_name")));
+            n.put("at", iso(at));
+            n.put("today", at != null && !at.toLocalDate().isBefore(today));
+            n.put("by", str(r.get("created_by_name")));
+            n.put("pieces", lng(r.get("pieces")));
+            n.put("total", round2(dbl(r.get("total"))));
+            n.put("lines", jsonList(r.get("lines_json")));
+            total += dbl(r.get("total"));
+            pcs += lng(r.get("pieces"));
+            list.add(n);
+        }
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("pending", list);
+        o.put("count", list.size());
+        o.put("pieces", pcs);
+        o.put("total", round2(total));
+        return o;
+    }
+
+    public Map<String, Object> deletePending(String auth, long id) {
+        Ctx c = ctx(auth);
+        String cid = requireSelling(c);
+        String branch = userBranch(c, cid);
+        if (db.update("UPDATE pending_bills SET status = 'deleted', closed_at = ? WHERE id = ? AND company_id = ? AND branch_id = ? AND status = 'open'",
+                now(), id, cid, branch) == 0) throw new ApiException(404, "Pending பில் இல்லை");
+        return obj("ok", true);
+    }
+
     public Map<String, Object> bills(String auth) {
         Ctx c = ctx(auth);
-        String cid = requireBilling(c);
+        String cid = requireSelling(c);
         String br = c.admin() ? null : userBranch(c, cid);       // sales / stock: own branch only
         String bf = br == null ? "" : " AND branch_id = ?";
         List<Map<String, Object>> rows = db.query("SELECT * FROM bills WHERE company_id = ?" + bf + " ORDER BY id DESC LIMIT 100", args(br, cid));
@@ -509,6 +790,232 @@ public class BillingService {
         Map<String, Object> o = new LinkedHashMap<>();
         o.put("bills", list);
         o.put("today", today);
+        return o;
+    }
+
+    // ================================================================ cancel bills (ரத்து பில்) - a separate document, the original bill stays
+    /** documents that are charged in the software invoice: every bill and every cancel bill */
+    private static final String FEE_DOCS = "(SELECT company_id, created_at, platform_fee FROM bills UNION ALL SELECT company_id, created_at, platform_fee FROM cancel_bills)";
+
+    private Map<String, Object> cancelSummary(String cid, String br, LocalDateTime from, LocalDateTime to) {
+        Map<String, Object> r = db.one("SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS t, COALESCE(SUM(pieces), 0) AS p FROM cancel_bills WHERE company_id = ? AND created_at >= ? AND created_at < ?"
+                + (br == null ? "" : " AND branch_id = ?"), br == null ? new Object[]{cid, from, to} : new Object[]{cid, from, to, br});
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("count", lng(r.get("n")));
+        n.put("total", round2(dbl(r.get("t"))));
+        n.put("pieces", lng(r.get("p")));
+        return n;
+    }
+
+    /**
+     * New cancel bill, made like a normal bill: the items being cancelled / returned are added and saved as their own
+     * document (RASI-C0001 ...). The original bill is never changed. Catalog pieces go back to the branch stock.
+     * {customer, phone, refBill, reason, lines:[...]}
+     */
+    public Map<String, Object> addCancelBill(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireSelling(c);
+        String branch = userBranch(c, cid);
+        String reason = clip(in.get("reason"), 120);
+        if (reason.isEmpty()) throw new ApiException(400, "ரத்து செய்யும் காரணம் தேவை");
+        String phone = str(in.get("phone")).replaceAll("[^0-9]", "");
+        if (!phone.isEmpty() && !MOBILE.matcher(phone).matches()) throw new ApiException(400, "மொபைல் எண் தவறு");
+        String ref = clip(in.get("refBill"), 30).toUpperCase(Locale.ROOT);
+        Map<String, Object> refRow = ref.isEmpty() ? null : db.one("SELECT id, branch_id FROM bills WHERE company_id = ? AND bill_no = ?", cid, ref);
+        if (!ref.isEmpty() && refRow == null)
+            throw new ApiException(404, "பில் எண் " + ref + " இல்லை — சரி பார்க்கவும் அல்லது காலியாக விடவும்");
+        List<Map<String, Object>> lines = mergeLines(parseLines(list(in.get("lines"))));
+        if (refRow != null) {
+            // items of the original bill: not more than what is still left on it (sold − cancelled earlier)
+            Map<String, long[]> left = billLeft(cid, lng(refRow.get("id")), ref);
+            for (Map<String, Object> l : lines) {
+                long[] lf = left.get(lineKey(l.get("id"), l.get("name"), l.get("size")));
+                if (lf != null && (Long) l.get("qty") > lf[0])
+                    throw new ApiException(400, l.get("name") + " (" + l.get("size") + "): " + ref + "-ல் ரத்து செய்ய மீதம் " + lf[0] + " மட்டும்");
+            }
+        }
+        if (lines.isEmpty()) throw new ApiException(400, "ரத்து செய்ய ஐட்டம் இல்லை");
+        if (c.sales()) {                                   // sales staff: catalog items at the catalog rate only
+            Map<String, Double> rates = new HashMap<>();
+            for (Map<String, Object> z : db.query("SELECT item_id, size_label, rate FROM item_sizes WHERE company_id = ?", cid))
+                rates.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), dbl(z.get("rate")));
+            for (Map<String, Object> l : lines) {
+                Double r = l.get("id") == null ? null : rates.get(l.get("id") + "|" + l.get("size"));
+                if (r != null && Math.abs(r - (Double) l.get("rate")) > 0.001) throw new ApiException(400, "ரேட் மாற்ற அனுமதி இல்லை: " + l.get("name"));
+            }
+        }
+        double total = 0;
+        long pcs = 0;
+        for (Map<String, Object> l : lines) { total += (Double) l.get("amt"); pcs += (Long) l.get("qty"); }
+        final double tot = round2(total);
+        final long pieces = pcs;
+        String by = str(c.user.get("full_name"));
+        Map<String, Object> out = db.tx(t -> {
+            Map<String, Object> co = t.one("SELECT cn_seq, bill_prefix, bill_fee FROM companies WHERE id = ? FOR UPDATE", cid);
+            long seq = lng(co.get("cn_seq")) + 1;
+            t.update("UPDATE companies SET cn_seq = ? WHERE id = ?", seq, cid);
+            String no = str(co.get("bill_prefix")) + "-C" + String.format("%04d", seq);
+            LocalDateTime at = now();
+            Set<String> known = new HashSet<>();
+            Map<String, Object> costOf = new HashMap<>();          // cost price now: the cancel bill keeps it, so profit is reduced by the right margin
+            for (Map<String, Object> z : t.query("SELECT item_id, size_label, cost FROM item_sizes WHERE company_id = ?", cid)) {
+                String k = str(z.get("item_id")) + "|" + str(z.get("size_label"));
+                known.add(k);
+                if (z.get("cost") != null) costOf.put(k, dbl(z.get("cost")));
+            }
+            for (Map<String, Object> l : lines) {
+                String iid = (String) l.get("id");
+                if (iid != null && !known.contains(iid + "|" + l.get("size"))) { l.put("id", null); continue; }
+                if (iid != null && costOf.containsKey(iid + "|" + l.get("size"))) l.put("cost", costOf.get(iid + "|" + l.get("size")));
+                if (iid != null && branch != null)
+                    t.update("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                            + "ON DUPLICATE KEY UPDATE qty = qty + ?, updated_at = ?, updated_by = ?",
+                            cid, branch, iid, l.get("size"), l.get("qty"), at, "ரத்து " + no, l.get("qty"), at, "ரத்து " + no + " · " + by);
+            }
+            t.update("INSERT INTO cancel_bills (company_id, branch_id, cn_seq, cn_no, ref_bill_no, created_at, customer_name, customer_phone, by_user, by_name, pieces, total, reason, lines_json, platform_fee) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", cid, branch, seq, no, ref, at, clip(in.get("customer"), 60), phone,
+                    str(c.user.get("username")), by, pieces, BigDecimal.valueOf(tot), reason, toJson(lines), co.get("bill_fee"));
+            return cancelRow(t.one("SELECT * FROM cancel_bills WHERE company_id = ? AND cn_no = ?", cid, no));
+        });
+        return obj("cancel", out);
+    }
+
+    private static String lineKey(Object id, Object name, Object size) {
+        return (id != null ? "i:" + id : "c:" + str(name).toLowerCase(Locale.ROOT)) + "|" + str(size);
+    }
+
+    /** per line of a bill: {qty still not cancelled, qty sold, qty cancelled} - earlier cancel bills that name this bill are taken off */
+    private Map<String, long[]> billLeft(String cid, long billId, String billNo) {
+        Map<String, long[]> m = new LinkedHashMap<>();
+        for (Map<String, Object> l : db.query("SELECT item_id, item_name, size_label, qty FROM bill_lines WHERE company_id = ? AND bill_id = ? ORDER BY line_no", cid, billId)) {
+            long[] v = m.computeIfAbsent(lineKey(l.get("item_id"), l.get("item_name"), l.get("size_label")), k -> new long[3]);
+            v[0] += lng(l.get("qty")); v[1] += lng(l.get("qty"));
+        }
+        for (Map<String, Object> x : db.query("SELECT lines_json FROM cancel_bills WHERE company_id = ? AND ref_bill_no = ?", cid, billNo))
+            for (Object o : jsonList(x.get("lines_json"))) {
+                Map<String, Object> l = map(o);
+                long[] v = m.get(lineKey(l.get("id"), l.get("name"), l.get("size")));
+                if (v != null) { long q = lng(l.get("qty")); v[0] = Math.max(0, v[0] - q); v[2] += q; }
+            }
+        return m;
+    }
+
+    /**
+     * Bills of one mobile number in this month and the months before (?months=1..12, default 3) (sales / stock: own branch), with what is still
+     * left to cancel on every line - for "cancel from a bill" (பில்லிலிருந்து ரத்து).
+     */
+    public Map<String, Object> billsByPhone(String auth, String phoneIn, String monthsIn) {
+        Ctx c = ctx(auth);
+        String cid = requireSelling(c);
+        String phone = str(phoneIn).replaceAll("[^0-9]", "");
+        if (!MOBILE.matcher(phone).matches()) throw new ApiException(400, "சரியான 10 இலக்க மொபைல் எண் தேவை");
+        String br = c.admin() ? null : userBranch(c, cid);
+        int months = 3;
+        try { if (!blank(monthsIn)) months = Math.max(1, Math.min(12, Integer.parseInt(monthsIn.trim()))); } catch (NumberFormatException e) { /* default */ }
+        LocalDateTime from = LocalDate.now(zone).withDayOfMonth(1).minusMonths(months - 1).atStartOfDay();
+        List<Map<String, Object>> rows = db.query("SELECT * FROM bills WHERE company_id = ? AND customer_phone = ? AND created_at >= ?" + (br == null ? "" : " AND branch_id = ?")
+                + " ORDER BY id DESC LIMIT 60", br == null ? new Object[]{cid, phone, from} : new Object[]{cid, phone, from, br});
+        List<Object> out = new ArrayList<>();
+        Map<String, Object> names = new HashMap<>();
+        for (Map<String, Object> r : rows) names.put(str(r.get("branch_id")), null);
+        for (Map<String, Object> b : db.query("SELECT id, name FROM branches WHERE company_id = ?", cid)) names.put(str(b.get("id")), str(b.get("name")));
+        for (Map<String, Object> r : rows) {
+            long id = lng(r.get("id"));
+            String no = str(r.get("bill_no"));
+            Map<String, long[]> left = billLeft(cid, id, no);
+            List<Object> ls = new ArrayList<>();
+            long leftPcs = 0;
+            for (Map<String, Object> l : db.query("SELECT item_id, item_name, item_name_en, size_label, qty, rate, amount FROM bill_lines WHERE company_id = ? AND bill_id = ? ORDER BY line_no", cid, id)) {
+                String k = lineKey(l.get("item_id"), l.get("item_name"), l.get("size_label"));
+                long[] v = left.get(k);
+                Map<String, Object> n = new LinkedHashMap<>();
+                n.put("id", l.get("item_id") == null ? null : str(l.get("item_id")));
+                n.put("name", str(l.get("item_name")));
+                n.put("en", str(l.get("item_name_en")));
+                n.put("size", str(l.get("size_label")));
+                n.put("qty", lng(l.get("qty")));
+                n.put("rate", dbl(l.get("rate")));
+                long lf = v == null ? 0 : Math.min(v[0], lng(l.get("qty")));
+                if (v != null) v[0] -= lf;                     // same item twice on a bill: share what is left
+                n.put("left", lf);
+                n.put("cancelled", lng(l.get("qty")) - lf);
+                leftPcs += lf;
+                ls.add(n);
+            }
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("id", id);
+            n.put("no", no);
+            n.put("at", iso(ldt(r.get("created_at"))));
+            n.put("customer", str(r.get("customer_name")));
+            n.put("phone", str(r.get("customer_phone")));
+            n.put("by", str(r.get("billed_by_name")));
+            n.put("branch", names.get(str(r.get("branch_id"))));
+            n.put("pieces", lng(r.get("pieces")));
+            n.put("total", round2(dbl(r.get("total"))));
+            n.put("leftPieces", leftPcs);
+            n.put("lines", ls);
+            out.add(n);
+        }
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("phone", phone);
+        o.put("from", from.toLocalDate().toString());
+        o.put("months", months);
+        o.put("bills", out);
+        return o;
+    }
+
+    private Map<String, Object> cancelRow(Map<String, Object> r) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("id", lng(r.get("id")));
+        n.put("no", str(r.get("cn_no")));
+        n.put("refBill", str(r.get("ref_bill_no")));
+        n.put("at", iso(ldt(r.get("created_at"))));
+        n.put("customer", str(r.get("customer_name")));
+        n.put("phone", str(r.get("customer_phone")));
+        n.put("by", str(r.get("by_name")));
+        n.put("pieces", lng(r.get("pieces")));
+        n.put("total", round2(dbl(r.get("total"))));
+        n.put("reason", str(r.get("reason")));
+        n.put("branchId", str(r.get("branch_id")));
+        n.put("lines", jsonList(r.get("lines_json")));
+        n.put("usedBill", str(r.get("used_bill_no")));
+        return n;
+    }
+
+    /** unused cancel bills of a mobile number (any branch) - credit for an exchange bill */
+    public Map<String, Object> exchangeOpen(String auth, String phoneIn) {
+        Ctx c = ctx(auth);
+        String cid = requireSelling(c);
+        String phone = str(phoneIn).replaceAll("[^0-9]", "");
+        if (!MOBILE.matcher(phone).matches()) throw new ApiException(400, "சரியான 10 இலக்க மொபைல் எண் தேவை");
+        List<Object> list = new ArrayList<>();
+        double sum = 0;
+        for (Map<String, Object> r : db.query("SELECT * FROM cancel_bills WHERE company_id = ? AND customer_phone = ? AND used_bill_no = '' ORDER BY id DESC LIMIT 20", cid, phone)) {
+            list.add(cancelRow(r));
+            sum += dbl(r.get("total"));
+        }
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("phone", phone);
+        o.put("cancels", list);
+        o.put("total", round2(sum));
+        return o;
+    }
+
+    /** cancel bill history: sales / stock own branch, admin / owner all (?branch=) */
+    public Map<String, Object> cancelBills(String auth, String branch) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        if (c.warehouse()) throw new ApiException(403, "அனுமதி இல்லை");
+        String br = c.admin() || c.owner() ? (blank(branch) ? null : checkBranch(cid, branch)) : userBranch(c, cid);
+        List<Object> list = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT * FROM cancel_bills WHERE company_id = ?" + (br == null ? "" : " AND branch_id = ?") + " ORDER BY id DESC LIMIT 200",
+                br == null ? new Object[]{cid} : new Object[]{cid, br}))
+            list.add(cancelRow(r));
+        LocalDate today = LocalDate.now(zone);
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("cancels", list);
+        o.put("today", cancelSummary(cid, br, today.atStartOfDay(), today.plusDays(1).atStartOfDay()));
+        o.put("month", cancelSummary(cid, br, today.withDayOfMonth(1).atStartOfDay(), today.withDayOfMonth(1).plusMonths(1).atStartOfDay()));
         return o;
     }
 
@@ -537,6 +1044,7 @@ public class BillingService {
         List<Object> list = new ArrayList<>();
         for (Map<String, Object> r : rows) {
             Map<String, Object> b = new LinkedHashMap<>();
+            b.put("id", lng(r.get("id")));
             b.put("no", str(r.get("bill_no")));
             b.put("seq", lng(r.get("bill_seq")));
             b.put("at", iso(ldt(r.get("created_at"))));
@@ -547,6 +1055,12 @@ public class BillingService {
             b.put("lines", lines.getOrDefault(lng(r.get("id")), new ArrayList<>()));
             b.put("pieces", lng(r.get("pieces")));
             b.put("total", dbl(r.get("total")));
+            b.put("pay", str(r.get("pay_name")));
+            b.put("payKind", str(r.get("pay_kind")));
+            b.put("exchange", round2(dbl(r.get("exchange_amount"))));
+            b.put("exchangeRef", str(r.get("exchange_ref")));
+            b.put("paid", round2(dbl(r.get("total")) - dbl(r.get("exchange_amount"))));
+            b.put("branchId", str(r.get("branch_id")));
             list.add(b);
         }
         return list;
@@ -581,6 +1095,61 @@ public class BillingService {
         o.put("avg", cnt == 0 ? 0.0 : round2(tot / cnt));
         o.put("max", round2(dbl(r.get("mx"))));
         o.put("pieces", lng(r.get("pcs")));
+        return o;
+    }
+
+    /**
+     * sales = all line amounts; costed = amounts of lines whose cost was known at billing time;
+     * cogs = cost x qty of those lines; profit = costed - cogs; margin % on costed sales.
+     */
+    private Map<String, Object> profit(String cid, String br, LocalDateTime from, LocalDateTime to) {
+        Map<String, Object> r = db.one("SELECT COALESCE(SUM(l.amount), 0) AS sales, COALESCE(SUM(CASE WHEN l.cost IS NOT NULL THEN l.amount END), 0) AS costed, "
+                + "COALESCE(SUM(l.cost * l.qty), 0) AS cogs, COALESCE(SUM(CASE WHEN l.cost IS NULL THEN l.qty END), 0) AS nocost_pcs "
+                + "FROM bill_lines l JOIN bills b ON b.company_id = l.company_id AND b.id = l.bill_id "
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ?" + bf(br), args(br, cid, from, to));
+        double sales = round2(dbl(r.get("sales"))), costed = round2(dbl(r.get("costed"))), cogs = round2(dbl(r.get("cogs")));
+        long noCostPcs = lng(r.get("nocost_pcs"));
+        // cancel bills (ரத்து பில்) of the same period come off: their amount from sales, their cost from the cost of goods
+        double cxSales = 0, cxProfit = 0;
+        List<Map<String, Object>> cxRows = db.query("SELECT lines_json FROM cancel_bills WHERE company_id = ? AND created_at >= ? AND created_at < ?"
+                + (br == null ? "" : " AND branch_id = ?"), br == null ? new Object[]{cid, from, to} : new Object[]{cid, from, to, br});
+        if (!cxRows.isEmpty()) {
+            Map<String, Object> curCost = null;
+            for (Map<String, Object> x : cxRows) {
+                for (Object o : jsonList(x.get("lines_json"))) {
+                    Map<String, Object> l = map(o);
+                    double amt = dbl(l.get("amt")), q = dbl(l.get("qty"));
+                    Object cost = l.get("cost");
+                    if (cost == null && l.get("id") != null) {           // older cancel bills without a cost snapshot: today's catalog cost
+                        if (curCost == null) {
+                            curCost = new HashMap<>();
+                            for (Map<String, Object> z : db.query("SELECT item_id, size_label, cost FROM item_sizes WHERE company_id = ? AND cost IS NOT NULL", cid))
+                                curCost.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), z.get("cost"));
+                        }
+                        cost = curCost.get(str(l.get("id")) + "|" + str(l.get("size")));
+                    }
+                    sales -= amt;
+                    cxSales += amt;
+                    if (cost != null) {
+                        double cg = dbl(cost) * q;
+                        costed -= amt;
+                        cogs -= cg;
+                        cxProfit += amt - cg;
+                    } else noCostPcs -= (long) q;
+                }
+            }
+            sales = round2(sales); costed = round2(costed); cogs = round2(cogs);
+        }
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("sales", sales);
+        o.put("cancelSales", round2(cxSales));
+        o.put("cancelProfit", round2(cxProfit));
+        o.put("costedSales", costed);
+        o.put("cost", cogs);
+        o.put("profit", round2(costed - cogs));
+        o.put("margin", costed > 0 ? Math.round((costed - cogs) * 1000.0 / costed) / 10.0 : null);
+        o.put("noCostSales", round2(sales - costed));
+        o.put("noCostPieces", Math.max(0, noCostPcs));
         return o;
     }
 
@@ -621,7 +1190,7 @@ public class BillingService {
         o.put("date", sel.toString());
         o.put("today", today.toString());
         o.put("month", m1.toString().substring(0, 7));
-        List<Object> branches = branchList(cid);
+        List<Object> branches = branchList(cid, "shop");                    // warehouses never sell
         Map<String, Object> scope = new LinkedHashMap<>();
         scope.put("branch", br);
         Map<String, Object> brRow = branchRow(cid, br);
@@ -637,6 +1206,10 @@ public class BillingService {
         todayS.put("yesterday", yest.get("total"));
         o.put("todaySales", todayS);
         o.put("daySales", salesSummary(cid, br, dFrom, dTo));
+        Map<String, Object> cx = new LinkedHashMap<>();
+        cx.put("day", cancelSummary(cid, br, dFrom, dTo));
+        cx.put("month", cancelSummary(cid, br, mFrom, mTo));
+        o.put("cancels", cx);
 
         Map<String, Object> monthS = salesSummary(cid, br, mFrom, mTo);
         Map<String, Object> prevS = salesSummary(cid, br, pFrom, mFrom);
@@ -702,7 +1275,7 @@ public class BillingService {
                     + "COALESCE(SUM(b.created_at >= ? AND b.created_at < ?), 0) AS d_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.total END), 0) AS d_tot, "
                     + "COUNT(b.id) AS m_cnt, COALESCE(SUM(b.total), 0) AS m_tot "
                     + "FROM branches br LEFT JOIN bills b ON b.company_id = br.company_id AND b.branch_id = br.id AND b.created_at >= ? AND b.created_at < ? "
-                    + "WHERE br.company_id = ? GROUP BY br.id, br.name, br.sort_order, br.created_at ORDER BY br.sort_order, br.created_at, br.id",
+                    + "WHERE br.company_id = ? AND br.kind = 'shop' GROUP BY br.id, br.name, br.sort_order, br.created_at ORDER BY br.sort_order, br.created_at, br.id",
                     dFrom, dTo, dFrom, dTo, mFrom, mTo, cid)) {
                 Map<String, Object> p = new LinkedHashMap<>();
                 p.put("id", str(r.get("id")));
@@ -714,6 +1287,55 @@ public class BillingService {
                 bs.add(p);
             }
             o.put("branchSales", bs);
+        }
+
+        // payment-mode-wise (selected day + month): Cash, Card, each UPI account ...
+        List<Object> ps = new ArrayList<>();
+        // money actually received by mode = bill total - exchange; exchange (ரத்து பில் credit) is its own row
+        List<Map<String, Object>> payRows = new ArrayList<>(db.query("SELECT b.pay_name AS n, MAX(b.pay_kind) AS k, "
+                + "COALESCE(SUM(b.created_at >= ? AND b.created_at < ?), 0) AS d_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.total - b.exchange_amount END), 0) AS d_tot, "
+                + "COUNT(*) AS m_cnt, COALESCE(SUM(b.total - b.exchange_amount), 0) AS m_tot FROM bills b "
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ? AND b.total > b.exchange_amount" + f + " GROUP BY b.pay_name ORDER BY m_tot DESC",
+                args(br, dFrom, dTo, dFrom, dTo, cid, mFrom, mTo)));
+        Map<String, Object> exr = db.one("SELECT '🔁 Exchange (ரத்து பில்)' AS n, 'exchange' AS k, "
+                + "COALESCE(SUM(b.created_at >= ? AND b.created_at < ?), 0) AS d_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.exchange_amount END), 0) AS d_tot, "
+                + "COUNT(*) AS m_cnt, COALESCE(SUM(b.exchange_amount), 0) AS m_tot FROM bills b "
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND b.created_at < ? AND b.exchange_amount > 0" + f, args(br, dFrom, dTo, dFrom, dTo, cid, mFrom, mTo));
+        if (exr != null && lng(exr.get("m_cnt")) > 0) payRows.add(exr);
+        for (Map<String, Object> r : payRows) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("name", blank(str(r.get("n"))) ? "Cash" : str(r.get("n")));
+            p.put("kind", blank(str(r.get("k"))) ? "cash" : str(r.get("k")));
+            p.put("dayCount", lng(r.get("d_cnt")));
+            p.put("dayTotal", round2(dbl(r.get("d_tot"))));
+            p.put("monthCount", lng(r.get("m_cnt")));
+            p.put("monthTotal", round2(dbl(r.get("m_tot"))));
+            ps.add(p);
+        }
+        o.put("paySales", ps);
+
+        // real profit from the cost saved on each bill line (cost viewers only)
+        if (c.seesCost()) {
+            Map<String, Object> pr = new LinkedHashMap<>();
+            pr.put("day", profit(cid, br, dFrom, dTo));
+            pr.put("month", profit(cid, br, mFrom, mTo));
+            pr.put("prevMonth", profit(cid, br, pFrom, mFrom));
+            pr.put("prevSame", curMonth ? profit(cid, br, pFrom, pSameTo) : pr.get("prevMonth"));   // same days of last month
+            pr.put("sameDays", curMonth);
+            if (wide && br == null) {
+                List<Object> pb = new ArrayList<>();
+                for (Object bo : branches) {
+                    String bid = str(((Map<?, ?>) bo).get("id"));
+                    Map<String, Object> n = new LinkedHashMap<>();
+                    n.put("id", bid);
+                    n.put("name", str(((Map<?, ?>) bo).get("name")));
+                    n.put("day", profit(cid, bid, dFrom, dTo));
+                    n.put("month", profit(cid, bid, mFrom, mTo));
+                    pb.add(n);
+                }
+                pr.put("branches", pb);
+            }
+            o.put("profit", pr);
         }
 
         // user-wise bills (selected day + month)
@@ -777,7 +1399,7 @@ public class BillingService {
 
     /** stock users: own branch; admin: any branch of the opened company */
     private String stockBranch(Ctx c, String cid, String requested) {
-        if (!c.admin() && !c.stock()) throw new ApiException(403, "Stock அனுமதி இல்லை (Stock users only)");
+        if (!c.admin() && !c.stock() && !c.warehouse()) throw new ApiException(403, "Stock அனுமதி இல்லை (Stock users only)");
         if (c.admin() && !blank(requested)) {
             if (branchRow(cid, requested.trim()) == null) throw new ApiException(404, "கிளை இல்லை (Branch not found)");
             return requested.trim();
@@ -807,6 +1429,129 @@ public class BillingService {
         o.put("branchName", b == null ? "" : str(b.get("name")));
         if (c.admin()) o.put("branches", branchList(cid));
         o.put("stock", list);
+        return o;
+    }
+
+    /**
+     * Stock report: owner / admin see every branch side by side (or one with ?branch=), stock users their own branch.
+     * Rows follow the catalog order; qty per branch, total, value (qty x rate). Read only.
+     */
+    public Map<String, Object> stockReport(String auth, String branch) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        boolean wide = c.admin() || c.owner() || c.warehouse();
+        if (!wide && !c.stock()) throw new ApiException(403, "Stock அறிக்கை அனுமதி இல்லை");
+        List<Object> all = branchList(cid), shown = new ArrayList<>();
+        String br = wide ? (blank(branch) ? null : branch.trim()) : userBranch(c, cid);
+        for (Object o : all) if (br == null || br.equals(((Map<?, ?>) o).get("id"))) shown.add(o);
+        if (shown.isEmpty()) throw new ApiException(404, "கிளை இல்லை (Branch not found)");
+        Map<String, Integer> col = new LinkedHashMap<>();
+        for (Object o : shown) col.put(str(((Map<?, ?>) o).get("id")), col.size());
+        int nb = col.size();
+
+        Map<String, long[]> qty = new HashMap<>();
+        for (Map<String, Object> r : db.query("SELECT branch_id, item_id, size_label, qty FROM stock WHERE company_id = ?", cid)) {
+            Integer ci = col.get(str(r.get("branch_id")));
+            if (ci == null) continue;
+            qty.computeIfAbsent(str(r.get("item_id")) + "|" + str(r.get("size_label")), k -> new long[nb])[ci] = lng(r.get("qty"));
+        }
+        // pieces sold in the last 30 days per item+size and branch (for "days of stock left")
+        LocalDateTime since = LocalDate.now(zone).minusDays(30).atStartOfDay();
+        Map<String, Long> sold = new HashMap<>();
+        for (Map<String, Object> r : db.query("SELECT l.item_id, l.size_label, SUM(l.qty) AS q FROM bill_lines l JOIN bills b ON b.company_id = l.company_id AND b.id = l.bill_id "
+                + "WHERE b.company_id = ? AND b.created_at >= ? AND l.item_id IS NOT NULL" + bf(br) + " GROUP BY l.item_id, l.size_label", args(br, cid, since)))
+            sold.put(str(r.get("item_id")) + "|" + str(r.get("size_label")), lng(r.get("q")));
+
+        Map<String, String[]> groups = new HashMap<>();
+        for (Map<String, Object> g : db.query("SELECT id, name_ta, emoji FROM item_groups WHERE company_id = ?", cid))
+            groups.put(str(g.get("id")), new String[]{str(g.get("name_ta")), str(g.get("emoji"))});
+        long[] bPcs = new long[nb], bNoCost = new long[nb];
+        double[] bVal = new double[nb], bCost = new double[nb], bValCosted = new double[nb];
+        long[] bNeg = new long[nb], bZero = new long[nb];
+        List<Object> rows = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT i.id, i.group_id, i.name_ta, i.name_en, z.size_label, z.rate, z.cost FROM items i "
+                + "JOIN item_groups g ON g.company_id = i.company_id AND g.id = i.group_id "
+                + "JOIN item_sizes z ON z.company_id = i.company_id AND z.item_id = i.id "
+                + "WHERE i.company_id = ? ORDER BY g.sort_order, i.sort_order, z.sort_order", cid)) {
+            String k = str(r.get("id")) + "|" + str(r.get("size_label"));
+            long[] q = qty.getOrDefault(k, new long[nb]);
+            double rate = dbl(r.get("rate"));
+            Double cost = r.get("cost") == null ? null : dbl(r.get("cost"));
+            long tot = 0, inHand = 0;                 // inHand = positive stock per branch (a branch's minus never lowers another's value)
+            for (int i = 0; i < nb; i++) {
+                tot += q[i];
+                if (q[i] > 0) inHand += q[i];
+                if (q[i] > 0) {
+                    bPcs[i] += q[i]; bVal[i] += q[i] * rate;
+                    if (cost != null) { bCost[i] += q[i] * cost; bValCosted[i] += q[i] * rate; }
+                    else bNoCost[i] += q[i];
+                }
+                else if (q[i] < 0) bNeg[i]++;
+                else bZero[i]++;
+            }
+            String[] g = groups.getOrDefault(str(r.get("group_id")), new String[]{"", ""});
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("group", g[0]);
+            n.put("emoji", g[1]);
+            n.put("item", str(r.get("id")));
+            n.put("name", str(r.get("name_ta")));
+            n.put("en", str(r.get("name_en")));
+            n.put("size", str(r.get("size_label")));
+            n.put("rate", round2(rate));
+            n.put("cost", cost == null ? null : round2(cost));
+            n.put("costValue", cost == null ? null : round2(inHand * cost));
+            List<Long> ql = new ArrayList<>();
+            for (long v : q) ql.add(v);
+            n.put("qty", ql);
+            n.put("total", tot);
+            n.put("value", round2(inHand * rate));
+            n.put("sold30", sold.getOrDefault(k, 0L));
+            rows.add(n);
+        }
+        List<Object> tots = new ArrayList<>();
+        long pcs = 0, neg = 0, zero = 0, noCost = 0;
+        double val = 0, costVal = 0, valCosted = 0;
+        int i = 0;
+        for (Object o : shown) {
+            Map<String, Object> t = new LinkedHashMap<>();
+            t.put("id", str(((Map<?, ?>) o).get("id")));
+            t.put("name", str(((Map<?, ?>) o).get("name")));
+            t.put("kind", str(((Map<?, ?>) o).get("kind")));
+            t.put("pieces", bPcs[i]);
+            t.put("value", round2(bVal[i]));
+            t.put("costValue", round2(bCost[i]));
+            t.put("margin", round2(bValCosted[i] - bCost[i]));      // on pieces whose cost is known
+            t.put("noCostPieces", bNoCost[i]);
+            t.put("negative", bNeg[i]);
+            t.put("zero", bZero[i]);
+            pcs += bPcs[i]; val += bVal[i]; neg += bNeg[i]; zero += bZero[i];
+            costVal += bCost[i]; valCosted += bValCosted[i]; noCost += bNoCost[i];
+            tots.add(t);
+            i++;
+        }
+        Map<String, Object> sum = new LinkedHashMap<>();
+        sum.put("pieces", pcs);
+        sum.put("value", round2(val));
+        sum.put("costValue", round2(costVal));
+        sum.put("costedValue", round2(valCosted));           // selling value of the pieces that have a cost
+        sum.put("margin", round2(valCosted - costVal));
+        sum.put("noCostPieces", noCost);
+        sum.put("negative", neg);
+        sum.put("zero", zero);
+        sum.put("lines", rows.size());
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("branch", br);
+        o.put("canFilter", wide);
+        o.put("canEdit", c.admin() || c.stock() || c.warehouse());
+        if (wide) o.put("allBranches", all);
+        Map<String, Object> tr = db.one("SELECT COUNT(DISTINCT t.id) AS n, COALESCE(SUM(l.qty), 0) AS q FROM stock_transfers t JOIN transfer_lines l ON l.tr_id = t.id "
+                + "WHERE t.company_id = ? AND t.status = 'sent'" + (br == null ? "" : " AND (t.from_branch = ? OR t.to_branch = ?)"), br == null ? new Object[]{cid} : new Object[]{cid, br, br});
+        o.put("transitCount", lng(tr.get("n")));
+        o.put("transitPieces", lng(tr.get("q")));
+        o.put("branches", tots);
+        o.put("summary", sum);
+        o.put("rows", rows);
+        o.put("at", iso(now()));
         return o;
     }
 
@@ -841,6 +1586,539 @@ public class BillingService {
         return obj("stock", n);
     }
 
+    // ================================================================ purchase orders (stock users)
+    static final Set<String> PO_GST = Set.of("0", "3", "5", "12", "18", "28");
+
+    /** stock users: own branch; admin: any branch (?branch=); owner: read only, any branch */
+    private String poBranch(Ctx c, String cid, String requested, boolean write) {
+        if (c.owner()) {
+            if (write) throw new ApiException(403, "Owner: பார்க்க மட்டும் (view only)");
+            return blank(requested) ? null : checkBranch(cid, requested);
+        }
+        if (!c.admin() && !c.stock() && !c.warehouse()) throw new ApiException(403, "Purchase Order: Stock / Warehouse users மட்டும்");
+        if (c.admin()) return blank(requested) ? (write ? firstBranch(cid) : null) : checkBranch(cid, requested);
+        return userBranch(c, cid);
+    }
+
+    private String checkBranch(String cid, String b) {
+        if (branchRow(cid, b.trim()) == null) throw new ApiException(404, "கிளை இல்லை (Branch not found)");
+        return b.trim();
+    }
+
+    private static LocalDate dateOrNull(Object o, String what) {
+        String v = str(o).trim();
+        if (v.isEmpty()) return null;
+        try { return LocalDate.parse(v); } catch (DateTimeParseException e) { throw new ApiException(400, "தவறான தேதி: " + what); }
+    }
+
+    private static double money(Object o, String what, double max) {
+        String v = str(o).replace(",", "").trim();
+        if (v.isEmpty()) return 0;
+        double d = dbl(v);
+        if (Double.isNaN(d) || d < 0 || d > max) throw new ApiException(400, "தவறான தொகை: " + what);
+        return round2(d);
+    }
+
+    public Map<String, Object> suppliers(String auth) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        poBranch(c, cid, null, false);
+        return obj("suppliers", supplierList(cid));
+    }
+
+    private List<Object> supplierList(String cid) {
+        List<Object> out = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT * FROM suppliers WHERE company_id = ? ORDER BY name", cid)) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("id", str(r.get("id")));
+            n.put("name", str(r.get("name")));
+            n.put("phone", str(r.get("phone")));
+            n.put("gstin", str(r.get("gstin")));
+            n.put("address", str(r.get("address")));
+            out.add(n);
+        }
+        return out;
+    }
+
+    /** create or update a supplier inside a PO save; returns its id */
+    private String upsertSupplier(Db t, String cid, Map<String, Object> s) {
+        String id = str(s.get("id")), name = clip(s.get("name"), 60);
+        String phone = str(s.get("phone")).replaceAll("[^0-9]", ""), gstin = str(s.get("gstin")).trim().toUpperCase(Locale.ROOT);
+        String addr = clip(s.get("address"), 200);
+        if (!id.isEmpty() && t.one("SELECT id FROM suppliers WHERE company_id = ? AND id = ?", cid, id) != null && name.isEmpty()) return id;
+        if (name.isEmpty()) throw new ApiException(400, "Supplier பெயர் தேவை");
+        if (!phone.isEmpty() && !MOBILE.matcher(phone).matches()) throw new ApiException(400, "Supplier மொபைல் எண் தவறு");
+        if (!gstin.isEmpty() && !GSTIN.matcher(gstin).matches()) throw new ApiException(400, "Supplier GSTIN தவறு (15 எழுத்து)");
+        if (!id.isEmpty() && t.one("SELECT id FROM suppliers WHERE company_id = ? AND id = ?", cid, id) != null) {
+            t.update("UPDATE suppliers SET name = ?, phone = ?, gstin = ?, address = ? WHERE company_id = ? AND id = ?", name, phone, gstin, addr, cid, id);
+            return id;
+        }
+        Map<String, Object> dup = t.one("SELECT id FROM suppliers WHERE company_id = ? AND LOWER(name) = LOWER(?)", cid, name);
+        if (dup != null) {
+            t.update("UPDATE suppliers SET phone = IF(? = '', phone, ?), gstin = IF(? = '', gstin, ?), address = IF(? = '', address, ?) WHERE company_id = ? AND id = ?",
+                    phone, phone, gstin, gstin, addr, addr, cid, str(dup.get("id")));
+            return str(dup.get("id"));
+        }
+        String nid = newId("s");
+        t.update("INSERT INTO suppliers (company_id, id, name, phone, gstin, address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", cid, nid, name, phone, gstin, addr, now());
+        return nid;
+    }
+
+    /** list: ?status=open|received|cancelled|all, ?branch= (admin / owner) */
+    public Map<String, Object> poList(String auth, String status, String branch) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        String br = poBranch(c, cid, branch, false);
+        String st = blank(status) ? "all" : status.trim();
+        String sf = switch (st) {
+            case "open" -> " AND p.status IN ('ordered','partial')";
+            case "received" -> " AND p.status = 'received'";
+            case "cancelled" -> " AND p.status = 'cancelled'";
+            default -> "";
+        };
+        List<Object> out = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        args.add(cid);
+        if (br != null) args.add(br);
+        for (Map<String, Object> r : db.query("SELECT p.*, br.name AS branch_name, br.kind AS branch_kind, (SELECT COALESCE(SUM(qty),0) FROM po_lines l WHERE l.po_id = p.id) AS q, "
+                + "(SELECT COALESCE(SUM(received_qty),0) FROM po_lines l WHERE l.po_id = p.id) AS rq FROM purchase_orders p "
+                + "LEFT JOIN branches br ON br.company_id = p.company_id AND br.id = p.branch_id WHERE p.company_id = ?" + (br == null ? "" : " AND p.branch_id = ?")
+                + sf + " ORDER BY p.id DESC LIMIT 300", args.toArray()))
+            out.add(poHead(r));
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("orders", out);
+        o.put("canEdit", !c.owner());
+        o.put("branch", br);
+        if (c.admin() || c.owner()) o.put("branches", branchList(cid));
+        return o;
+    }
+
+    private Map<String, Object> poHead(Map<String, Object> r) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("id", lng(r.get("id")));
+        n.put("no", str(r.get("po_no")));
+        n.put("status", str(r.get("status")));
+        n.put("branchId", str(r.get("branch_id")));
+        n.put("branch", str(r.get("branch_name")));
+        n.put("branchKind", str(r.get("branch_kind")));
+        n.put("supplierId", str(r.get("supplier_id")));
+        n.put("supplier", str(r.get("supplier_name")));
+        n.put("orderDate", str(r.get("order_date")).length() >= 10 ? str(r.get("order_date")).substring(0, 10) : "");
+        n.put("expectedDate", r.get("expected_date") == null ? "" : str(r.get("expected_date")).substring(0, 10));
+        n.put("supplierRef", str(r.get("supplier_ref")));
+        n.put("notes", str(r.get("notes")));
+        n.put("subtotal", round2(dbl(r.get("subtotal"))));
+        n.put("gst", round2(dbl(r.get("gst_total"))));
+        n.put("other", round2(dbl(r.get("other_charges"))));
+        n.put("discount", round2(dbl(r.get("discount"))));
+        n.put("total", round2(dbl(r.get("total"))));
+        n.put("paid", round2(dbl(r.get("paid"))));
+        n.put("balance", round2(dbl(r.get("total")) - dbl(r.get("paid"))));
+        n.put("by", str(r.get("created_by_name")));
+        n.put("at", iso(ldt(r.get("created_at"))));
+        if (r.get("received_at") != null) { n.put("receivedAt", iso(ldt(r.get("received_at")))); n.put("receivedBy", str(r.get("received_by"))); }
+        if (r.containsKey("q")) { n.put("qty", lng(r.get("q"))); n.put("receivedQty", lng(r.get("rq"))); }
+        return n;
+    }
+
+    public Map<String, Object> poGet(String auth, long id) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        Map<String, Object> p = poRow(c, cid, id, false);
+        return obj("po", poFull(cid, p, c.seesCost()));
+    }
+
+    private Map<String, Object> poRow(Ctx c, String cid, long id, boolean write) {
+        String br = poBranch(c, cid, null, write);
+        Map<String, Object> p = db.one("SELECT p.*, br.name AS branch_name, br.kind AS branch_kind FROM purchase_orders p LEFT JOIN branches br ON br.company_id = p.company_id AND br.id = p.branch_id "
+                + "WHERE p.company_id = ? AND p.id = ?", cid, id);
+        if (p == null) throw new ApiException(404, "PO இல்லை");
+        if ((c.stock() || c.warehouse()) && !str(p.get("branch_id")).equals(br)) throw new ApiException(403, "வேறு கிளையின் PO");
+        return p;
+    }
+
+    private Map<String, Object> poFull(String cid, Map<String, Object> p, boolean withCost) {
+        Map<String, Object> o = poHead(p);
+        Map<String, Object> sup = blank(str(p.get("supplier_id"))) ? null : db.one("SELECT * FROM suppliers WHERE company_id = ? AND id = ?", cid, str(p.get("supplier_id")));
+        if (sup != null) {
+            o.put("supplierPhone", str(sup.get("phone")));
+            o.put("supplierGstin", str(sup.get("gstin")));
+            o.put("supplierAddress", str(sup.get("address")));
+        }
+        List<Object> ls = new ArrayList<>();
+        long q = 0, rq = 0;
+        for (Map<String, Object> l : db.query("SELECT * FROM po_lines WHERE po_id = ? ORDER BY line_no", lng(p.get("id")))) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("line", lng(l.get("line_no")));
+            n.put("itemId", l.get("item_id") == null ? null : str(l.get("item_id")));
+            n.put("name", str(l.get("item_name")));
+            n.put("size", str(l.get("size_label")));
+            n.put("qty", lng(l.get("qty")));
+            n.put("received", lng(l.get("received_qty")));
+            n.put("unitCost", round2(dbl(l.get("unit_cost"))));
+            n.put("gstPct", round2(dbl(l.get("gst_pct"))));
+            n.put("amount", round2(dbl(l.get("amount"))));
+            q += lng(l.get("qty"));
+            rq += lng(l.get("received_qty"));
+            ls.add(n);
+        }
+        o.put("lines", ls);
+        o.put("qty", q);
+        o.put("receivedQty", rq);
+        return o;
+    }
+
+    /** create (no id) or edit (id, only while nothing is received) a purchase order */
+    public Map<String, Object> savePo(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        long id = lng(in.get("id"));
+        String br = id == 0 ? poBranch(c, cid, str(in.get("branch")), true) : str(poRow(c, cid, id, true).get("branch_id"));
+        LocalDate orderDate = dateOrNull(in.get("orderDate"), "ஆர்டர் தேதி");
+        if (orderDate == null) orderDate = LocalDate.now(zone);
+        LocalDate expected = dateOrNull(in.get("expectedDate"), "டெலிவரி தேதி");
+        if (expected != null && expected.isBefore(orderDate)) throw new ApiException(400, "டெலிவரி தேதி ஆர்டர் தேதிக்கு முன் இருக்க முடியாது");
+        String ref = clip(in.get("supplierRef"), 40), notes = clip(in.get("notes"), 300);
+        double other = money(in.get("otherCharges"), "இதர செலவு", 9999999), disc = money(in.get("discount"), "தள்ளுபடி", 9999999),
+                paid = money(in.get("paid"), "செலுத்திய தொகை", 99999999);
+        List<Object> raw = list(in.get("lines"));
+        if (raw.isEmpty()) throw new ApiException(400, "PO-ல் ஐட்டம் இல்லை");
+        if (raw.size() > 300) throw new ApiException(400, "அதிக ஐட்டங்கள்");
+        Set<String> known = new HashSet<>();
+        for (Map<String, Object> z : db.query("SELECT item_id, size_label FROM item_sizes WHERE company_id = ?", cid))
+            known.add(str(z.get("item_id")) + "|" + str(z.get("size_label")));
+        List<Object[]> lines = new ArrayList<>();
+        double sub = 0, gst = 0;
+        int ln = 1;
+        for (Object o : raw) {
+            Map<String, Object> l = map(o);
+            String name = clip(l.get("name"), 60), size = clip(l.get("size"), 12), iid = str(l.get("itemId"));
+            if (iid.isEmpty() || !known.contains(iid + "|" + size)) iid = null;
+            double q = dbl(l.get("qty"));
+            if (name.isEmpty()) throw new ApiException(400, "ஐட்டம் பெயர் தேவை (வரி " + ln + ")");
+            if (!(q >= 1 && q <= 99999) || q != Math.floor(q)) throw new ApiException(400, "அளவு தவறு: " + name);
+            double uc = money(l.get("unitCost"), "அடக்க விலை (" + name + ")", 999999);
+            String g = str(l.get("gstPct")).replaceAll("\\.0+$", "").trim();
+            if (g.isEmpty()) g = "0";
+            if (!PO_GST.contains(g)) throw new ApiException(400, "GST %: 0 / 3 / 5 / 12 / 18 / 28");
+            double amt = round2(uc * q), gp = Double.parseDouble(g);
+            sub += amt;
+            gst += amt * gp / 100;
+            lines.add(new Object[]{ln++, iid, name, size, (long) q, BigDecimal.valueOf(uc), BigDecimal.valueOf(gp), BigDecimal.valueOf(amt)});
+        }
+        double subtotal = round2(sub), gstTotal = round2(gst), total = round2(subtotal + gstTotal + other - disc);
+        if (total < 0) throw new ApiException(400, "தள்ளுபடி மொத்தத்தை விட அதிகம்");
+        LocalDateTime now = now();
+        final LocalDate od = orderDate;
+        long poId = db.tx(t -> {
+            Object sraw = in.get("supplier");
+            String sid = sraw instanceof Map ? upsertSupplier(t, cid, map(sraw)) : null;
+            if (sid == null) throw new ApiException(400, "Supplier-ஐ தேர்வு செய்யவும் / உருவாக்கவும்");
+            String sname = str(t.one("SELECT name FROM suppliers WHERE company_id = ? AND id = ?", cid, sid).get("name"));
+            long pid = id;
+            if (pid == 0) {
+                Map<String, Object> co = t.one("SELECT po_seq FROM companies WHERE id = ? FOR UPDATE", cid);
+                long seq = lng(co.get("po_seq")) + 1;
+                t.update("UPDATE companies SET po_seq = ? WHERE id = ?", seq, cid);
+                pid = t.insert("INSERT INTO purchase_orders (company_id, branch_id, po_seq, po_no, supplier_id, supplier_name, order_date, expected_date, supplier_ref, notes, status, "
+                        + "subtotal, gst_total, other_charges, discount, total, paid, created_at, created_by_user, created_by_name, updated_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ordered', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        cid, br, seq, "PO-" + String.format("%04d", seq), sid, sname, od, expected, ref, notes,
+                        BigDecimal.valueOf(subtotal), BigDecimal.valueOf(gstTotal), BigDecimal.valueOf(other), BigDecimal.valueOf(disc), BigDecimal.valueOf(total),
+                        BigDecimal.valueOf(paid), now, str(c.user.get("username")), str(c.user.get("full_name")), now);
+            } else {
+                Map<String, Object> cur = t.one("SELECT status, (SELECT COALESCE(SUM(received_qty),0) FROM po_lines WHERE po_id = p.id) AS rq FROM purchase_orders p WHERE id = ? FOR UPDATE", pid);
+                if (!"ordered".equals(str(cur.get("status"))) || lng(cur.get("rq")) > 0)
+                    throw new ApiException(409, "சரக்கு வந்த / ரத்தான PO-ஐ மாற்ற முடியாது");
+                t.update("UPDATE purchase_orders SET supplier_id = ?, supplier_name = ?, order_date = ?, expected_date = ?, supplier_ref = ?, notes = ?, subtotal = ?, gst_total = ?, "
+                        + "other_charges = ?, discount = ?, total = ?, paid = ?, updated_at = ? WHERE id = ?", sid, sname, od, expected, ref, notes,
+                        BigDecimal.valueOf(subtotal), BigDecimal.valueOf(gstTotal), BigDecimal.valueOf(other), BigDecimal.valueOf(disc), BigDecimal.valueOf(total),
+                        BigDecimal.valueOf(paid), now, pid);
+                t.update("DELETE FROM po_lines WHERE po_id = ?", pid);
+            }
+            List<Object[]> rows = new ArrayList<>();
+            for (Object[] l : lines) rows.add(concat(new Object[]{pid, cid}, l));
+            t.batch("INSERT INTO po_lines (po_id, company_id, line_no, item_id, item_name, size_label, qty, unit_cost, gst_pct, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
+            return pid;
+        });
+        return poGet(auth, poId);
+    }
+
+    /** goods received: {lines:[{line, qty}], updateCost} - adds to stock of the PO's branch; partial receipts allowed */
+    public Map<String, Object> receivePo(String auth, long id, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        Map<String, Object> p0 = poRow(c, cid, id, true);
+        String br = str(p0.get("branch_id"));
+        boolean updateCost = !(in.get("updateCost") instanceof Boolean) || (Boolean) in.get("updateCost");
+        String by = str(c.user.get("full_name"));
+        db.tx(t -> {
+            Map<String, Object> p = t.one("SELECT * FROM purchase_orders WHERE id = ? FOR UPDATE", id);
+            String st = str(p.get("status"));
+            if (!st.equals("ordered") && !st.equals("partial")) throw new ApiException(409, "இந்த PO-க்கு சரக்கு பெற முடியாது (" + st + ")");
+            Map<Long, Map<String, Object>> lines = new HashMap<>();
+            for (Map<String, Object> l : t.query("SELECT * FROM po_lines WHERE po_id = ?", id)) lines.put(lng(l.get("line_no")), l);
+            LocalDateTime now = now();
+            String pono = str(p.get("po_no"));
+            boolean any = false, costChanged = false;
+            for (Object o : list(in.get("lines"))) {
+                Map<String, Object> r = map(o);
+                Map<String, Object> l = lines.get(lng(r.get("line")));
+                if (l == null) throw new ApiException(400, "PO வரி இல்லை");
+                double q = dbl(r.get("qty"));
+                if (Double.isNaN(q) || q != Math.floor(q) || q < 0) throw new ApiException(400, "வந்த அளவு தவறு: " + str(l.get("item_name")));
+                long left = lng(l.get("qty")) - lng(l.get("received_qty"));
+                if (q > left) throw new ApiException(400, str(l.get("item_name")) + ": ஆர்டர் செய்ததை விட அதிகம் (" + left + " மீதம்)");
+                if (q == 0) continue;
+                any = true;
+                t.update("UPDATE po_lines SET received_qty = received_qty + ? WHERE po_id = ? AND line_no = ?", (long) q, id, lng(l.get("line_no")));
+                String iid = l.get("item_id") == null ? null : str(l.get("item_id"));
+                if (iid != null && t.one("SELECT 1 AS x FROM item_sizes WHERE company_id = ? AND item_id = ? AND size_label = ?", cid, iid, str(l.get("size_label"))) != null) {
+                    t.update("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                            + "ON DUPLICATE KEY UPDATE qty = qty + ?, updated_at = ?, updated_by = ?",
+                            cid, br, iid, str(l.get("size_label")), (long) q, now, pono, (long) q, now, pono + " · " + by);
+                    if (updateCost && dbl(l.get("unit_cost")) > 0) {
+                        t.update("UPDATE item_sizes SET cost = ? WHERE company_id = ? AND item_id = ? AND size_label = ?", l.get("unit_cost"), cid, iid, str(l.get("size_label")));
+                        costChanged = true;
+                    }
+                }
+            }
+            if (!any) throw new ApiException(400, "வந்த அளவை உள்ளிடவும்");
+            Map<String, Object> left = t.one("SELECT COALESCE(SUM(qty - received_qty),0) AS l FROM po_lines WHERE po_id = ?", id);
+            t.update("UPDATE purchase_orders SET status = ?, received_at = ?, received_by = ?, updated_at = ? WHERE id = ?",
+                    lng(left.get("l")) == 0 ? "received" : "partial", now, by, now, id);
+            if (costChanged) t.update("UPDATE companies SET catalog_version = catalog_version + 1 WHERE id = ?", cid);
+            return null;
+        });
+        return poGet(auth, id);
+    }
+
+    /** {paid} or {cancel:true} */
+    public Map<String, Object> updatePo(String auth, long id, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        Map<String, Object> p = poRow(c, cid, id, true);
+        if (Boolean.TRUE.equals(in.get("cancel"))) {
+            Map<String, Object> rq = db.one("SELECT COALESCE(SUM(received_qty),0) AS r FROM po_lines WHERE po_id = ?", id);
+            if (lng(rq.get("r")) > 0) throw new ApiException(409, "சரக்கு வந்த PO-ஐ ரத்து செய்ய முடியாது");
+            if (!"ordered".equals(str(p.get("status")))) throw new ApiException(409, "ரத்து செய்ய முடியாது");
+            db.update("UPDATE purchase_orders SET status = 'cancelled', updated_at = ? WHERE id = ?", now(), id);
+        }
+        if (in.containsKey("paid")) {
+            double paid = money(in.get("paid"), "செலுத்திய தொகை", 99999999);
+            db.update("UPDATE purchase_orders SET paid = ?, updated_at = ? WHERE id = ?", BigDecimal.valueOf(paid), now(), id);
+        }
+        return poGet(auth, id);
+    }
+
+    // ================================================================ stock transfers (warehouse -> shops)
+    /** who may send: warehouse users (from their warehouse) and admin (from any location) */
+    private String trFrom(Ctx c, String cid, String requested) {
+        if (c.warehouse()) return userBranch(c, cid);
+        if (c.admin()) {
+            if (blank(requested)) throw new ApiException(400, "எங்கிருந்து அனுப்ப வேண்டும் (From)?");
+            return checkBranch(cid, requested);
+        }
+        throw new ApiException(403, "சரக்கு அனுப்ப Warehouse users மட்டும்");
+    }
+
+    /** list: warehouse users see what they sent, stock users what comes to their shop, admin / owner everything */
+    public Map<String, Object> transfers(String auth, String status) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        if (c.sales()) throw new ApiException(403, "அனுமதி இல்லை");
+        String own = c.admin() || c.owner() ? null : userBranch(c, cid);
+        String st = blank(status) ? "all" : status.trim();
+        String sf = switch (st) { case "sent" -> " AND t.status = 'sent'"; case "received" -> " AND t.status = 'received'"; case "cancelled" -> " AND t.status = 'cancelled'"; default -> ""; };
+        List<Object> args = new ArrayList<>();
+        args.add(cid);
+        String wf = "";
+        if (own != null) { wf = c.warehouse() ? " AND t.from_branch = ?" : " AND t.to_branch = ?"; args.add(own); }
+        List<Object> out = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT t.*, f.name AS from_name, f.kind AS from_kind, d.name AS to_name, "
+                + "(SELECT COALESCE(SUM(qty),0) FROM transfer_lines l WHERE l.tr_id = t.id) AS q, (SELECT COALESCE(SUM(received_qty),0) FROM transfer_lines l WHERE l.tr_id = t.id) AS rq "
+                + "FROM stock_transfers t LEFT JOIN branches f ON f.company_id = t.company_id AND f.id = t.from_branch LEFT JOIN branches d ON d.company_id = t.company_id AND d.id = t.to_branch "
+                + "WHERE t.company_id = ?" + wf + sf + " ORDER BY t.id DESC LIMIT 300", args.toArray()))
+            out.add(trHead(r));
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("transfers", out);
+        o.put("canSend", c.warehouse() || c.admin());
+        o.put("shops", branchList(cid, "shop"));
+        if (c.admin()) o.put("locations", branchList(cid));
+        return o;
+    }
+
+    private Map<String, Object> trHead(Map<String, Object> r) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("id", lng(r.get("id")));
+        n.put("no", str(r.get("tr_no")));
+        n.put("status", str(r.get("status")));
+        n.put("fromId", str(r.get("from_branch")));
+        n.put("from", str(r.get("from_name")));
+        n.put("fromKind", str(r.get("from_kind")));
+        n.put("toId", str(r.get("to_branch")));
+        n.put("to", str(r.get("to_name")));
+        n.put("notes", str(r.get("notes")));
+        n.put("by", str(r.get("created_by_name")));
+        n.put("at", iso(ldt(r.get("created_at"))));
+        if (r.get("received_at") != null) { n.put("receivedAt", iso(ldt(r.get("received_at")))); n.put("receivedBy", str(r.get("received_by"))); }
+        if (r.containsKey("q")) { n.put("qty", lng(r.get("q"))); n.put("receivedQty", lng(r.get("rq"))); }
+        return n;
+    }
+
+    private Map<String, Object> trRow(Ctx c, String cid, long id) {
+        Map<String, Object> t = db.one("SELECT t.*, f.name AS from_name, f.kind AS from_kind, d.name AS to_name FROM stock_transfers t "
+                + "LEFT JOIN branches f ON f.company_id = t.company_id AND f.id = t.from_branch LEFT JOIN branches d ON d.company_id = t.company_id AND d.id = t.to_branch "
+                + "WHERE t.company_id = ? AND t.id = ?", cid, id);
+        if (t == null) throw new ApiException(404, "Transfer இல்லை");
+        if (c.sales()) throw new ApiException(403, "அனுமதி இல்லை");
+        if (!c.admin() && !c.owner()) {
+            String own = userBranch(c, cid);
+            if (!own.equals(str(t.get("from_branch"))) && !own.equals(str(t.get("to_branch")))) throw new ApiException(403, "வேறு இடத்தின் transfer");
+        }
+        return t;
+    }
+
+    public Map<String, Object> transferGet(String auth, long id) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        Map<String, Object> t = trRow(c, cid, id);
+        Map<String, Object> o = trHead(t);
+        List<Object> ls = new ArrayList<>();
+        long q = 0, rq = 0;
+        for (Map<String, Object> l : db.query("SELECT * FROM transfer_lines WHERE tr_id = ? ORDER BY line_no", id)) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("line", lng(l.get("line_no")));
+            n.put("itemId", str(l.get("item_id")));
+            n.put("name", str(l.get("item_name")));
+            n.put("size", str(l.get("size_label")));
+            n.put("qty", lng(l.get("qty")));
+            n.put("received", lng(l.get("received_qty")));
+            q += lng(l.get("qty")); rq += lng(l.get("received_qty"));
+            ls.add(n);
+        }
+        o.put("lines", ls);
+        o.put("qty", q);
+        o.put("receivedQty", rq);
+        String own = c.admin() || c.owner() ? null : userBranch(c, cid);
+        boolean sent = "sent".equals(str(t.get("status")));
+        o.put("canReceive", sent && (c.admin() || (c.stock() && str(t.get("to_branch")).equals(own))));
+        o.put("canCancel", sent && (c.admin() || (c.warehouse() && str(t.get("from_branch")).equals(own))));
+        return obj("transfer", o);
+    }
+
+    /** send stock: {from (admin), to, notes, lines:[{itemId, size, qty}]} - leaves the source at once (in transit) */
+    public Map<String, Object> sendTransfer(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        String from = trFrom(c, cid, str(in.get("from")));
+        String to = checkBranch(cid, str(in.get("to")));
+        if (to.equals(from)) throw new ApiException(400, "அனுப்பும் இடமும் பெறும் இடமும் ஒன்றாக இருக்க முடியாது");
+        if (isWarehouse(cid, to)) throw new ApiException(400, "கடை கிளைக்கு மட்டுமே அனுப்பலாம்");
+        String notes = clip(in.get("notes"), 200);
+        Map<String, String[]> names = new HashMap<>();
+        for (Map<String, Object> z : db.query("SELECT z.item_id, z.size_label, i.name_ta FROM item_sizes z JOIN items i ON i.company_id = z.company_id AND i.id = z.item_id WHERE z.company_id = ?", cid))
+            names.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), new String[]{str(z.get("name_ta"))});
+        Map<String, long[]> want = new LinkedHashMap<>();
+        for (Object o : list(in.get("lines"))) {
+            Map<String, Object> l = map(o);
+            String k = str(l.get("itemId")) + "|" + str(l.get("size"));
+            if (!names.containsKey(k)) throw new ApiException(400, "ஐட்டம் / சைஸ் இல்லை");
+            double q = dbl(l.get("qty"));
+            if (!(q >= 1 && q <= 99999) || q != Math.floor(q)) throw new ApiException(400, "அளவு தவறு: " + names.get(k)[0]);
+            want.computeIfAbsent(k, x -> new long[1])[0] += (long) q;
+        }
+        if (want.isEmpty()) throw new ApiException(400, "அனுப்ப ஐட்டம் இல்லை");
+        if (want.size() > 300) throw new ApiException(400, "அதிக ஐட்டங்கள்");
+        String by = str(c.user.get("full_name"));
+        long tid = db.tx(t -> {
+            // enough stock at the source? (locked, so two senders can't both take the last pieces)
+            for (Map.Entry<String, long[]> e : want.entrySet()) {
+                String[] k = e.getKey().split("\\|", 2);
+                Map<String, Object> r = t.one("SELECT qty FROM stock WHERE company_id = ? AND branch_id = ? AND item_id = ? AND size_label = ? FOR UPDATE", cid, from, k[0], k[1]);
+                long have = r == null ? 0 : lng(r.get("qty"));
+                if (have < e.getValue()[0])
+                    throw new ApiException(409, names.get(e.getKey())[0] + " (" + k[1] + "): இருப்பு " + have + " மட்டும் — " + e.getValue()[0] + " அனுப்ப முடியாது");
+            }
+            Map<String, Object> co = t.one("SELECT tr_seq FROM companies WHERE id = ? FOR UPDATE", cid);
+            long seq = lng(co.get("tr_seq")) + 1;
+            t.update("UPDATE companies SET tr_seq = ? WHERE id = ?", seq, cid);
+            LocalDateTime now = now();
+            String no = "TR-" + String.format("%04d", seq);
+            long id = t.insert("INSERT INTO stock_transfers (company_id, tr_seq, tr_no, from_branch, to_branch, status, notes, created_at, created_by_user, created_by_name) "
+                    + "VALUES (?, ?, ?, ?, ?, 'sent', ?, ?, ?, ?)", cid, seq, no, from, to, notes, now, str(c.user.get("username")), by);
+            List<Object[]> rows = new ArrayList<>();
+            int ln = 1;
+            for (Map.Entry<String, long[]> e : want.entrySet()) {
+                String[] k = e.getKey().split("\\|", 2);
+                rows.add(new Object[]{id, cid, ln++, k[0], names.get(e.getKey())[0], k[1], e.getValue()[0]});
+                t.update("UPDATE stock SET qty = qty - ?, updated_at = ?, updated_by = ? WHERE company_id = ? AND branch_id = ? AND item_id = ? AND size_label = ?",
+                        e.getValue()[0], now, no + " · " + by, cid, from, k[0], k[1]);
+            }
+            t.batch("INSERT INTO transfer_lines (tr_id, company_id, line_no, item_id, item_name, size_label, qty) VALUES (?, ?, ?, ?, ?, ?, ?)", rows);
+            return id;
+        });
+        return transferGet(auth, tid);
+    }
+
+    /** the shop confirms what arrived: {lines:[{line, qty}]} (less than sent = shortage, recorded) */
+    public Map<String, Object> receiveTransfer(String auth, long id, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        Map<String, Object> t0 = trRow(c, cid, id);
+        String to = str(t0.get("to_branch"));
+        if (!c.admin() && !(c.stock() && to.equals(userBranch(c, cid)))) throw new ApiException(403, "பெறும் கிளையின் Stock user மட்டும்");
+        Map<Long, Long> got = new HashMap<>();
+        for (Object o : list(in.get("lines"))) {
+            Map<String, Object> r = map(o);
+            double q = dbl(r.get("qty"));
+            if (Double.isNaN(q) || q < 0 || q != Math.floor(q)) throw new ApiException(400, "வந்த அளவு தவறு");
+            got.put(lng(r.get("line")), (long) q);
+        }
+        String by = str(c.user.get("full_name"));
+        db.tx(t -> {
+            Map<String, Object> tr = t.one("SELECT * FROM stock_transfers WHERE id = ? FOR UPDATE", id);
+            if (!"sent".equals(str(tr.get("status")))) throw new ApiException(409, "ஏற்கனவே பெறப்பட்டது / ரத்து");
+            LocalDateTime now = now();
+            String no = str(tr.get("tr_no"));
+            for (Map<String, Object> l : t.query("SELECT * FROM transfer_lines WHERE tr_id = ?", id)) {
+                long sent = lng(l.get("qty"));
+                long q = got.getOrDefault(lng(l.get("line_no")), sent);           // not listed = all arrived
+                if (q > sent) throw new ApiException(400, str(l.get("item_name")) + ": அனுப்பியதை (" + sent + ") விட அதிகம்");
+                t.update("UPDATE transfer_lines SET received_qty = ? WHERE tr_id = ? AND line_no = ?", q, id, lng(l.get("line_no")));
+                if (q > 0)
+                    t.update("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                            + "ON DUPLICATE KEY UPDATE qty = qty + ?, updated_at = ?, updated_by = ?",
+                            cid, to, str(l.get("item_id")), str(l.get("size_label")), q, now, no + " · " + by, q, now, no + " · " + by);
+            }
+            t.update("UPDATE stock_transfers SET status = 'received', received_at = ?, received_by = ? WHERE id = ?", now, by, id);
+            return null;
+        });
+        return transferGet(auth, id);
+    }
+
+    /** sender / admin, before it is received: the pieces go back to the source */
+    public Map<String, Object> cancelTransfer(String auth, long id) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        Map<String, Object> t0 = trRow(c, cid, id);
+        String from = str(t0.get("from_branch"));
+        if (!c.admin() && !(c.warehouse() && from.equals(userBranch(c, cid)))) throw new ApiException(403, "அனுப்பியவர் மட்டும் ரத்து செய்யலாம்");
+        String by = str(c.user.get("full_name"));
+        db.tx(t -> {
+            Map<String, Object> tr = t.one("SELECT * FROM stock_transfers WHERE id = ? FOR UPDATE", id);
+            if (!"sent".equals(str(tr.get("status")))) throw new ApiException(409, "பெறப்பட்ட transfer-ஐ ரத்து செய்ய முடியாது");
+            LocalDateTime now = now();
+            for (Map<String, Object> l : t.query("SELECT * FROM transfer_lines WHERE tr_id = ?", id))
+                t.update("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                        + "ON DUPLICATE KEY UPDATE qty = qty + ?, updated_at = ?, updated_by = ?", cid, from, str(l.get("item_id")), str(l.get("size_label")),
+                        lng(l.get("qty")), now, "ரத்து " + str(tr.get("tr_no")), lng(l.get("qty")), now, "ரத்து " + str(tr.get("tr_no")) + " · " + by);
+            t.update("UPDATE stock_transfers SET status = 'cancelled', received_at = ?, received_by = ? WHERE id = ?", now, by, id);
+            return null;
+        });
+        return transferGet(auth, id);
+    }
+
     // ================================================================ branches (admin)
     public Map<String, Object> saveBranch(String auth, Map<String, Object> in) {
         admin(auth);
@@ -850,16 +2128,40 @@ public class BillingService {
         if (name.isEmpty()) throw new ApiException(400, "கிளை பெயர் தேவை");
         Map<String, Object> dup = db.one("SELECT id FROM branches WHERE company_id = ? AND LOWER(name) = LOWER(?)", cid, name);
         if (dup != null && !str(dup.get("id")).equals(id)) throw new ApiException(409, "இந்த பெயரில் கிளை ஏற்கனவே உள்ளது");
+        String kind = "warehouse".equals(str(in.get("kind"))) ? "warehouse" : "shop";
         if (id.isEmpty()) {
             long n = lng(db.one("SELECT COUNT(*) AS n FROM branches WHERE company_id = ?", cid).get("n"));
             if (n >= 50) throw new ApiException(400, "அதிகபட்சம் 50 கிளைகள்");
-            id = newId("b");
-            db.update("INSERT INTO branches (company_id, id, name, sort_order, created_at) VALUES (?, ?, ?, ?, ?)", cid, id, name, n, now());
+            id = newId(kind.equals("warehouse") ? "w" : "b");
+            db.update("INSERT INTO branches (company_id, id, name, kind, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)", cid, id, name, kind, n, now());
         } else {
             if (branchRow(cid, id) == null) throw new ApiException(404, "கிளை இல்லை");
             db.update("UPDATE branches SET name = ? WHERE company_id = ? AND id = ?", name, cid, id);
         }
         return obj("branches", branchList(cid));
+    }
+
+    public Map<String, Object> savePayMode(String auth, Map<String, Object> in) {
+        admin(auth);
+        String cid = str(in.get("companyId")), id = str(in.get("id"));
+        if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", cid) == null) throw new ApiException(404, "கம்பெனி இல்லை");
+        String name = clip(in.get("name"), 30), kind = str(in.get("kind"));
+        if (name.isEmpty()) throw new ApiException(400, "பெயர் தேவை (எ.கா. UPI - Jafar)");
+        if (!PAY_KINDS.contains(kind)) throw new ApiException(400, "வகை: cash / card / upi / other");
+        boolean active = !(in.get("active") instanceof Boolean) || (Boolean) in.get("active");
+        Map<String, Object> dup = db.one("SELECT id FROM pay_modes WHERE company_id = ? AND LOWER(name) = LOWER(?)", cid, name);
+        if (dup != null && !str(dup.get("id")).equals(id)) throw new ApiException(409, "இந்த பெயர் ஏற்கனவே உள்ளது");
+        if (id.isEmpty()) {
+            long n = lng(db.one("SELECT COUNT(*) AS n FROM pay_modes WHERE company_id = ?", cid).get("n"));
+            if (n >= 30) throw new ApiException(400, "அதிகபட்சம் 30");
+            db.update("INSERT INTO pay_modes (company_id, id, name, kind, sort_order, active) VALUES (?, ?, ?, ?, ?, ?)", cid, newId("p"), name, kind, n, active);
+        } else {
+            if (db.one("SELECT 1 AS x FROM pay_modes WHERE company_id = ? AND id = ?", cid, id) == null) throw new ApiException(404, "இல்லை");
+            if (!active && lng(db.one("SELECT COUNT(*) AS n FROM pay_modes WHERE company_id = ? AND active = 1 AND id <> ?", cid, id).get("n")) == 0)
+                throw new ApiException(409, "குறைந்தது ஒரு முறை செயலில் இருக்க வேண்டும்");
+            db.update("UPDATE pay_modes SET name = ?, kind = ?, active = ? WHERE company_id = ? AND id = ?", name, kind, active, cid, id);
+        }
+        return obj("payModes", payModeList(cid, false));
     }
 
     public Map<String, Object> deleteBranch(String auth, String cid, String id) {
@@ -952,15 +2254,17 @@ public class BillingService {
             p.put("itemCount", lng(r.get("item_count")));
             p.put("billCount", lng(r.get("bill_seq")));
             List<Object> bl = new ArrayList<>();
-            for (Map<String, Object> b : db.query("SELECT br.id, br.name, (SELECT COUNT(*) FROM users u WHERE u.company_id = br.company_id AND u.branch_id = br.id) AS uc "
-                    + "FROM branches br WHERE br.company_id = ? ORDER BY br.sort_order, br.created_at, br.id", str(r.get("id")))) {
+            for (Map<String, Object> b : db.query("SELECT br.id, br.name, br.kind, (SELECT COUNT(*) FROM users u WHERE u.company_id = br.company_id AND u.branch_id = br.id) AS uc "
+                    + "FROM branches br WHERE br.company_id = ? ORDER BY br.kind = 'warehouse', br.sort_order, br.created_at, br.id", str(r.get("id")))) {
                 Map<String, Object> n = new LinkedHashMap<>();
                 n.put("id", str(b.get("id")));
                 n.put("name", str(b.get("name")));
+                n.put("kind", str(b.get("kind")));
                 n.put("userCount", lng(b.get("uc")));
                 bl.add(n);
             }
             p.put("branches", bl);
+            p.put("payModes", payModeList(str(r.get("id")), false));
             cs.add(p);
         }
         List<Object> us = new ArrayList<>();
@@ -998,6 +2302,8 @@ public class BillingService {
         if (!PREFIX.matcher(prefix).matches()) throw new ApiException(400, "Bill prefix: A-Z, 0-9 மட்டும் (max 8)");
         String footer = clip(in.get("footer"), 120);
         boolean bis = !(in.get("bismillah") instanceof Boolean) || (Boolean) in.get("bismillah");
+        double fee = in.get("billFee") == null || str(in.get("billFee")).isEmpty() ? DEFAULT_BILL_FEE : round2(dbl(in.get("billFee")));
+        if (Double.isNaN(fee) || fee < 0 || fee > 1000) throw new ApiException(400, "ஒரு பில்லுக்கான கட்டணம் தவறு (0 – 1000 ₹)");
         LocalDateTime now = now();
         Object[] f = {name, clip(in.get("tagline"), 60), clip(in.get("owner"), 60), phone, clip(in.get("address"), 200),
                 clip(in.get("city"), 40), gst, email, prefix, bis, footer.isEmpty() ? DEFAULT_FOOTER : footer, now};
@@ -1009,7 +2315,10 @@ public class BillingService {
             db.update("UPDATE companies SET name = ?, tagline = ?, owner_name = ?, phone = ?, address = ?, city = ?, gstin = ?, email = ?, "
                     + "bill_prefix = ?, show_bismillah = ?, bill_footer = ?, updated_at = ? WHERE id = ?", concat(f, id));
         }
+        db.update("UPDATE companies SET bill_fee = ? WHERE id = ?", BigDecimal.valueOf(fee), id);
+        db.update("UPDATE companies SET shop_code = ? WHERE id = ? AND shop_code IS NULL", hex(bytes(5)), id);
         ensureBranches(id);
+        ensurePayModes(id);
         return obj("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", id)));
     }
 
@@ -1046,11 +2355,13 @@ public class BillingService {
             cid = str(in.get("companyId"));
             if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", cid) == null)
                 throw new ApiException(400, "இந்த user-க்கு கம்பெனி தேவை");
-            if (!type.equals("owner")) {                            // sales / stock work in one branch
+            if (!type.equals("owner")) {                            // sales / stock: one shop; warehouse: one warehouse
                 ensureBranches(cid);
                 bid = str(in.get("branchId"));
-                if (blank(bid)) bid = firstBranch(cid);
-                if (branchRow(cid, bid) == null) throw new ApiException(400, "கிளையை தேர்வு செய்யவும்");
+                if (blank(bid) && !type.equals("warehouse")) bid = firstBranch(cid);
+                if (branchRow(cid, bid) == null) throw new ApiException(400, type.equals("warehouse") ? "Warehouse-ஐ தேர்வு செய்யவும்" : "கிளையை தேர்வு செய்யவும்");
+                if (type.equals("warehouse") != isWarehouse(cid, bid))
+                    throw new ApiException(400, type.equals("warehouse") ? "Warehouse user-க்கு warehouse இடம் தேவை" : "Sales / Stock user-க்கு கடை கிளை தேவை (warehouse அல்ல)");
             }
         }
         boolean active = !(in.get("active") instanceof Boolean) || (Boolean) in.get("active");
@@ -1138,7 +2449,485 @@ public class BillingService {
         String f = str(c.get("bill_footer"));
         p.put("footer", f.isEmpty() ? DEFAULT_FOOTER : f);
         p.put("created", iso(ldt(c.get("created_at"))));
+        p.put("billFee", round2(dbl(c.get("bill_fee"))));
+        p.put("shopCode", str(c.get("shop_code")));
+        p.put("shopEnabled", c.get("shop_enabled") == null || bool(c.get("shop_enabled")));
         return p;
+    }
+
+    // ================================================================ software invoices (Bhai Mobile Billing -> each company)
+    static final double DEFAULT_BILL_FEE = 0.25;
+
+    /** Monthly invoices of every company for one finished month (bills x the fee saved on each bill). Safe to run again. */
+    public int generateInvoices(YearMonth m) {
+        if (!m.isBefore(YearMonth.now(zone))) throw new ApiException(400, "நடப்பு / வரும் மாதத்திற்கு invoice உருவாக்க முடியாது — Live invoice பார்க்கவும்");
+        LocalDateTime from = m.atDay(1).atStartOfDay(), to = m.plusMonths(1).atDay(1).atStartOfDay();
+        int n = 0;
+        for (Map<String, Object> r : db.query("SELECT c.id, COUNT(*) AS cnt, COALESCE(SUM(COALESCE(b.platform_fee, c.bill_fee)), 0) AS amt, c.bill_fee, "
+                + "(SELECT COUNT(*) FROM cancel_bills x WHERE x.company_id = c.id AND x.created_at >= ? AND x.created_at < ?) AS cx "
+                + "FROM companies c JOIN " + FEE_DOCS + " b ON b.company_id = c.id AND b.created_at >= ? AND b.created_at < ? "
+                + "WHERE NOT EXISTS (SELECT 1 FROM platform_invoices i WHERE i.company_id = c.id AND i.month = ?) GROUP BY c.id, c.bill_fee ORDER BY c.id", from, to, from, to, m.toString())) {
+            String key = m.toString().replace("-", "");
+            n += db.tx(t -> {
+                if (t.one("SELECT id FROM platform_invoices WHERE company_id = ? AND month = ? FOR UPDATE", str(r.get("id")), m.toString()) != null) return 0;
+                long seq = lng(t.one("SELECT COUNT(*) AS n FROM platform_invoices WHERE month = ?", m.toString()).get("n")) + 1;
+                t.update("INSERT INTO platform_invoices (company_id, inv_no, month, bill_count, cancel_count, fee, amount, status, generated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'unpaid', ?)",
+                        str(r.get("id")), "BMB-" + key + "-" + String.format("%04d", seq), m.toString(), lng(r.get("cnt")) - lng(r.get("cx")), lng(r.get("cx")), r.get("bill_fee"),
+                        BigDecimal.valueOf(round2(dbl(r.get("amt")))), now());
+                return 1;
+            });
+        }
+        return n;
+    }
+
+    /** the scheduler: 2nd of every month 8 AM, and at start-up if that time has already passed (catch-up) */
+    public int generateDueInvoices() {
+        LocalDateTime nowT = now();
+        YearMonth last = YearMonth.from(nowT).minusMonths(1);
+        if (nowT.isBefore(YearMonth.from(nowT).atDay(2).atTime(8, 0))) last = last.minusMonths(1);   // before the 2nd, 8 AM: only up to the month before
+        int n = 0;
+        for (YearMonth m = last.minusMonths(2); !m.isAfter(last); m = m.plusMonths(1)) n += generateInvoices(m);
+        return n;
+    }
+
+    private YearMonth month(String s, YearMonth def) {
+        if (blank(s)) return def;
+        try { return YearMonth.parse(s.trim()); } catch (DateTimeParseException e) { throw new ApiException(400, "மாதம் தவறு (yyyy-MM)"); }
+    }
+
+    /** owner: own company; admin: ?company= */
+    private String invCompany(Ctx c, String company) {
+        if (c.admin()) {
+            if (blank(company)) throw new ApiException(400, "கம்பெனியை தேர்வு செய்யவும்");
+            if (db.one("SELECT id FROM companies WHERE id = ?", company.trim()) == null) throw new ApiException(404, "கம்பெனி இல்லை");
+            return company.trim();
+        }
+        if (!c.owner()) throw new ApiException(403, "Invoice: Owner / Admin மட்டும்");
+        return requireCompany(c);
+    }
+
+    private Map<String, Object> invRow(Map<String, Object> r) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("id", lng(r.get("id")));
+        n.put("no", str(r.get("inv_no")));
+        n.put("month", str(r.get("month")));
+        n.put("companyId", str(r.get("company_id")));
+        if (r.containsKey("company_name")) n.put("company", str(r.get("company_name")));
+        if (r.containsKey("company_phone")) n.put("phone", str(r.get("company_phone")));
+        n.put("bills", lng(r.get("bill_count")));
+        n.put("cancels", lng(r.get("cancel_count")));
+        n.put("docs", lng(r.get("bill_count")) + lng(r.get("cancel_count")));
+        n.put("fee", round2(dbl(r.get("fee"))));
+        n.put("amount", round2(dbl(r.get("amount"))));
+        n.put("status", str(r.get("status")));
+        n.put("generatedAt", iso(ldt(r.get("generated_at"))));
+        if (r.get("paid_at") != null) {
+            n.put("paidAt", iso(ldt(r.get("paid_at"))));
+            n.put("paidAmount", round2(dbl(r.get("paid_amount"))));
+            n.put("paidRef", str(r.get("paid_ref")));
+            n.put("paidBy", str(r.get("paid_by")));
+        }
+        return n;
+    }
+
+    /** live (this month so far) figures */
+    private Map<String, Object> liveInv(String cid) {
+        YearMonth m = YearMonth.now(zone);
+        LocalDateTime f = m.atDay(1).atStartOfDay(), to = m.plusMonths(1).atDay(1).atStartOfDay();
+        Map<String, Object> r = db.one("SELECT COUNT(b.created_at) AS cnt, COALESCE(SUM(COALESCE(b.platform_fee, c.bill_fee)), 0) AS amt, MAX(c.bill_fee) AS fee FROM companies c "
+                + "LEFT JOIN " + FEE_DOCS + " b ON b.company_id = c.id AND b.created_at >= ? AND b.created_at < ? WHERE c.id = ?", f, to, cid);
+        long cx = lng(db.one("SELECT COUNT(*) AS n FROM cancel_bills WHERE company_id = ? AND created_at >= ? AND created_at < ?", cid, f, to).get("n"));
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("month", m.toString());
+        n.put("bills", lng(r.get("cnt")) - cx);
+        n.put("cancels", cx);
+        n.put("docs", lng(r.get("cnt")));
+        n.put("amount", round2(dbl(r.get("amt"))));
+        n.put("fee", round2(dbl(r.get("fee"))));
+        n.put("asOf", iso(now()));
+        n.put("generateOn", iso(m.plusMonths(1).atDay(2).atTime(8, 0)));
+        return n;
+    }
+
+    /** invoices + payment statement of one company */
+    public Map<String, Object> invoices(String auth, String company) {
+        Ctx c = ctx(auth);
+        String cid = invCompany(c, company);
+        Map<String, Object> co = db.one("SELECT * FROM companies WHERE id = ?", cid);
+        List<Object> list = new ArrayList<>();
+        double billed = 0, paid = 0;
+        for (Map<String, Object> r : db.query("SELECT * FROM platform_invoices WHERE company_id = ? ORDER BY month DESC", cid)) {
+            list.add(invRow(r));
+            billed += dbl(r.get("amount"));
+            if ("paid".equals(str(r.get("status")))) paid += dbl(r.get("paid_amount"));
+        }
+        Map<String, Object> st = new LinkedHashMap<>();
+        st.put("billed", round2(billed));
+        st.put("paid", round2(paid));
+        st.put("due", round2(billed - paid));
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("company", pubCompany(co));
+        o.put("live", liveInv(cid));
+        o.put("invoices", list);
+        o.put("statement", st);
+        o.put("admin", c.admin());
+        return o;
+    }
+
+    /** bill-wise invoice for one month (a generated invoice, or the live current month) */
+    public Map<String, Object> invoiceDetail(String auth, String company, String monthIn) {
+        Ctx c = ctx(auth);
+        String cid = invCompany(c, company);
+        YearMonth m = month(monthIn, YearMonth.now(zone));
+        Map<String, Object> co = db.one("SELECT * FROM companies WHERE id = ?", cid);
+        Map<String, Object> inv = db.one("SELECT * FROM platform_invoices WHERE company_id = ? AND month = ?", cid, m.toString());
+        LocalDateTime from = m.atDay(1).atStartOfDay(), to = m.plusMonths(1).atDay(1).atStartOfDay();
+        List<Object> bills = new ArrayList<>();
+        Map<String, double[]> days = new LinkedHashMap<>();
+        double amt = 0;
+        long cnt = 0;
+        long cxn = 0;
+        for (Map<String, Object> b : db.query("SELECT d.no AS bill_no, d.kind, d.created_at, d.total, COALESCE(d.platform_fee, c.bill_fee) AS fee, br.name AS branch FROM "
+                + "(SELECT company_id, branch_id, bill_no AS no, 'bill' AS kind, created_at, total, platform_fee, id FROM bills WHERE company_id = ? AND created_at >= ? AND created_at < ? "
+                + "UNION ALL SELECT company_id, branch_id, cn_no, 'cancel', created_at, total, platform_fee, id FROM cancel_bills WHERE company_id = ? AND created_at >= ? AND created_at < ?) d "
+                + "JOIN companies c ON c.id = d.company_id LEFT JOIN branches br ON br.company_id = d.company_id AND br.id = d.branch_id ORDER BY d.created_at, d.id", cid, from, to, cid, from, to)) {
+            if ("cancel".equals(str(b.get("kind")))) cxn++;
+            LocalDateTime at = ldt(b.get("created_at"));
+            double f = round2(dbl(b.get("fee")));
+            amt += f; cnt++;
+            double[] d = days.computeIfAbsent(at.toLocalDate().toString(), k -> new double[2]);
+            d[0]++; d[1] += f;
+            if (bills.size() < 5000) {
+                Map<String, Object> n = new LinkedHashMap<>();
+                n.put("no", str(b.get("bill_no")));
+                n.put("kind", str(b.get("kind")));
+                n.put("at", iso(at));
+                n.put("branch", str(b.get("branch")));
+                n.put("total", round2(dbl(b.get("total"))));
+                n.put("fee", f);
+                bills.add(n);
+            }
+        }
+        List<Object> dayList = new ArrayList<>();
+        for (Map.Entry<String, double[]> e : days.entrySet()) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("date", e.getKey());
+            n.put("bills", (long) e.getValue()[0]);
+            n.put("amount", round2(e.getValue()[1]));
+            dayList.add(n);
+        }
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("company", pubCompany(co));
+        o.put("month", m.toString());
+        o.put("from", m.atDay(1).toString());
+        o.put("to", m.atEndOfMonth().toString());
+        o.put("live", inv == null && !m.isBefore(YearMonth.now(zone)));
+        if (inv != null) o.put("invoice", invRow(inv));
+        o.put("billCount", cnt - cxn);
+        o.put("cancelCount", cxn);
+        o.put("docCount", cnt);
+        o.put("amount", round2(amt));
+        o.put("days", dayList);
+        o.put("bills", bills);
+        o.put("admin", c.admin());
+        return o;
+    }
+
+    /** admin: every company's invoice for a month */
+    public Map<String, Object> adminInvoices(String auth, String monthIn) {
+        admin(auth);
+        YearMonth m = month(monthIn, YearMonth.now(zone).minusMonths(1));
+        boolean live = !m.isBefore(YearMonth.now(zone));
+        LocalDateTime from = m.atDay(1).atStartOfDay(), to = m.plusMonths(1).atDay(1).atStartOfDay();
+        List<Object> rows = new ArrayList<>();
+        double amt = 0, paid = 0;
+        for (Map<String, Object> co : db.query("SELECT c.id, c.name, c.phone, c.bill_fee, (SELECT COUNT(*) FROM " + FEE_DOCS + " b WHERE b.company_id = c.id AND b.created_at >= ? AND b.created_at < ?) AS cnt, "
+                + "(SELECT COUNT(*) FROM cancel_bills x WHERE x.company_id = c.id AND x.created_at >= ? AND x.created_at < ?) AS cx, "
+                + "(SELECT COALESCE(SUM(COALESCE(b.platform_fee, c.bill_fee)), 0) FROM " + FEE_DOCS + " b WHERE b.company_id = c.id AND b.created_at >= ? AND b.created_at < ?) AS amt "
+                + "FROM companies c WHERE c.archived = 0 OR EXISTS (SELECT 1 FROM platform_invoices i WHERE i.company_id = c.id AND i.month = ?) ORDER BY c.name", from, to, from, to, from, to, m.toString())) {
+            Map<String, Object> inv = db.one("SELECT * FROM platform_invoices WHERE company_id = ? AND month = ?", str(co.get("id")), m.toString());
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("companyId", str(co.get("id")));
+            n.put("company", str(co.get("name")));
+            n.put("phone", str(co.get("phone")));
+            n.put("fee", round2(dbl(co.get("bill_fee"))));
+            n.put("bills", lng(co.get("cnt")) - lng(co.get("cx")));
+            n.put("cancels", lng(co.get("cx")));
+            n.put("docs", lng(co.get("cnt")));
+            n.put("amount", round2(dbl(co.get("amt"))));
+            if (inv != null) {
+                n.put("invoice", invRow(inv));
+                if ("paid".equals(str(inv.get("status")))) paid += dbl(inv.get("paid_amount"));
+                amt += dbl(inv.get("amount"));
+            } else amt += dbl(co.get("amt"));
+            rows.add(n);
+        }
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("month", m.toString());
+        o.put("live", live);
+        o.put("rows", rows);
+        o.put("amount", round2(amt));
+        o.put("paid", round2(paid));
+        o.put("due", round2(amt - paid));
+        return o;
+    }
+
+    public Map<String, Object> adminGenerateInvoices(String auth, Map<String, Object> in) {
+        admin(auth);
+        int n = generateInvoices(month(str(in.get("month")), YearMonth.now(zone).minusMonths(1)));
+        return obj("created", n);
+    }
+
+    /** admin: payment received {amount, ref, date} (or paid=false to undo) */
+    public Map<String, Object> payInvoice(String auth, long id, Map<String, Object> in) {
+        Ctx c = admin(auth);
+        Map<String, Object> inv = db.one("SELECT * FROM platform_invoices WHERE id = ?", id);
+        if (inv == null) throw new ApiException(404, "Invoice இல்லை");
+        if (Boolean.FALSE.equals(in.get("paid"))) {
+            db.update("UPDATE platform_invoices SET status = 'unpaid', paid_at = NULL, paid_amount = 0, paid_ref = '', paid_by = '' WHERE id = ?", id);
+        } else {
+            double a = in.get("amount") == null || str(in.get("amount")).isEmpty() ? dbl(inv.get("amount")) : round2(dbl(in.get("amount")));
+            if (Double.isNaN(a) || a < 0 || a > 10000000) throw new ApiException(400, "தொகை தவறு");
+            LocalDateTime at = now();
+            if (!blank(str(in.get("date")))) {
+                try { at = LocalDate.parse(str(in.get("date"))).atTime(at.toLocalTime()); } catch (DateTimeParseException e) { throw new ApiException(400, "தேதி தவறு"); }
+            }
+            db.update("UPDATE platform_invoices SET status = 'paid', paid_at = ?, paid_amount = ?, paid_ref = ?, paid_by = ? WHERE id = ?",
+                    at, BigDecimal.valueOf(a), clip(in.get("ref"), 60), str(c.user.get("full_name")), id);
+        }
+        return obj("invoice", invRow(db.one("SELECT * FROM platform_invoices WHERE id = ?", id)));
+    }
+
+    // ================================================================ item photos
+    /** {data: "data:image/jpeg;base64,..."} (resized in the browser) or {remove: true} */
+    public Map<String, Object> savePhoto(String auth, String itemId, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireBilling(c);
+        if (db.one("SELECT id FROM items WHERE company_id = ? AND id = ?", cid, itemId) == null) throw new ApiException(404, "ஐட்டம் இல்லை");
+        if (Boolean.TRUE.equals(in.get("remove"))) {
+            db.update("DELETE FROM item_photos WHERE company_id = ? AND item_id = ?", cid, itemId);
+            return obj("photo", null);
+        }
+        String d = str(in.get("data"));
+        java.util.regex.Matcher m = Pattern.compile("^data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$").matcher(d);
+        if (!m.matches()) throw new ApiException(400, "படம் தவறு (JPEG / PNG / WebP)");
+        byte[] img;
+        try { img = Base64.getDecoder().decode(m.group(2)); } catch (IllegalArgumentException e) { throw new ApiException(400, "படம் தவறு"); }
+        if (img.length > 400_000) throw new ApiException(400, "படம் மிகப் பெரியது (max 400 KB)");
+        LocalDateTime now = now();
+        db.update("INSERT INTO item_photos (company_id, item_id, mime, data, updated_at) VALUES (?, ?, ?, ?, ?) "
+                + "ON DUPLICATE KEY UPDATE mime = VALUES(mime), data = VALUES(data), updated_at = VALUES(updated_at)", cid, itemId, m.group(1), img, now);
+        return obj("photo", lng(db.one("SELECT UNIX_TIMESTAMP(updated_at) AS v FROM item_photos WHERE company_id = ? AND item_id = ?", cid, itemId).get("v")));
+    }
+
+    /** photo bytes for the shop page and the app: [mime, bytes] or null */
+    public Object[] photo(String shopOrCompany, String itemId, boolean byShopCode) {
+        String cid = byShopCode ? shopCompany(shopOrCompany) : shopOrCompany;
+        Map<String, Object> r = db.one("SELECT mime, data FROM item_photos WHERE company_id = ? AND item_id = ?", cid, itemId);
+        return r == null ? null : new Object[]{str(r.get("mime")), r.get("data")};
+    }
+
+    public Object[] appPhoto(String auth, String itemId) {
+        Ctx c = ctx(auth);
+        return photo(requireCompany(c), itemId, false);
+    }
+
+    // ================================================================ online shop (public, by the company's shop code)
+    private String shopCompany(String code) {
+        Map<String, Object> r = blank(code) ? null : db.one("SELECT id, shop_enabled FROM companies WHERE shop_code = ? AND archived = 0", code.trim());
+        if (r == null) throw new ApiException(404, "கடை இல்லை (Shop not found)");
+        if (!bool(r.get("shop_enabled"))) throw new ApiException(403, "Online ஆர்டர் தற்போது இல்லை");
+        return str(r.get("id"));
+    }
+
+    /** catalog with selling prices (never cost), locations and the stock in hand at each location */
+    public Map<String, Object> shop(String code) {
+        String cid = shopCompany(code);
+        Map<String, Object> co = db.one("SELECT * FROM companies WHERE id = ?", cid);
+        Map<String, Object> c = new LinkedHashMap<>();
+        c.put("name", str(co.get("name")));
+        c.put("tagline", str(co.get("tagline")));
+        c.put("phone", str(co.get("phone")));
+        c.put("address", str(co.get("address")));
+        c.put("city", str(co.get("city")));
+        Map<String, Object> stock = new LinkedHashMap<>();
+        for (Map<String, Object> r : db.query("SELECT branch_id, item_id, size_label, qty FROM stock WHERE company_id = ? AND qty > 0", cid)) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> m = (Map<String, Object>) stock.computeIfAbsent(str(r.get("branch_id")), k -> new LinkedHashMap<>());
+            m.put(str(r.get("item_id")) + "|" + str(r.get("size_label")), lng(r.get("qty")));
+        }
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("company", c);
+        o.put("branches", branchList(cid));
+        o.put("catalog", loadCatalog(db, cid, false));
+        o.put("stock", stock);
+        return o;
+    }
+
+    /** customer order: {name, phone, address, mode: delivery|pickup, branch, notes, lines:[{itemId, size, qty}]} */
+    public Map<String, Object> shopOrder(String code, Map<String, Object> in) {
+        String cid = shopCompany(code);
+        String name = clip(in.get("name"), 60);
+        if (name.isEmpty()) throw new ApiException(400, "பெயர் தேவை");
+        String phone = str(in.get("phone")).replaceAll("[^0-9]", "");
+        if (phone.length() > 10) phone = phone.substring(phone.length() - 10);
+        if (!MOBILE.matcher(phone).matches()) throw new ApiException(400, "சரியான 10 இலக்க மொபைல் எண் தேவை");
+        String mode = "pickup".equals(str(in.get("mode"))) ? "pickup" : "delivery";
+        String address = clip(in.get("address"), 300);
+        if (mode.equals("delivery") && address.length() < 8) throw new ApiException(400, "டெலிவரி முகவரி தேவை");
+        String branch = str(in.get("branch"));
+        if (branchRow(cid, branch) == null) throw new ApiException(400, "எந்த கடை / warehouse-லிருந்து என்று தேர்வு செய்யவும்");
+        // a customer can't flood the shop: max 5 open orders per mobile number
+        if (lng(db.one("SELECT COUNT(*) AS n FROM shop_orders WHERE company_id = ? AND phone = ? AND status IN ('new','accepted')", cid, phone).get("n")) >= 5)
+            throw new ApiException(429, "இந்த எண்ணுக்கு ஏற்கனவே 5 ஆர்டர்கள் நிலுவையில் உள்ளன — கடையை அழைக்கவும்");
+        Map<String, Object[]> cat = new HashMap<>();
+        for (Map<String, Object> z : db.query("SELECT z.item_id, z.size_label, z.rate, i.name_ta, i.name_en FROM item_sizes z JOIN items i ON i.company_id = z.company_id AND i.id = z.item_id WHERE z.company_id = ?", cid))
+            cat.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), new Object[]{dbl(z.get("rate")), str(z.get("name_ta")), str(z.get("name_en"))});
+        Map<String, Long> have = new HashMap<>();
+        for (Map<String, Object> r : db.query("SELECT item_id, size_label, qty FROM stock WHERE company_id = ? AND branch_id = ?", cid, branch))
+            have.put(str(r.get("item_id")) + "|" + str(r.get("size_label")), lng(r.get("qty")));
+        List<Object> lines = new ArrayList<>();
+        Map<String, Long> seen = new LinkedHashMap<>();
+        for (Object o : list(in.get("lines"))) {
+            Map<String, Object> l = map(o);
+            String k = str(l.get("itemId")) + "|" + str(l.get("size"));
+            double q = dbl(l.get("qty"));
+            if (!cat.containsKey(k) || !(q >= 1 && q <= 99) || q != Math.floor(q)) throw new ApiException(400, "ஆர்டர் ஐட்டம் தவறு");
+            seen.merge(k, (long) q, Long::sum);
+        }
+        if (seen.isEmpty()) throw new ApiException(400, "Cart காலியாக உள்ளது");
+        if (seen.size() > 50) throw new ApiException(400, "ஒரு ஆர்டரில் 50 ஐட்டம் வரை");
+        double total = 0;
+        long pcs = 0;
+        for (Map.Entry<String, Long> e : seen.entrySet()) {
+            Object[] z = cat.get(e.getKey());
+            long h = have.getOrDefault(e.getKey(), 0L);
+            if (e.getValue() > h) throw new ApiException(409, z[1] + " (" + e.getKey().split("\\|", 2)[1] + "): இந்த கடையில் " + Math.max(0, h) + " மட்டுமே உள்ளது");
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("id", e.getKey().split("\\|", 2)[0]);
+            n.put("name", z[1]);
+            n.put("en", z[2]);
+            n.put("size", e.getKey().split("\\|", 2)[1]);
+            n.put("qty", e.getValue());
+            n.put("rate", z[0]);
+            n.put("amt", round2((Double) z[0] * e.getValue()));
+            total += (Double) z[0] * e.getValue();
+            pcs += e.getValue();
+            lines.add(n);
+        }
+        final double tot = round2(total);
+        final long pieces = pcs;
+        final String ph = phone;
+        String token = hex(bytes(12));
+        return db.tx(t -> {
+            Map<String, Object> co = t.one("SELECT order_seq, bill_prefix FROM companies WHERE id = ? FOR UPDATE", cid);
+            long seq = lng(co.get("order_seq")) + 1;
+            t.update("UPDATE companies SET order_seq = ? WHERE id = ?", seq, cid);
+            String no = "ORD-" + String.format("%04d", seq);
+            LocalDateTime now = now();
+            t.update("INSERT INTO shop_orders (company_id, order_seq, order_no, token, branch_id, name, phone, address, mode, notes, lines_json, pieces, total, status, created_at, updated_at) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)", cid, seq, no, token, branch, name, ph, address, mode, clip(in.get("notes"), 300),
+                    toJson(lines), pieces, BigDecimal.valueOf(tot), now, now);
+            Map<String, Object> o = new LinkedHashMap<>();
+            o.put("no", no);
+            o.put("token", token);
+            o.put("total", tot);
+            return o;
+        });
+    }
+
+    static final List<String> ORDER_FLOW = List.of("new", "accepted", "billed", "out", "delivered");
+
+    private Map<String, Object> orderRow(Map<String, Object> r, boolean staff) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        if (staff) n.put("id", lng(r.get("id")));
+        n.put("no", str(r.get("order_no")));
+        if (staff) n.put("token", str(r.get("token")));
+        n.put("at", iso(ldt(r.get("created_at"))));
+        n.put("updatedAt", iso(ldt(r.get("updated_at"))));
+        n.put("status", str(r.get("status")));
+        n.put("name", str(r.get("name")));
+        n.put("phone", staff ? str(r.get("phone")) : "******" + str(r.get("phone")).substring(6));
+        n.put("address", str(r.get("address")));
+        n.put("mode", str(r.get("mode")));
+        n.put("notes", str(r.get("notes")));
+        n.put("branchId", str(r.get("branch_id")));
+        n.put("branch", str(r.get("branch_name")));
+        n.put("pieces", lng(r.get("pieces")));
+        n.put("total", round2(dbl(r.get("total"))));
+        n.put("billNo", str(r.get("bill_no")));
+        n.put("handledBy", str(r.get("handled_by")));
+        n.put("statusNote", str(r.get("status_note")));
+        n.put("lines", jsonList(r.get("lines_json")));
+        return n;
+    }
+
+    /** the customer's status page (by the secret token in their link) */
+    public Map<String, Object> shopOrderStatus(String code, String token) {
+        String cid = shopCompany(code);
+        Map<String, Object> r = db.one("SELECT o.*, br.name AS branch_name FROM shop_orders o LEFT JOIN branches br ON br.company_id = o.company_id AND br.id = o.branch_id "
+                + "WHERE o.company_id = ? AND o.token = ?", cid, str(token));
+        if (r == null) throw new ApiException(404, "ஆர்டர் இல்லை");
+        return obj("order", orderRow(r, false));
+    }
+
+    /** staff: orders (sales / stock: their branch; admin / owner: all) */
+    public Map<String, Object> orders(String auth, String status) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        String br = c.admin() || c.owner() ? null : userBranch(c, cid);
+        String st = blank(status) ? "open" : status.trim();
+        String sf = switch (st) {
+            case "open" -> " AND o.status IN ('new','accepted','billed','out')";
+            case "done" -> " AND o.status IN ('delivered','cancelled')";
+            default -> "";
+        };
+        List<Object> out = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT o.*, br.name AS branch_name FROM shop_orders o LEFT JOIN branches br ON br.company_id = o.company_id AND br.id = o.branch_id "
+                + "WHERE o.company_id = ?" + (br == null ? "" : " AND o.branch_id = ?") + sf + " ORDER BY o.id DESC LIMIT 200", br == null ? new Object[]{cid} : new Object[]{cid, br}))
+            out.add(orderRow(r, true));
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("orders", out);
+        o.put("newCount", lng(db.one("SELECT COUNT(*) AS n FROM shop_orders WHERE company_id = ? AND status = 'new'" + (br == null ? "" : " AND branch_id = ?"),
+                br == null ? new Object[]{cid} : new Object[]{cid, br}).get("n")));
+        o.put("canAct", !c.owner() && !c.warehouse() || c.admin());
+        return o;
+    }
+
+    /** staff: {status: accepted|out|delivered|cancelled, note} or {billNo} when the order was turned into a bill */
+    public Map<String, Object> orderUpdate(String auth, long id, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        if (c.owner()) throw new ApiException(403, "Owner: பார்க்க மட்டும்");
+        Map<String, Object> r = db.one("SELECT * FROM shop_orders WHERE company_id = ? AND id = ?", cid, id);
+        if (r == null) throw new ApiException(404, "ஆர்டர் இல்லை");
+        if (!c.admin() && !str(r.get("branch_id")).equals(userBranch(c, cid))) throw new ApiException(403, "வேறு கிளையின் ஆர்டர்");
+        String cur = str(r.get("status"));
+        if (cur.equals("delivered") || cur.equals("cancelled")) throw new ApiException(409, "இந்த ஆர்டர் முடிந்துவிட்டது");
+        String by = str(c.user.get("full_name"));
+        String bill = clip(in.get("billNo"), 30).toUpperCase(Locale.ROOT);
+        String next;
+        if (!bill.isEmpty()) {
+            if (db.one("SELECT id FROM bills WHERE company_id = ? AND bill_no = ?", cid, bill) == null) throw new ApiException(404, "பில் இல்லை");
+            next = "billed";
+        } else {
+            next = str(in.get("status"));
+            if (!Set.of("accepted", "out", "delivered", "cancelled").contains(next)) throw new ApiException(400, "நிலை தவறு");
+            if (next.equals("delivered") && str(r.get("bill_no")).isEmpty()) throw new ApiException(400, "முதலில் பில்லாக மாற்றவும்");
+        }
+        db.update("UPDATE shop_orders SET status = ?, status_note = ?, handled_by = ?, updated_at = ?" + (bill.isEmpty() ? "" : ", bill_no = '" + bill.replace("'", "") + "'")
+                + " WHERE company_id = ? AND id = ?", next, clip(in.get("note"), 120), by, now(), cid, id);
+        return obj("order", orderRow(db.one("SELECT o.*, br.name AS branch_name FROM shop_orders o LEFT JOIN branches br ON br.company_id = o.company_id AND br.id = o.branch_id WHERE o.id = ?", id), true));
+    }
+
+    /** admin / owner: switch online ordering on or off */
+    public Map<String, Object> shopSettings(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        if (!c.admin() && !c.owner()) throw new ApiException(403, "Owner / Admin மட்டும்");
+        if (in.get("enabled") instanceof Boolean) db.update("UPDATE companies SET shop_enabled = ? WHERE id = ?", (Boolean) in.get("enabled"), cid);
+        if (Boolean.TRUE.equals(in.get("newCode"))) db.update("UPDATE companies SET shop_code = ? WHERE id = ?", hex(bytes(5)), cid);
+        return obj("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", cid)));
     }
 
     // ================================================================ passwords / crypto

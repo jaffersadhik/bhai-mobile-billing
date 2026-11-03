@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS branches (
   company_id   VARCHAR(20)  NOT NULL,
   id           VARCHAR(20)  NOT NULL,
   name         VARCHAR(40)  NOT NULL,
+  kind         VARCHAR(10)  NOT NULL DEFAULT 'shop',      -- shop (sells) | warehouse (stock + transfers only)
   sort_order   INT          NOT NULL DEFAULT 0,
   created_at   DATETIME     NOT NULL,
   PRIMARY KEY (company_id, id),
@@ -61,7 +62,7 @@ CREATE TABLE IF NOT EXISTS users (
   id           VARCHAR(20)  NOT NULL,
   username     VARCHAR(30)  NOT NULL,
   full_name    VARCHAR(60)  NOT NULL,
-  user_type    ENUM('admin','owner','sales','stock') NOT NULL,
+  user_type    ENUM('admin','owner','sales','stock','warehouse') NOT NULL,
   company_id   VARCHAR(20)  NULL,
   branch_id    VARCHAR(20)  NULL,
   pass_salt    VARCHAR(44)  NOT NULL,
@@ -134,6 +135,7 @@ CREATE TABLE IF NOT EXISTS item_sizes (
   item_id      VARCHAR(40)    COLLATE utf8mb4_bin NOT NULL,
   size_label   VARCHAR(12)    COLLATE utf8mb4_bin NOT NULL,
   rate         DECIMAL(10,2)  NOT NULL,
+  cost         DECIMAL(10,2)  NULL,          -- அடக்க விலை (purchase cost), optional
   barcode      VARCHAR(40)    NULL,
   sort_order   INT            NOT NULL DEFAULT 0,
   PRIMARY KEY (company_id, item_id, size_label),
@@ -158,6 +160,9 @@ CREATE TABLE IF NOT EXISTS bills (
   billed_by_name   VARCHAR(60)    NOT NULL DEFAULT '',
   pieces           INT            NOT NULL,
   total            DECIMAL(12,2)  NOT NULL,
+  pay_mode_id      VARCHAR(20)    NULL,
+  pay_name         VARCHAR(30)    NOT NULL DEFAULT '',
+  pay_kind         VARCHAR(8)     NOT NULL DEFAULT '',
   PRIMARY KEY (id),
   UNIQUE KEY uk_bills_company_id  (company_id, id),
   UNIQUE KEY uk_bills_company_seq (company_id, bill_seq),
@@ -179,6 +184,7 @@ CREATE TABLE IF NOT EXISTS bill_lines (
   size_label     VARCHAR(12)    NOT NULL DEFAULT '',
   qty            INT            NOT NULL,
   rate           DECIMAL(10,2)  NOT NULL,
+  cost           DECIMAL(10,2)  NULL,          -- unit cost price at billing time (for profit), NULL = unknown
   amount         DECIMAL(12,2)  NOT NULL,
   PRIMARY KEY (bill_id, line_no),
   KEY idx_lines_company_bill (company_id, bill_id),
@@ -202,3 +208,254 @@ CREATE TABLE IF NOT EXISTS stock (
   PRIMARY KEY (company_id, branch_id, item_id, size_label),
   CONSTRAINT fk_stock_branch FOREIGN KEY (company_id, branch_id) REFERENCES branches (company_id, id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- pay_modes : how a bill was paid, per company - e.g. Cash, Card,
+--   "UPI - Jafar", "UPI - Sadik" (kind groups them: cash / card / upi / other).
+--   Bills keep a copy of the name + kind, so renaming never changes old bills.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pay_modes (
+  company_id   VARCHAR(20)  NOT NULL,
+  id           VARCHAR(20)  NOT NULL,
+  name         VARCHAR(30)  NOT NULL,
+  kind         ENUM('cash','card','upi','other') NOT NULL DEFAULT 'cash',
+  sort_order   INT          NOT NULL DEFAULT 0,
+  active       TINYINT(1)   NOT NULL DEFAULT 1,
+  PRIMARY KEY (company_id, id),
+  CONSTRAINT fk_pay_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- pending_bills : a cart saved for a customer's mobile number, not billed yet.
+--   Several salesmen may add pending for the same number; "save + WhatsApp"
+--   joins today's open pending of that number (same branch) into ONE bill.
+--   Pending never changes stock or reports.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pending_bills (
+  id               BIGINT         NOT NULL AUTO_INCREMENT,
+  company_id       VARCHAR(20)    NOT NULL,
+  branch_id        VARCHAR(20)    NULL,
+  phone            VARCHAR(10)    NOT NULL,
+  customer_name    VARCHAR(60)    NOT NULL DEFAULT '',
+  lines_json       MEDIUMTEXT     NOT NULL,
+  pieces           INT            NOT NULL,
+  total            DECIMAL(12,2)  NOT NULL,
+  status           VARCHAR(8)     NOT NULL DEFAULT 'open',     -- open | billed | deleted
+  bill_id          BIGINT         NULL,
+  created_at       DATETIME       NOT NULL,
+  created_by_user  VARCHAR(30)    NOT NULL DEFAULT '',
+  created_by_name  VARCHAR(60)    NOT NULL DEFAULT '',
+  closed_at        DATETIME       NULL,
+  PRIMARY KEY (id),
+  KEY idx_pending_lookup (company_id, branch_id, phone, status, created_at),
+  CONSTRAINT fk_pending_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- suppliers / purchase_orders / po_lines : purchase orders entered by stock users.
+--   Receiving goods adds to the branch stock (and can update the item's cost price).
+--   status: ordered -> partial -> received | cancelled
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS suppliers (
+  company_id   VARCHAR(20)   NOT NULL,
+  id           VARCHAR(20)   NOT NULL,
+  name         VARCHAR(60)   NOT NULL,
+  phone        VARCHAR(10)   NOT NULL DEFAULT '',
+  gstin        VARCHAR(15)   NOT NULL DEFAULT '',
+  address      VARCHAR(200)  NOT NULL DEFAULT '',
+  created_at   DATETIME      NOT NULL,
+  PRIMARY KEY (company_id, id),
+  CONSTRAINT fk_suppliers_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id               BIGINT         NOT NULL AUTO_INCREMENT,
+  company_id       VARCHAR(20)    NOT NULL,
+  branch_id        VARCHAR(20)    NULL,
+  po_seq           BIGINT         NOT NULL,
+  po_no            VARCHAR(20)    NOT NULL,
+  supplier_id      VARCHAR(20)    NULL,
+  supplier_name    VARCHAR(60)    NOT NULL DEFAULT '',
+  order_date       DATE           NOT NULL,
+  expected_date    DATE           NULL,
+  supplier_ref     VARCHAR(40)    NOT NULL DEFAULT '',
+  notes            VARCHAR(300)   NOT NULL DEFAULT '',
+  status           VARCHAR(10)    NOT NULL DEFAULT 'ordered',
+  subtotal         DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  gst_total        DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  other_charges    DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  discount         DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  total            DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  paid             DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  created_at       DATETIME       NOT NULL,
+  created_by_user  VARCHAR(30)    NOT NULL DEFAULT '',
+  created_by_name  VARCHAR(60)    NOT NULL DEFAULT '',
+  received_at      DATETIME       NULL,
+  received_by      VARCHAR(60)    NOT NULL DEFAULT '',
+  updated_at       DATETIME       NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_po_company_seq (company_id, po_seq),
+  KEY idx_po_branch (company_id, branch_id, status),
+  CONSTRAINT fk_po_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS po_lines (
+  po_id          BIGINT         NOT NULL,
+  company_id     VARCHAR(20)    NOT NULL,
+  line_no        INT            NOT NULL,
+  item_id        VARCHAR(40)    COLLATE utf8mb4_bin NULL,
+  item_name      VARCHAR(60)    NOT NULL,
+  size_label     VARCHAR(12)    COLLATE utf8mb4_bin NOT NULL DEFAULT '',
+  qty            INT            NOT NULL,
+  received_qty   INT            NOT NULL DEFAULT 0,
+  unit_cost      DECIMAL(10,2)  NOT NULL DEFAULT 0,
+  gst_pct        DECIMAL(5,2)   NOT NULL DEFAULT 0,
+  amount         DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  PRIMARY KEY (po_id, line_no),
+  CONSTRAINT fk_po_lines FOREIGN KEY (po_id) REFERENCES purchase_orders (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- stock_transfers / transfer_lines : stock sent from a warehouse to a shop.
+--   sent: source stock already reduced (in transit) -> received: shop stock added
+--   (received_qty < qty = shortage) | cancelled: pieces returned to the source.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS stock_transfers (
+  id               BIGINT        NOT NULL AUTO_INCREMENT,
+  company_id       VARCHAR(20)   NOT NULL,
+  tr_seq           BIGINT        NOT NULL,
+  tr_no            VARCHAR(20)   NOT NULL,
+  from_branch      VARCHAR(20)   NOT NULL,
+  to_branch        VARCHAR(20)   NOT NULL,
+  status           VARCHAR(10)   NOT NULL DEFAULT 'sent',
+  notes            VARCHAR(200)  NOT NULL DEFAULT '',
+  created_at       DATETIME      NOT NULL,
+  created_by_user  VARCHAR(30)   NOT NULL DEFAULT '',
+  created_by_name  VARCHAR(60)   NOT NULL DEFAULT '',
+  received_at      DATETIME      NULL,
+  received_by      VARCHAR(60)   NOT NULL DEFAULT '',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_tr_company_seq (company_id, tr_seq),
+  KEY idx_tr_to (company_id, to_branch, status),
+  KEY idx_tr_from (company_id, from_branch, status),
+  CONSTRAINT fk_tr_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS transfer_lines (
+  tr_id          BIGINT        NOT NULL,
+  company_id     VARCHAR(20)   NOT NULL,
+  line_no        INT           NOT NULL,
+  item_id        VARCHAR(40)   COLLATE utf8mb4_bin NOT NULL,
+  item_name      VARCHAR(60)   NOT NULL,
+  size_label     VARCHAR(12)   COLLATE utf8mb4_bin NOT NULL,
+  qty            INT           NOT NULL,
+  received_qty   INT           NOT NULL DEFAULT 0,
+  PRIMARY KEY (tr_id, line_no),
+  CONSTRAINT fk_tr_lines FOREIGN KEY (tr_id) REFERENCES stock_transfers (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- platform_invoices : what each company owes for using Bhai Mobile Billing.
+--   one invoice per company per month = bills of that month x the per-bill fee
+--   (companies.bill_fee, default 0.25, snapshotted on each bill as bills.platform_fee).
+--   Generated on the 2nd of every month at 8 AM for the previous month.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS platform_invoices (
+  id            BIGINT         NOT NULL AUTO_INCREMENT,
+  company_id    VARCHAR(20)    NOT NULL,
+  inv_no        VARCHAR(30)    NOT NULL,
+  month         CHAR(7)        NOT NULL,
+  bill_count    INT            NOT NULL DEFAULT 0,
+  cancel_count  INT            NOT NULL DEFAULT 0,
+  fee           DECIMAL(8,2)   NOT NULL DEFAULT 0.25,
+  amount        DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  status        VARCHAR(10)    NOT NULL DEFAULT 'unpaid',
+  generated_at  DATETIME       NOT NULL,
+  paid_at       DATETIME       NULL,
+  paid_amount   DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  paid_ref      VARCHAR(60)    NOT NULL DEFAULT '',
+  paid_by       VARCHAR(60)    NOT NULL DEFAULT '',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_inv_company_month (company_id, month),
+  UNIQUE KEY uk_inv_no (inv_no),
+  KEY idx_inv_month (month, status),
+  CONSTRAINT fk_inv_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- cancel_bills : ரத்து பில் — made like a normal bill (the cancelled / returned items are added), with its own
+--   number (PREFIX-C0001). The original bill is never changed. Catalog pieces go back to stock.
+--   Every cancel bill is charged in the software invoice, same as a bill.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cancel_bills (
+  id              BIGINT         NOT NULL AUTO_INCREMENT,
+  company_id      VARCHAR(20)    NOT NULL,
+  branch_id       VARCHAR(20)    NULL,
+  cn_seq          BIGINT         NOT NULL,
+  cn_no           VARCHAR(30)    NOT NULL,
+  ref_bill_no     VARCHAR(30)    NOT NULL DEFAULT '',
+  created_at      DATETIME       NOT NULL,
+  customer_name   VARCHAR(60)    NOT NULL DEFAULT '',
+  customer_phone  VARCHAR(10)    NOT NULL DEFAULT '',
+  by_user         VARCHAR(30)    NOT NULL DEFAULT '',
+  by_name         VARCHAR(60)    NOT NULL DEFAULT '',
+  pieces          INT            NOT NULL DEFAULT 0,
+  total           DECIMAL(12,2)  NOT NULL DEFAULT 0,
+  reason          VARCHAR(120)   NOT NULL DEFAULT '',
+  lines_json      MEDIUMTEXT     NOT NULL,
+  platform_fee    DECIMAL(8,2)   NULL,
+  used_bill_no    VARCHAR(30)    NOT NULL DEFAULT '',   -- the new bill this cancel bill was exchanged against
+  used_at         DATETIME       NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_cn_company_seq (company_id, cn_seq),
+  KEY idx_cn_company (company_id, branch_id, created_at),
+  CONSTRAINT fk_cn_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- item_photos : one photo per item (resized in the browser, JPEG ~50 KB), shown in the app and the online shop.
+--   No FK to items on purpose: saving the catalog rewrites items, the photo must stay.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS item_photos (
+  company_id   VARCHAR(20)    NOT NULL,
+  item_id      VARCHAR(40)    COLLATE utf8mb4_bin NOT NULL,
+  mime         VARCHAR(20)    NOT NULL,
+  data         MEDIUMBLOB     NOT NULL,
+  updated_at   DATETIME       NOT NULL,
+  PRIMARY KEY (company_id, item_id),
+  CONSTRAINT fk_photos_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- shop_orders : orders placed by customers on the online shop page (/shop.html?s=<shop_code>).
+--   new -> accepted -> billed (turned into a bill, bill_no) -> out (out for delivery) -> delivered | cancelled
+--   token = the customer's secret link to see the status.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS shop_orders (
+  id            BIGINT         NOT NULL AUTO_INCREMENT,
+  company_id    VARCHAR(20)    NOT NULL,
+  order_seq     BIGINT         NOT NULL,
+  order_no      VARCHAR(20)    NOT NULL,
+  token         VARCHAR(40)    NOT NULL,
+  branch_id     VARCHAR(20)    NOT NULL,
+  name          VARCHAR(60)    NOT NULL,
+  phone         VARCHAR(10)    NOT NULL,
+  address       VARCHAR(300)   NOT NULL DEFAULT '',
+  mode          VARCHAR(10)    NOT NULL DEFAULT 'delivery',
+  notes         VARCHAR(300)   NOT NULL DEFAULT '',
+  lines_json    MEDIUMTEXT     NOT NULL,
+  pieces        INT            NOT NULL DEFAULT 0,
+  total         DECIMAL(12,2)  NOT NULL DEFAULT 0,
+  status        VARCHAR(12)    NOT NULL DEFAULT 'new',
+  status_note   VARCHAR(120)   NOT NULL DEFAULT '',
+  handled_by    VARCHAR(60)    NOT NULL DEFAULT '',
+  bill_no       VARCHAR(30)    NOT NULL DEFAULT '',
+  created_at    DATETIME       NOT NULL,
+  updated_at    DATETIME       NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_orders_token (token),
+  UNIQUE KEY uk_orders_seq (company_id, order_seq),
+  KEY idx_orders_branch (company_id, branch_id, status),
+  CONSTRAINT fk_orders_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
