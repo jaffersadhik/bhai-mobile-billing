@@ -47,6 +47,7 @@ Shop links: `https://<domain>/shop.html?s=libademo` · `rasidemo` · `seedsdemo`
 | Task | Command |
 |---|---|
 | New version | copy new files over the folder (keep `.env`), then `bash deploy/oracle/update.sh` (takes a backup first) |
+| Rollback (bad build) | Admin → 🧪 Post-deploy Tests → ↩ Rollback (done by cron within a minute), or `bash deploy/oracle/rollback.sh [--db]` |
 | Backup now | `sudo deploy/oracle/backup.sh` → `/opt/bmb/backup/bmb-<date>.sql.gz` (also every night 02:30, kept 14 days) |
 | Restore | `bash deploy/oracle/restore.sh /opt/bmb/backup/bmb-….sql.gz` |
 | Logs | `docker compose logs -f app` · backup log `/var/log/bmb-backup.log` |
@@ -64,3 +65,12 @@ echo 'RCLONE_REMOTE=gdrive:bmb-backup' >> .env
   Upgrading the account to Pay-As-You-Go (still ₹0 if you stay inside the free limits) avoids idle reclaim.
 * The app port 8080 is bound to 127.0.0.1 — only Caddy (HTTPS) is public. MySQL is never exposed.
 * Same scripts work on any Ubuntu VM (AWS, a local PC with a public IP …).
+
+## Post-deploy tests + rollback
+* Every start of the app (= every `update.sh`) runs live tests: database tables, pages/scripts over HTTP, every role of every
+  company calling the read APIs (permission rules + "same status as the previous build"), money/stock ledger checks and
+  "record counts did not go down". Results: login as **admin** → **🧪 Post-deploy Tests**. A failure shows as a red ALERT on the admin home.
+* `update.sh` keeps the running image as `bhai-mobile-billing:prev` and records the pre-deploy DB backup in `/opt/bmb/ctl/build.json`.
+* **Rollback** button: app goes back to the previous build (data kept). Tick "Database-ஐயும்…" to also restore the pre-deploy backup
+  (bills made after the deploy are lost; a safety backup of the current data is taken first).
+* Existing servers: run `sudo bash deploy/oracle/setup.sh <domain>` once more to create `/opt/bmb/ctl` and the watcher cron.

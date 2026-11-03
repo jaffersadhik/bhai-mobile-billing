@@ -1177,6 +1177,49 @@ function billText(b){
   out.push("",`_${APP_NAME}_`);
   return out.join("\n");
 }
+/* ---- PDF + WhatsApp: the PDF is made in the phone (no server), then shared with the text through the phone's share sheet ---- */
+const loadScript=src=>new Promise((ok,bad)=>{ if(document.querySelector(`script[src="${src}"]`)&&loadScript[src]) return ok(); const e=document.createElement("script"); e.src=src; e.onload=()=>{loadScript[src]=1;ok();}; e.onerror=bad; document.head.appendChild(e); });
+async function htmlToPdf(doc,name,width){
+  await loadScript("vendor/html2canvas.min.js"); await loadScript("vendor/jspdf.umd.min.js");
+  const f=document.createElement("iframe"); f.style.cssText=`position:fixed;left:-10000px;top:0;width:${width}px;height:10px;border:0`; document.body.appendChild(f);
+  try{
+    f.contentDocument.open(); f.contentDocument.write(doc); f.contentDocument.close();
+    await new Promise(r=>setTimeout(r,250)); if(f.contentDocument.fonts) await f.contentDocument.fonts.ready;
+    const body=f.contentDocument.body; f.style.height=body.scrollHeight+40+"px";
+    const cv=await html2canvas(body,{scale:2,backgroundColor:"#ffffff",windowWidth:width});
+    const {jsPDF}=window.jspdf, wpt=width*0.75, hpt=cv.height/cv.width*wpt;
+    const pdf=new jsPDF({unit:"pt",format:[wpt,hpt],orientation:hpt>wpt?"p":"l"});
+    pdf.addImage(cv.toDataURL("image/jpeg",0.92),"JPEG",0,0,wpt,hpt);
+    return new File([pdf.output("blob")],name.replace(/[^\w.-]+/g,"_")+".pdf",{type:"application/pdf"});
+  }finally{ f.remove(); }
+}
+function billDoc(b){
+  const c=company||{};
+  return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:"Noto Sans Tamil",Arial,sans-serif;color:#111;margin:0;padding:18px;font-size:13px;width:384px}
+    h1{font-size:18px;margin:0;text-align:center}.c{text-align:center}.m{color:#444;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:8px}td{padding:4px 0;vertical-align:top;border-bottom:1px dashed #bbb}
+    td.r{text-align:right;white-space:nowrap}.t td{font-weight:bold;font-size:15px;border:0;border-top:2px solid #111}hr{border:0;border-top:1px dashed #999}</style></head><body>
+    ${c.bismillah!==false?`<div class="c m">${esc(BISMILLAH)}</div>`:""}<h1>${esc(c.name||APP_NAME)}</h1>
+    <div class="c m">${esc([c.address,c.city].filter(Boolean).join(", "))}${c.phone?"<br>📞 "+esc(c.phone):""}${c.gstin?" · GSTIN: "+esc(c.gstin):""}</div><hr>
+    <div><b>பில் எண்: ${esc(b.no)}</b><br><span class="m">${esc(fmtDate(b.at))}${b.customer?" · "+esc(b.customer):""}${b.by?" · 👤 "+esc(b.by):""}</span></div>
+    <table>${(b.lines||[]).map((l,i)=>`<tr><td>${i+1}. ${esc(l.name)}${l.en?` <span class="m">(${esc(l.en)})</span>`:""}<br><span class="m">${l.size?"Size "+esc(l.size)+" · ":""}${l.qty} × ${inr(l.rate)}</span></td><td class="r">${inr(l.amt)}</td></tr>`).join("")}
+    <tr class="t"><td>மொத்தம் (${b.pieces} pcs)</td><td class="r">${inr(b.total)}</td></tr>
+    ${b.exchange>0?`<tr><td>🔁 Exchange (${esc(b.exchangeRef)})</td><td class="r">− ${inr(b.exchange)}</td></tr><tr class="t"><td>செலுத்திய மீதி</td><td class="r">${inr(b.paid)}</td></tr>`:""}</table>
+    ${b.pay?`<p>பணம்: <b>${esc(b.pay)}</b></p>`:""}<p class="c">${esc(String(c.footer||"நன்றி! மீண்டும் வருக ❤️").replace(/🙏/g,"❤️"))}</p><p class="c m">${esc(APP_NAME)}</p></body></html>`;
+}
+/* share PDF + text; phones without file sharing (desktop): download the PDF and open WhatsApp with the text */
+let pdfReady=null;
+function prepPdf(kind,obj,extra){ pdfReady={kind,file:null,err:null,p:(kind==="inv"?htmlToPdf(invoiceDoc(obj,extra,false),obj.no,794):htmlToPdf(billDoc(obj),obj.no,420)).then(f=>pdfReady&&(pdfReady.file=f)).catch(e=>pdfReady&&(pdfReady.err=e))}; }
+async function sharePdf(phone,text){
+  if(!pdfReady){ toast("PDF இல்லை"); return; }
+  if(!pdfReady.file&&!pdfReady.err){ busy(true); try{ await pdfReady.p; }finally{ busy(false); } }
+  const f=pdfReady.file; if(!f){ toast("PDF உருவாக்க முடியவில்லை — Text மட்டும் அனுப்புகிறது"); window.open(waUrl(phone,text),"_blank","noopener"); return; }
+  if(navigator.canShare&&navigator.canShare({files:[f]})){
+    try{ await navigator.share({files:[f],text,title:f.name}); return; }catch(e){ if(e&&e.name==="AbortError") return; }
+  }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000);
+  toast("PDF download ஆனது — WhatsApp-ல் 📎 மூலம் இணைக்கவும்"); window.open(waUrl(phone,text),"_blank","noopener");
+}
+const PDF_HINT=`<p class="hint" style="text-align:center">📎 PDF + Text: போனில் Share திரை வரும் → <b>WhatsApp</b> → வாடிக்கையாளரைத் தேர்வு செய்யவும் (PDF-உடன் பில் text-உம் போகும்)</p>`;
 const waUrl = (ph,text) => (ph?"https://wa.me/"+COUNTRY_CODE+ph:"https://wa.me/")+"?text="+encodeURIComponent(text);
 async function sendBill(){
   const ph=$("#iPhone").value.trim(), ok=/^[6-9]\d{9}$/.test(ph);
@@ -1203,13 +1246,15 @@ async function sendBill(){
   $("#sheetBody").innerHTML=`<div class="ok"><div class="tick">✓</div>
     <h2 style="padding:0">பில் ${esc(bill.no)} சேமிக்கப்பட்டது</h2>${bill.mergedPending?`<p class="sub">⏳ ${bill.mergedPending} pending + புதிய ஐட்டங்கள் = ஒரே பில் · ${bill.pieces} pcs · ${inr(bill.total)}</p>`:""}
     <p class="sub">+${COUNTRY_CODE} ${esc(ph)} எண்ணுக்கு WhatsApp திறக்கும். அங்கு <b>Send</b> அழுத்தவும்.<br>திறக்கவில்லை என்றால் கீழே உள்ள பச்சை பட்டனை அழுத்தவும்.</p>
-    <a class="cta" href="${esc(url)}" target="_blank" rel="noopener">WhatsApp-ஐ திற</a>
+    <button class="cta" id="sharePdf" data-ph="${esc(ph)}">📎 PDF + Text — WhatsApp</button>${PDF_HINT}
+    <a class="cta ghost" href="${esc(url)}" target="_blank" rel="noopener">💬 Text மட்டும் WhatsApp</a>
     <pre id="sum"></pre>
     <button class="cta ghost" id="copySum">Copy bill text</button>
     <button class="cta ghost" id="newBill">புதிய பில் (New bill)</button></div>`;
-  $("#sum").textContent=text;
-  try{ window.open(url,"_blank","noopener"); }catch(e){}
+  $("#sum").textContent=text; shareText=text;
+  prepPdf("bill",bill);
 }
+let shareText="";
 let billCache=[];
 let repData=null, repDate=null, repCo=null, repTop="month", repLoading=false, repBranch="";
 async function openBills(){
@@ -1220,7 +1265,7 @@ async function openBills(){
       <div class="sum"><div><span>இன்று பில்கள்</span><span>${r.today.count}</span></div><div class="gt"><span>இன்றைய விற்பனை</span><span>${inr(r.today.total)}</span></div></div>
       <div class="box">${billCache.length ? billCache.map((b,i)=>`<div class="bh"><div class="r1"><b>${esc(b.no)}</b><b class="amt">${inr(b.total)}</b></div>
           <div class="meta">${esc(fmtDate(b.at))} · ${b.pieces} pcs${b.customer?" · "+esc(b.customer):""}${b.phone?" · "+esc(b.phone):""}${b.by?" · 👤 "+esc(b.by):""}${b.pay?` <span class="paytag k-${esc(b.payKind)}">${esc(b.pay)}</span>`:""}${b.exchange>0?` <span class="paytag k-exchange">🔁 −${inr(b.exchange)} · மீதி ${inr(b.paid)}</span>`:""}</div>
-          <div class="acts"><button class="mini" data-bwa="${i}">WhatsApp</button><button class="mini" data-bcopy="${i}">Copy</button></div></div>`).join("")
+          <div class="acts"><button class="mini" data-bpdf="${i}">📎 PDF</button><button class="mini" data-bwa="${i}">WhatsApp</button><button class="mini" data-bcopy="${i}">Copy</button></div></div>`).join("")
         : `<p class="sub" style="margin:6px 0">இன்னும் பில் இல்லை</p>`}</div>
       <button class="cta ghost" id="mCancels">✖ ரத்து பில் வரலாறு (Cancel bills)</button>`;
   }catch(e){ apiErr(e); }
@@ -1498,9 +1543,10 @@ function openInvoiceView(i){
     ${ptCur.canEdit&&v.balance>0?`<button class="cta leaf" data-ppfor="${i}">💰 இந்த invoice-க்கு பணம் பெற்றது</button>`:""}
     <button class="cta" data-invprint="${i}">🖨 Invoice Print / PDF</button>
     ${ptCur.canEdit?`<button class="cta ghost" data-cfbno="${esc(v.no)}" style="color:var(--bad);border-color:#f3c4c4">✖ இந்த Invoice-ல் ரத்து (Return / Credit note)</button>`:""}
-    <a class="cta ghost" href="${esc(waUrl(P.phone,invoiceText(v,P)))}" target="_blank" rel="noopener">📤 WhatsApp</a>
+    <button class="cta leaf" id="sharePdf" data-ph="${esc(P.phone||"")}">📎 PDF + Text — WhatsApp</button>${PDF_HINT}
+    <a class="cta ghost" href="${esc(waUrl(P.phone,invoiceText(v,P)))}" target="_blank" rel="noopener">💬 Text மட்டும் WhatsApp</a>
     <button class="cta ghost" id="ppBack">← ${esc(P.name)}</button>`;
-  showSheet();
+  showSheet(); shareText=invoiceText(v,P); prepPdf("inv",v,P);
 }
 function invoiceText(v,P){
   const c=company, L=[`*${c.name}*`,[c.address,c.city].filter(Boolean).join(", "),c.gstin?"GSTIN: "+c.gstin:"","",`*TAX INVOICE ${v.no}*`,fmtDate(v.at),`To: ${P.name}${P.gstin?" (GSTIN "+P.gstin+")":""}`,""];
@@ -1510,9 +1556,12 @@ function invoiceText(v,P){
   L.push("","நன்றி ❤️"); return L.filter((x,i)=>x!==""||i>0).join("\n");
 }
 function printInvoice(i){
-  const v=ptCur.invoices[i], P=ptCur.party, c=company, w=window.open("","_blank"); if(!w){ toast("Popup அனுமதி தேவை"); return; }
-  const half=v.gstPct/2, cg=Math.round(v.gst*50)/100;
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(v.no)}</title><style>
+  const w=window.open("","_blank"); if(!w){ toast("Popup அனுமதி தேவை"); return; }
+  w.document.write(invoiceDoc(ptCur.invoices[i],ptCur.party,true)); w.document.close();
+}
+function invoiceDoc(v,P,print){
+  const c=company, half=v.gstPct/2, cg=Math.round(v.gst*50)/100;
+  return (`<!doctype html><html><head><meta charset="utf-8"><title>${esc(v.no)}</title><style>
     body{font-family:Arial,"Noto Sans Tamil",sans-serif;color:#111;margin:24px;font-size:13px}h1{margin:0;font-size:22px}table{width:100%;border-collapse:collapse;margin-top:12px}
     th,td{border:1px solid #999;padding:6px;text-align:left}th{background:#eef5f1}td.r,th.r{text-align:right}.hd{display:flex;justify-content:space-between;gap:20px}.box{border:1px solid #999;padding:8px;margin-top:10px}
     .tot td{font-weight:bold}.ttl{text-align:center;font-size:16px;font-weight:bold;margin:12px 0 0;letter-spacing:1px}@media print{body{margin:10mm}}</style></head><body>
@@ -1527,8 +1576,7 @@ function printInvoice(i){
     <tr class="tot"><td colspan="5" class="r">Invoice total</td><td class="r">₹ ${v.total.toFixed(2)}</td></tr>
     <tr><td colspan="5" class="r">Paid</td><td class="r">${v.paid.toFixed(2)}</td></tr><tr class="tot"><td colspan="5" class="r">Balance due</td><td class="r">₹ ${v.balance.toFixed(2)}</td></tr></table>
     ${v.notes?`<p>Note: ${esc(v.notes)}</p>`:""}<p style="margin-top:40px;text-align:right">For ${esc(c.name)}<br><br>Authorised signatory</p>
-    <p style="color:#777;font-size:11px">Generated by ${esc(APP_NAME)}</p><script>setTimeout(()=>print(),300)<\/script></body></html>`);
-  w.document.close();
+    <p style="color:#777;font-size:11px">Generated by ${esc(APP_NAME)}</p>${print?`<script>setTimeout(()=>print(),300)<\/script>`:""}</body></html>`);
 }
 /* new invoice from the cart */
 async function openInvoiceForm(){
@@ -3813,6 +3861,10 @@ document.addEventListener("click",e=>{
   if(d.penddel){ if(!confirm("இந்த pending பில்லை நீக்கவா?")) return; busy(true);
     api("pending/"+d.penddel,"DELETE").then(async()=>{ pendAll=await api("pending"); pendCount=pendAll.count; renderPendingList(); renderView(); toast("Pending நீக்கப்பட்டது"); }).catch(apiErr).finally(()=>busy(false)); return; }
   if(t.id==="copySum") return copyText($("#sum").textContent);
+  if(t.id==="sharePdf"){ sharePdf(d.ph||"",shareText); return; }
+  if(d.bpdf!==undefined){ const b=billCache[+d.bpdf]; if(!b) return; shareText=billText(b); prepPdf("bill",b);
+    $("#sheetBody").innerHTML=`<h2>📎 ${esc(b.no)} — PDF</h2><p class="sub">${esc(fmtDate(b.at))} · ${inr(b.total)}${b.phone?" · +"+COUNTRY_CODE+" "+esc(b.phone):""}</p>
+      <button class="cta" id="sharePdf" data-ph="${esc(b.phone||"")}">📎 PDF + Text — WhatsApp</button>${PDF_HINT}<button class="cta ghost" id="mBills">← பில் வரலாறு</button>`; showSheet(); return; }
   if(d.bwa!==undefined){ const b=billCache[+d.bwa]; if(b) window.open(waUrl(b.phone||"",billText(b)),"_blank","noopener"); return; }
   if(d.expick){ const id=+d.expick; exPick.has(id)?exPick.delete(id):exPick.add(id); renderExBox(); return; }
   if(d.exnew){ const [ph,id]=d.exnew.split("|"); exNext={phone:ph,ids:[+id]}; closeSheet(); toast("🔁 Exchange: புதிய ஐட்டங்களை சேர்த்து View bill அழுத்தவும்"); return; }

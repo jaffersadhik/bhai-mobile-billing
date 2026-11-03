@@ -7,8 +7,10 @@ F="${1:?usage: restore.sh <backup.sql.gz>}"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$APP_DIR"
 set -a; . ./.env; set +a
-read -r -p "All current data will be replaced by $F. Type YES to continue: " ok
-[ "$ok" = YES ] || exit 1
+if [ "${RESTORE_YES:-}" != 1 ]; then
+  read -r -p "All current data will be replaced by $F. Type YES to continue: " ok
+  [ "$ok" = YES ] || exit 1
+fi
 docker compose stop app
 gzip -dc "$F" | docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql mysql -uroot --default-character-set=utf8mb4 bmb
 docker compose start app

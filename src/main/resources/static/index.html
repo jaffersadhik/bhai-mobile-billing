@@ -607,6 +607,11 @@ footer .pw-by b{color:var(--leaf)}
 .lmark.mlogo{background:none;padding:0;overflow:hidden}.lmark.mlogo svg{width:100%;height:100%;display:block}
 .brkind{font-size:11px;font-weight:800;border-radius:7px;padding:2px 6px;background:#dff1ff;color:#0b4f80;margin-left:4px}
 .whcats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.whcat{border:0;border-radius:12px;padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:4px;font:inherit;cursor:pointer}.whcat span{font-size:24px}.whcat b{font-size:12px}
+.qa-al{display:block;width:100%;text-align:left;border:0;border-radius:14px;padding:12px 14px;margin:10px 0;font:inherit;line-height:1.45}.qa-al.bad{background:#fde2e2;color:#8a1c12;border:2px solid #f19c94;cursor:pointer}.qa-al.ok{background:#e3f4ea;color:#14532d}.qa-al.run{background:#fff4d6;color:#7a4b00}
+.qa-head{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.qa-head div{flex:1;min-width:110px;background:#fff;border-radius:12px;padding:8px 10px;border:1px solid #e3ebe6}.qa-head small{display:block;color:#5c6b63;font-size:11px}.qa-head b{font-size:13px;word-break:break-all}
+.qa-r{padding:8px 0;border-bottom:1px solid #eef2ef}.qa-r .r1{display:flex;gap:6px;align-items:flex-start}.qa-r b{font-size:13px;flex:1}.qa-r small{display:block;color:#5c6b63;font-size:11.5px;margin-top:2px;word-break:break-word}.qa-r.fail b{color:#b42318}
+.qa-run{display:grid;grid-template-columns:1fr auto;gap:2px 8px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid #eef2ef;padding:8px 4px;font:inherit;cursor:pointer}.qa-run.on{background:#eef7f1}.qa-run small{grid-column:1/-1;color:#5c6b63}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:8px 0}
 </style>
 </head>
 <body>
@@ -827,6 +832,7 @@ function view(){
   const h=location.hash.slice(1);
   if(h==="admin" && isAdmin()) return "admin";
   if(h==="inv" && (isAdmin()||isOwner())) return "inv";
+  if(h==="qa" && isAdmin()) return "qa";
   if(!company) return isAdmin() ? "admin" : "nocompany";
   if(isWh()&&catalog.setup&&catById[h]) return "cat";
   if(isWh()&&(h==="parties"||h==="money")) return h;
@@ -868,6 +874,7 @@ function renderBar(){
   else if(v==="money") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">💳 பணம் — வர / செலுத்த வேண்டியது</h1></div>`;
   else if(v==="parties") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">📒 Wholesale / Retailers</h1></div>`;
   else if(v==="orders") left=`${isOwner()?`<div class="mark" aria-hidden="true">🛒</div>`:`<button class="back" id="toHome" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">🛒 ஆர்டர்கள் (Online + கடை)</h1></div>`;
+  else if(v==="qa") left=`<button class="back" id="toAdmin" aria-label="Back">←</button><div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">🧪 Post-deploy Tests</h1></div>`;
   else if(v==="inv") left=`<button class="back" id="${isAdmin()?"toAdmin":"toHome"}" aria-label="Back">←</button><div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">🧾 Software Invoice</h1></div>`;
   else if(v==="labels") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}</span><h1 class="co">🏷 Barcode Labels</h1></div>`;
   else if(v==="tr") left=`${isOwner()?`<div class="mark" aria-hidden="true">🚚</div>`:`<button class="back" id="toHome" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">🚚 Stock Transfers</h1></div>`;
@@ -916,6 +923,7 @@ function renderView(){
   else if(v==="po") html=renderPoList();
   else if(v==="tr") html=renderTr();
   else if(v==="labels") html=renderLabels();
+  else if(v==="qa") html=renderQa();
   else if(v==="inv") html=renderInv();
   else if(v==="orders") html=renderOrders();
   else if(v==="parties") html=renderParties();
@@ -1177,6 +1185,49 @@ function billText(b){
   out.push("",`_${APP_NAME}_`);
   return out.join("\n");
 }
+/* ---- PDF + WhatsApp: the PDF is made in the phone (no server), then shared with the text through the phone's share sheet ---- */
+const loadScript=src=>new Promise((ok,bad)=>{ if(document.querySelector(`script[src="${src}"]`)&&loadScript[src]) return ok(); const e=document.createElement("script"); e.src=src; e.onload=()=>{loadScript[src]=1;ok();}; e.onerror=bad; document.head.appendChild(e); });
+async function htmlToPdf(doc,name,width){
+  await loadScript("vendor/html2canvas.min.js"); await loadScript("vendor/jspdf.umd.min.js");
+  const f=document.createElement("iframe"); f.style.cssText=`position:fixed;left:-10000px;top:0;width:${width}px;height:10px;border:0`; document.body.appendChild(f);
+  try{
+    f.contentDocument.open(); f.contentDocument.write(doc); f.contentDocument.close();
+    await new Promise(r=>setTimeout(r,250)); if(f.contentDocument.fonts) await f.contentDocument.fonts.ready;
+    const body=f.contentDocument.body; f.style.height=body.scrollHeight+40+"px";
+    const cv=await html2canvas(body,{scale:2,backgroundColor:"#ffffff",windowWidth:width});
+    const {jsPDF}=window.jspdf, wpt=width*0.75, hpt=cv.height/cv.width*wpt;
+    const pdf=new jsPDF({unit:"pt",format:[wpt,hpt],orientation:hpt>wpt?"p":"l"});
+    pdf.addImage(cv.toDataURL("image/jpeg",0.92),"JPEG",0,0,wpt,hpt);
+    return new File([pdf.output("blob")],name.replace(/[^\w.-]+/g,"_")+".pdf",{type:"application/pdf"});
+  }finally{ f.remove(); }
+}
+function billDoc(b){
+  const c=company||{};
+  return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:"Noto Sans Tamil",Arial,sans-serif;color:#111;margin:0;padding:18px;font-size:13px;width:384px}
+    h1{font-size:18px;margin:0;text-align:center}.c{text-align:center}.m{color:#444;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:8px}td{padding:4px 0;vertical-align:top;border-bottom:1px dashed #bbb}
+    td.r{text-align:right;white-space:nowrap}.t td{font-weight:bold;font-size:15px;border:0;border-top:2px solid #111}hr{border:0;border-top:1px dashed #999}</style></head><body>
+    ${c.bismillah!==false?`<div class="c m">${esc(BISMILLAH)}</div>`:""}<h1>${esc(c.name||APP_NAME)}</h1>
+    <div class="c m">${esc([c.address,c.city].filter(Boolean).join(", "))}${c.phone?"<br>📞 "+esc(c.phone):""}${c.gstin?" · GSTIN: "+esc(c.gstin):""}</div><hr>
+    <div><b>பில் எண்: ${esc(b.no)}</b><br><span class="m">${esc(fmtDate(b.at))}${b.customer?" · "+esc(b.customer):""}${b.by?" · 👤 "+esc(b.by):""}</span></div>
+    <table>${(b.lines||[]).map((l,i)=>`<tr><td>${i+1}. ${esc(l.name)}${l.en?` <span class="m">(${esc(l.en)})</span>`:""}<br><span class="m">${l.size?"Size "+esc(l.size)+" · ":""}${l.qty} × ${inr(l.rate)}</span></td><td class="r">${inr(l.amt)}</td></tr>`).join("")}
+    <tr class="t"><td>மொத்தம் (${b.pieces} pcs)</td><td class="r">${inr(b.total)}</td></tr>
+    ${b.exchange>0?`<tr><td>🔁 Exchange (${esc(b.exchangeRef)})</td><td class="r">− ${inr(b.exchange)}</td></tr><tr class="t"><td>செலுத்திய மீதி</td><td class="r">${inr(b.paid)}</td></tr>`:""}</table>
+    ${b.pay?`<p>பணம்: <b>${esc(b.pay)}</b></p>`:""}<p class="c">${esc(String(c.footer||"நன்றி! மீண்டும் வருக ❤️").replace(/🙏/g,"❤️"))}</p><p class="c m">${esc(APP_NAME)}</p></body></html>`;
+}
+/* share PDF + text; phones without file sharing (desktop): download the PDF and open WhatsApp with the text */
+let pdfReady=null;
+function prepPdf(kind,obj,extra){ pdfReady={kind,file:null,err:null,p:(kind==="inv"?htmlToPdf(invoiceDoc(obj,extra,false),obj.no,794):htmlToPdf(billDoc(obj),obj.no,420)).then(f=>pdfReady&&(pdfReady.file=f)).catch(e=>pdfReady&&(pdfReady.err=e))}; }
+async function sharePdf(phone,text){
+  if(!pdfReady){ toast("PDF இல்லை"); return; }
+  if(!pdfReady.file&&!pdfReady.err){ busy(true); try{ await pdfReady.p; }finally{ busy(false); } }
+  const f=pdfReady.file; if(!f){ toast("PDF உருவாக்க முடியவில்லை — Text மட்டும் அனுப்புகிறது"); window.open(waUrl(phone,text),"_blank","noopener"); return; }
+  if(navigator.canShare&&navigator.canShare({files:[f]})){
+    try{ await navigator.share({files:[f],text,title:f.name}); return; }catch(e){ if(e&&e.name==="AbortError") return; }
+  }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(f); a.download=f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),60000);
+  toast("PDF download ஆனது — WhatsApp-ல் 📎 மூலம் இணைக்கவும்"); window.open(waUrl(phone,text),"_blank","noopener");
+}
+const PDF_HINT=`<p class="hint" style="text-align:center">📎 PDF + Text: போனில் Share திரை வரும் → <b>WhatsApp</b> → வாடிக்கையாளரைத் தேர்வு செய்யவும் (PDF-உடன் பில் text-உம் போகும்)</p>`;
 const waUrl = (ph,text) => (ph?"https://wa.me/"+COUNTRY_CODE+ph:"https://wa.me/")+"?text="+encodeURIComponent(text);
 async function sendBill(){
   const ph=$("#iPhone").value.trim(), ok=/^[6-9]\d{9}$/.test(ph);
@@ -1203,13 +1254,15 @@ async function sendBill(){
   $("#sheetBody").innerHTML=`<div class="ok"><div class="tick">✓</div>
     <h2 style="padding:0">பில் ${esc(bill.no)} சேமிக்கப்பட்டது</h2>${bill.mergedPending?`<p class="sub">⏳ ${bill.mergedPending} pending + புதிய ஐட்டங்கள் = ஒரே பில் · ${bill.pieces} pcs · ${inr(bill.total)}</p>`:""}
     <p class="sub">+${COUNTRY_CODE} ${esc(ph)} எண்ணுக்கு WhatsApp திறக்கும். அங்கு <b>Send</b> அழுத்தவும்.<br>திறக்கவில்லை என்றால் கீழே உள்ள பச்சை பட்டனை அழுத்தவும்.</p>
-    <a class="cta" href="${esc(url)}" target="_blank" rel="noopener">WhatsApp-ஐ திற</a>
+    <button class="cta" id="sharePdf" data-ph="${esc(ph)}">📎 PDF + Text — WhatsApp</button>${PDF_HINT}
+    <a class="cta ghost" href="${esc(url)}" target="_blank" rel="noopener">💬 Text மட்டும் WhatsApp</a>
     <pre id="sum"></pre>
     <button class="cta ghost" id="copySum">Copy bill text</button>
     <button class="cta ghost" id="newBill">புதிய பில் (New bill)</button></div>`;
-  $("#sum").textContent=text;
-  try{ window.open(url,"_blank","noopener"); }catch(e){}
+  $("#sum").textContent=text; shareText=text;
+  prepPdf("bill",bill);
 }
+let shareText="";
 let billCache=[];
 let repData=null, repDate=null, repCo=null, repTop="month", repLoading=false, repBranch="";
 async function openBills(){
@@ -1220,7 +1273,7 @@ async function openBills(){
       <div class="sum"><div><span>இன்று பில்கள்</span><span>${r.today.count}</span></div><div class="gt"><span>இன்றைய விற்பனை</span><span>${inr(r.today.total)}</span></div></div>
       <div class="box">${billCache.length ? billCache.map((b,i)=>`<div class="bh"><div class="r1"><b>${esc(b.no)}</b><b class="amt">${inr(b.total)}</b></div>
           <div class="meta">${esc(fmtDate(b.at))} · ${b.pieces} pcs${b.customer?" · "+esc(b.customer):""}${b.phone?" · "+esc(b.phone):""}${b.by?" · 👤 "+esc(b.by):""}${b.pay?` <span class="paytag k-${esc(b.payKind)}">${esc(b.pay)}</span>`:""}${b.exchange>0?` <span class="paytag k-exchange">🔁 −${inr(b.exchange)} · மீதி ${inr(b.paid)}</span>`:""}</div>
-          <div class="acts"><button class="mini" data-bwa="${i}">WhatsApp</button><button class="mini" data-bcopy="${i}">Copy</button></div></div>`).join("")
+          <div class="acts"><button class="mini" data-bpdf="${i}">📎 PDF</button><button class="mini" data-bwa="${i}">WhatsApp</button><button class="mini" data-bcopy="${i}">Copy</button></div></div>`).join("")
         : `<p class="sub" style="margin:6px 0">இன்னும் பில் இல்லை</p>`}</div>
       <button class="cta ghost" id="mCancels">✖ ரத்து பில் வரலாறு (Cancel bills)</button>`;
   }catch(e){ apiErr(e); }
@@ -1498,9 +1551,10 @@ function openInvoiceView(i){
     ${ptCur.canEdit&&v.balance>0?`<button class="cta leaf" data-ppfor="${i}">💰 இந்த invoice-க்கு பணம் பெற்றது</button>`:""}
     <button class="cta" data-invprint="${i}">🖨 Invoice Print / PDF</button>
     ${ptCur.canEdit?`<button class="cta ghost" data-cfbno="${esc(v.no)}" style="color:var(--bad);border-color:#f3c4c4">✖ இந்த Invoice-ல் ரத்து (Return / Credit note)</button>`:""}
-    <a class="cta ghost" href="${esc(waUrl(P.phone,invoiceText(v,P)))}" target="_blank" rel="noopener">📤 WhatsApp</a>
+    <button class="cta leaf" id="sharePdf" data-ph="${esc(P.phone||"")}">📎 PDF + Text — WhatsApp</button>${PDF_HINT}
+    <a class="cta ghost" href="${esc(waUrl(P.phone,invoiceText(v,P)))}" target="_blank" rel="noopener">💬 Text மட்டும் WhatsApp</a>
     <button class="cta ghost" id="ppBack">← ${esc(P.name)}</button>`;
-  showSheet();
+  showSheet(); shareText=invoiceText(v,P); prepPdf("inv",v,P);
 }
 function invoiceText(v,P){
   const c=company, L=[`*${c.name}*`,[c.address,c.city].filter(Boolean).join(", "),c.gstin?"GSTIN: "+c.gstin:"","",`*TAX INVOICE ${v.no}*`,fmtDate(v.at),`To: ${P.name}${P.gstin?" (GSTIN "+P.gstin+")":""}`,""];
@@ -1510,9 +1564,12 @@ function invoiceText(v,P){
   L.push("","நன்றி ❤️"); return L.filter((x,i)=>x!==""||i>0).join("\n");
 }
 function printInvoice(i){
-  const v=ptCur.invoices[i], P=ptCur.party, c=company, w=window.open("","_blank"); if(!w){ toast("Popup அனுமதி தேவை"); return; }
-  const half=v.gstPct/2, cg=Math.round(v.gst*50)/100;
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(v.no)}</title><style>
+  const w=window.open("","_blank"); if(!w){ toast("Popup அனுமதி தேவை"); return; }
+  w.document.write(invoiceDoc(ptCur.invoices[i],ptCur.party,true)); w.document.close();
+}
+function invoiceDoc(v,P,print){
+  const c=company, half=v.gstPct/2, cg=Math.round(v.gst*50)/100;
+  return (`<!doctype html><html><head><meta charset="utf-8"><title>${esc(v.no)}</title><style>
     body{font-family:Arial,"Noto Sans Tamil",sans-serif;color:#111;margin:24px;font-size:13px}h1{margin:0;font-size:22px}table{width:100%;border-collapse:collapse;margin-top:12px}
     th,td{border:1px solid #999;padding:6px;text-align:left}th{background:#eef5f1}td.r,th.r{text-align:right}.hd{display:flex;justify-content:space-between;gap:20px}.box{border:1px solid #999;padding:8px;margin-top:10px}
     .tot td{font-weight:bold}.ttl{text-align:center;font-size:16px;font-weight:bold;margin:12px 0 0;letter-spacing:1px}@media print{body{margin:10mm}}</style></head><body>
@@ -1527,8 +1584,7 @@ function printInvoice(i){
     <tr class="tot"><td colspan="5" class="r">Invoice total</td><td class="r">₹ ${v.total.toFixed(2)}</td></tr>
     <tr><td colspan="5" class="r">Paid</td><td class="r">${v.paid.toFixed(2)}</td></tr><tr class="tot"><td colspan="5" class="r">Balance due</td><td class="r">₹ ${v.balance.toFixed(2)}</td></tr></table>
     ${v.notes?`<p>Note: ${esc(v.notes)}</p>`:""}<p style="margin-top:40px;text-align:right">For ${esc(c.name)}<br><br>Authorised signatory</p>
-    <p style="color:#777;font-size:11px">Generated by ${esc(APP_NAME)}</p><script>setTimeout(()=>print(),300)<\/script></body></html>`);
-  w.document.close();
+    <p style="color:#777;font-size:11px">Generated by ${esc(APP_NAME)}</p>${print?`<script>setTimeout(()=>print(),300)<\/script>`:""}</body></html>`);
 }
 /* new invoice from the cart */
 async function openInvoiceForm(){
@@ -1942,14 +1998,62 @@ async function savePw(){
 
 /* ================= ADMIN PANEL ================= */
 async function loadAdmin(){
-  try{ const [ov,sl]=await Promise.all([api("admin/overview"),api("admin/sales").catch(()=>null)]); adminData=ov; adminData.sales=sl; }
+  try{ const [ov,sl,qa]=await Promise.all([api("admin/overview"),api("admin/sales").catch(()=>null),api("admin/tests/alert").catch(()=>null)]); adminData=ov; adminData.sales=sl; adminData.qa=qa; }
   catch(e){ apiErr(e); if(!adminData) adminData={companies:[],users:[]}; }
   if(view()==="admin") renderView();
+}
+/* ---- post-deploy (live) tests: results, alert for failures, rollback request ---- */
+let qaData=null, qaSel=null, qaFlt="bad", qaLoading=false, qaPoll=null;
+function qaBanner(q){
+  const tile=`<button class="admin" id="openQa" style="margin:10px 0"><span class="pl" aria-hidden="true">🧪</span><div><b>Post-deploy Tests — Build ${esc(q?q.build:"")}</b><small>ஒவ்வொரு deploy-க்குப் பிறகும் தானாக இயங்கும் · முடிவுகள் · முந்தைய build ஒப்பீடு · Rollback</small></div></button>`;
+  if(!q||!q.last) return tile;
+  const L=q.last;
+  if(q.running) return `<div class="qa-al run">⏳ Build ${esc(q.build)} — tests இயங்குகிறது…</div>`+tile;
+  if(L.failed>0) return `<button class="qa-al bad" id="openQa">🚨 <b>ALERT: ${L.failed} test தோல்வி</b>${L.regressions?` · ${L.regressions} regression (முந்தைய build-ல் சரியாக இருந்தது)`:""}<br><small>Build ${esc(L.build)} · ${esc(fmtDate(L.at))} · பார்த்து தேவையெனில் Rollback செய்யவும் →</small></button>`+tile;
+  return `<div class="qa-al ok">✅ Build ${esc(L.build)} — ${L.passed}/${L.total} tests சரி${L.warned?` · ⚠️ ${L.warned} எச்சரிக்கை`:""}</div>`+tile;
+}
+async function loadQa(){
+  if(qaLoading) return; qaLoading=true;
+  try{ qaData=await api("admin/tests"+(qaSel?"?run="+qaSel:"")); }catch(e){ apiErr(e); qaData={error:e.message}; } finally{ qaLoading=false; }
+  clearTimeout(qaPoll); if(qaData&&qaData.running) qaPoll=setTimeout(()=>{ if(view()==="qa"){ qaSel=null; loadQa(); } },3000);
+  if(view()==="qa") renderView();
+}
+async function qaRerun(){ busy(true); try{ await api("admin/tests/run","POST",{}); toast("Tests தொடங்கியது"); qaSel=null; setTimeout(loadQa,800); }catch(e){ apiErr(e); } finally{ busy(false); } }
+async function qaRollback(){
+  const D=qaData&&qaData.deploy, info=D&&D.info||{};
+  const withDb=$("#qaDb")&&$("#qaDb").checked;
+  if(!confirm(`Build ${info.current||qaData.build} → முந்தைய build ${info.previous} க்கு திரும்ப (Rollback)?${withDb?"\n\n⚠️ Database-ம் deploy-க்கு முந்தைய backup-க்கு திரும்பும் — அதன் பிறகு போட்ட பில்கள் அழியும்!":""}`)) return;
+  busy(true); try{ const r=await api("admin/rollback","POST",{withDb}); qaData.deploy=r; toast("Rollback கோரப்பட்டது — 1-2 நிமிடத்தில் நடக்கும்"); renderView(); }catch(e){ apiErr(e); } finally{ busy(false); }
+}
+function renderQa(){
+  if(!qaData){ if(!qaLoading) setTimeout(loadQa,0); return `<div class="none"><b>⏳</b>ஏற்றுகிறது…</div>`; }
+  if(qaData.error) return `<div class="none"><b>⚠️</b>${esc(qaData.error)}</div>`;
+  const q=qaData, R=q.run, D=q.deploy||{}, info=D.info||{}, rb=D.rollback;
+  const res=(q.results||[]), cnt=k=>res.filter(x=>k==="bad"?x.status!=="pass":k==="all"?true:x.status===k).length;
+  const shown=res.filter(x=>qaFlt==="bad"?x.status!=="pass":qaFlt==="all"?true:x.status===qaFlt);
+  const ST={pass:"✅",fail:"❌",warn:"⚠️"};
+  return `<section class="qa-head"><div><small>இயங்கும் Build</small><b>${esc(q.build)}</b></div>${info.previous?`<div><small>முந்தைய Build</small><b>${esc(info.previous)}</b></div>`:""}${info.deployedAt?`<div><small>Deploy</small><b>${esc(info.deployedAt)}</b></div>`:""}</section>
+    ${q.running?`<div class="qa-al run">⏳ Tests இயங்குகிறது… (தானாக refresh ஆகும்)</div>`:""}
+    ${R?`<div class="qa-al ${R.failed?"bad":"ok"}">${R.failed?`🚨 <b>${R.failed} தோல்வி</b>`:"✅ <b>எல்லாம் சரி</b>"} · ${R.passed} pass · ${R.warned} warn · மொத்தம் ${R.total}${R.regressions?` · <b>${R.regressions} regression</b>`:""}<br><small>Run #${R.id} · ${esc(fmtDate(R.at))} · ${esc(R.trigger)}${R.prevBuild?` · ஒப்பீடு: build ${esc(R.prevBuild)}`:""}</small></div>`:`<div class="none" style="padding:14px">இன்னும் test run இல்லை</div>`}
+    <button class="cta leaf" id="qaRerun"${q.running?" disabled":""}>▶ இப்போது Tests இயக்கு</button>
+    <div class="box"><h3>↩ Build Rollback</h3>
+      ${!D.ctl?`<p class="hint">இந்த server-ல் rollback வசதி அமைக்கப்படவில்லை. Server-ல் <code>sudo bash deploy/oracle/setup.sh &lt;domain&gt;</code> மீண்டும் இயக்கவும் (deploy/oracle/README.md).</p>`
+      :!info.previous?`<p class="hint">முந்தைய build இல்லை (முதல் deploy). அடுத்த update-க்குப் பிறகு rollback கிடைக்கும்.</p>`
+      :D.requested?`<p class="hint">⏳ Rollback கோரப்பட்டுள்ளது — server ஒரு நிமிடத்துக்குள் செய்யும். பிறகு இந்த பக்கத்தை refresh செய்யவும்.</p>`
+      :`<p class="hint">இப்போதைய build ${esc(q.build)} → <b>${esc(info.previous)}</b>. App மட்டும் பழைய பதிப்புக்கு மாறும்; தரவு அப்படியே இருக்கும்.</p>
+        <label class="chk"><input type="checkbox" id="qaDb"> Database-ஐயும் deploy-க்கு முந்தைய backup-க்கு மாற்று${info.backup?` (${esc(String(info.backup).split("/").pop())})`:""} — ⚠️ அதன் பிறகு போட்ட பில்கள் அழியும்</label>
+        <button class="cta" id="qaRollback" style="background:var(--bad)">↩ முந்தைய Build-க்கு Rollback</button>`}
+      ${rb?`<p class="hint">கடைசி rollback: <b>${esc(rb.state||"")}</b> · ${esc(rb.at||"")}${rb.to?" → "+esc(rb.to):""}${rb.message?"<br>"+esc(rb.message):""}</p>`:""}</div>
+    <div class="chips">${[["bad","❌⚠️ பிரச்சனை"],["fail","❌ Fail"],["warn","⚠️ Warn"],["pass","✅ Pass"],["all","எல்லாம்"]].map(([k,l])=>`<button data-qaflt="${k}" class="${qaFlt===k?"on":""}">${l} (${cnt(k)})</button>`).join("")}</div>
+    <div class="box">${shown.length?shown.map(x=>`<div class="qa-r ${x.status}"><div class="r1"><span>${ST[x.status]||""}</span><b>${esc(x.name)}</b>${x.regression?`<span class="tag" style="background:#fde2e2;color:#b42318">REGRESSION</span>`:""}</div>
+        <small>${esc(x.detail)}${x.prev?` · முந்தைய build: ${ST[x.prev]||esc(x.prev)}`:""} · <code>${esc(x.code)}</code></small></div>`).join(""):`<p class="sub" style="margin:6px 0">${qaFlt==="bad"?"✅ பிரச்சனை எதுவும் இல்லை":"இல்லை"}</p>`}</div>
+    <h2 class="h2">முந்தைய Runs</h2>
+    <div class="box">${(q.runs||[]).map(x=>`<button class="qa-run${R&&R.id===x.id?" on":""}" data-qarun="${x.id}"><b>#${x.id} · ${esc(x.build)}</b><span>${x.status==="running"?"⏳":x.failed?`❌ ${x.failed}`:"✅"} ${x.passed}/${x.total}</span><small>${esc(fmtDate(x.at))} · ${esc(x.trigger)}</small></button>`).join("")}</div>`;
 }
 function renderAdmin(){
   if(!adminData) return `<div class="none"><b>⏳</b>ஏற்றுகிறது…</div>`;
   const cs=adminData.companies, us=adminData.users;
-  return `${pwWarn()}${adminSalesHtml(adminData.sales)}
+  return `${pwWarn()}${qaBanner(adminData.qa)}${adminSalesHtml(adminData.sales)}
     <button class="admin" id="openInv" style="margin:10px 0"><span class="pl" aria-hidden="true">🧾</span><div><b>Software Invoices — எல்லா கம்பெனிகள்</b><small>மாதம் வாரியாக · பில் × கட்டணம் · Payment received · WhatsApp</small></div></button>
     <div class="adm-head"><h2 class="h2">கம்பெனிகள் · ${cs.length}</h2><button class="gbtn" id="addCompany">➕ புது கம்பெனி</button></div>
     ${cs.length?`<div class="list">${cs.map(c=>`<article class="acard">
@@ -3634,6 +3738,11 @@ document.addEventListener("click",e=>{
   if(d.ordset){ if(d.ordset==="cancelled"){ const n=prompt("ரத்து காரணம் (வாடிக்கையாளருக்கு தெரியும்)"); if(n===null) return; setOrder({status:"cancelled",note:n}); } else setOrder({status:d.ordset}); return; }
   if(t.id==="ordToBill"){ orderToBill(); return; }
   if(t.id==="phDel"){ deletePhoto(); return; }
+  if(t.id==="openQa"){ qaData=null; qaSel=null; if(location.hash!=="#qa") location.hash="qa"; else loadQa(); return; }
+  if(d.qarun){ qaSel=+d.qarun; qaData=null; loadQa(); return; }
+  if(d.qaflt){ qaFlt=d.qaflt; renderView(); return; }
+  if(t.id==="qaRerun"){ qaRerun(); return; }
+  if(t.id==="qaRollback"){ qaRollback(); return; }
   if(t.id==="mInv"||t.id==="openInv"){ closeSheet(); invData=null; if(location.hash!=="#inv") location.hash="inv"; else loadInv(); return; }
   if(t.id==="toAdmin"){ location.hash="admin"; return; }
   if(d.invopen!==undefined){ openInvDetail(d.invco||"",d.invopen); return; }
@@ -3813,6 +3922,10 @@ document.addEventListener("click",e=>{
   if(d.penddel){ if(!confirm("இந்த pending பில்லை நீக்கவா?")) return; busy(true);
     api("pending/"+d.penddel,"DELETE").then(async()=>{ pendAll=await api("pending"); pendCount=pendAll.count; renderPendingList(); renderView(); toast("Pending நீக்கப்பட்டது"); }).catch(apiErr).finally(()=>busy(false)); return; }
   if(t.id==="copySum") return copyText($("#sum").textContent);
+  if(t.id==="sharePdf"){ sharePdf(d.ph||"",shareText); return; }
+  if(d.bpdf!==undefined){ const b=billCache[+d.bpdf]; if(!b) return; shareText=billText(b); prepPdf("bill",b);
+    $("#sheetBody").innerHTML=`<h2>📎 ${esc(b.no)} — PDF</h2><p class="sub">${esc(fmtDate(b.at))} · ${inr(b.total)}${b.phone?" · +"+COUNTRY_CODE+" "+esc(b.phone):""}</p>
+      <button class="cta" id="sharePdf" data-ph="${esc(b.phone||"")}">📎 PDF + Text — WhatsApp</button>${PDF_HINT}<button class="cta ghost" id="mBills">← பில் வரலாறு</button>`; showSheet(); return; }
   if(d.bwa!==undefined){ const b=billCache[+d.bwa]; if(b) window.open(waUrl(b.phone||"",billText(b)),"_blank","noopener"); return; }
   if(d.expick){ const id=+d.expick; exPick.has(id)?exPick.delete(id):exPick.add(id); renderExBox(); return; }
   if(d.exnew){ const [ph,id]=d.exnew.split("|"); exNext={phone:ph,ids:[+id]}; closeSheet(); toast("🔁 Exchange: புதிய ஐட்டங்களை சேர்த்து View bill அழுத்தவும்"); return; }

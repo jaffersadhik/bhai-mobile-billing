@@ -2,6 +2,9 @@ package com.bhai.billing.config;
 
 import com.bhai.billing.core.BillingService;
 import com.bhai.billing.core.JdbcDb;
+import com.bhai.billing.core.PostDeployTests;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import java.time.ZoneId;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
@@ -32,8 +35,26 @@ public class AppConfig {
     private static final Logger log = LoggerFactory.getLogger(AppConfig.class);
 
     @Bean
-    public BillingService billingService(DataSource dataSource, @Value("${bmb.zone:Asia/Kolkata}") String zone) {
-        return new BillingService(new JdbcDb(dataSource), ZoneId.of(zone));
+    public JdbcDb jdbcDb(DataSource dataSource) { return new JdbcDb(dataSource); }
+
+    @Bean
+    public BillingService billingService(JdbcDb db, @Value("${bmb.zone:Asia/Kolkata}") String zone) {
+        return new BillingService(db, ZoneId.of(zone));
+    }
+
+    @Bean
+    public PostDeployTests postDeployTests(JdbcDb db, @Value("${bmb.zone:Asia/Kolkata}") String zone) {
+        return new PostDeployTests(db, ZoneId.of(zone));
+    }
+
+    /** every start-up is a deploy: once the web server is up, run the live post-deploy tests (in the background) */
+    @EventListener
+    public void onReady(ApplicationReadyEvent e) {
+        PostDeployTests t = e.getApplicationContext().getBean(PostDeployTests.class);
+        String port = e.getApplicationContext().getEnvironment().getProperty("local.server.port");
+        if (port != null) t.setPort(Integer.parseInt(port));
+        log.info("MBill build {} started - running post-deploy tests", t.build());
+        t.startAsync("deploy / start-up");
     }
 
     /** Runs after schema.sql has created the tables: creates admin / admin1234 on an empty database. */

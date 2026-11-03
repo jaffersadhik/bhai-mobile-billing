@@ -814,7 +814,7 @@ public class BillingService {
         Ctx c = ctx(auth);
         String cid = requireSelling(c);
         String br = c.admin() ? null : userBranch(c, cid);       // sales / stock: own branch only
-        String bf = br == null ? "" : " AND branch_id = ?";
+        String bf = (br == null ? "" : " AND branch_id = ?") + (c.sales() ? " AND bill_kind <> 'invoice'" : "");   // sales: no wholesale invoices
         List<Map<String, Object>> rows = db.query("SELECT * FROM bills WHERE company_id = ?" + bf + " ORDER BY id DESC LIMIT 100", args(br, cid));
         List<Object> list = billList(cid, rows);
         LocalDateTime day = LocalDate.now(zone).atStartOfDay();
@@ -2766,6 +2766,9 @@ public class BillingService {
     }
 
     // ================================================================ admin
+    /** admin check for other components (post-deploy tests); returns the admin's name */
+    public String adminName(String auth) { return str(admin(auth).user.get("full_name")); }
+
     private Ctx admin(String auth) {
         Ctx c = ctx(auth);
         if (!c.admin()) throw new ApiException(403, "Admin மட்டும் (Admin only)");

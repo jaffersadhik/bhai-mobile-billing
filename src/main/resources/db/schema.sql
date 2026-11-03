@@ -517,3 +517,38 @@ CREATE TABLE IF NOT EXISTS po_payments (
   CONSTRAINT fk_pop_po FOREIGN KEY (po_id) REFERENCES purchase_orders (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
+-- test_runs / test_results : post-deploy (live) tests - one run after every start-up / deploy, or by the admin.
+CREATE TABLE IF NOT EXISTS test_runs (
+  id           BIGINT       NOT NULL AUTO_INCREMENT,
+  build        VARCHAR(60)  NOT NULL,
+  prev_build   VARCHAR(60)  NULL,
+  trigger_by   VARCHAR(60)  NOT NULL,
+  started_at   DATETIME     NOT NULL,
+  finished_at  DATETIME     NULL,
+  status       VARCHAR(10)  NOT NULL,
+  total        INT          NOT NULL DEFAULT 0,
+  passed       INT          NOT NULL DEFAULT 0,
+  failed       INT          NOT NULL DEFAULT 0,
+  warned       INT          NOT NULL DEFAULT 0,
+  regressions  INT          NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  KEY ix_test_runs_build (build)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS test_results (
+  id           BIGINT       NOT NULL AUTO_INCREMENT,
+  run_id       BIGINT       NOT NULL,
+  code         VARCHAR(160) NOT NULL,
+  category     VARCHAR(20)  NOT NULL,
+  name         VARCHAR(160) NOT NULL,
+  status       VARCHAR(6)   NOT NULL,
+  detail       VARCHAR(500) NOT NULL DEFAULT '',
+  metric       DOUBLE       NULL,
+  ms           BIGINT       NOT NULL DEFAULT 0,
+  prev_status  VARCHAR(6)   NULL,
+  regression   TINYINT(1)   NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  KEY ix_test_results_run (run_id, code),
+  CONSTRAINT fk_test_results_run FOREIGN KEY (run_id) REFERENCES test_runs (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

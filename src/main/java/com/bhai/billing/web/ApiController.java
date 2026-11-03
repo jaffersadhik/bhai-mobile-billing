@@ -3,6 +3,7 @@ package com.bhai.billing.web;
 import com.bhai.billing.core.ApiException;
 import com.bhai.billing.core.BillingService;
 import com.bhai.billing.core.DbException;
+import com.bhai.billing.core.PostDeployTests;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,9 +29,11 @@ public class ApiController {
     private static final Logger log = LoggerFactory.getLogger(ApiController.class);
     private static final String AUTH = "X-Auth";
     private final BillingService svc;
+    private final PostDeployTests tests;
 
-    public ApiController(BillingService svc) {
+    public ApiController(BillingService svc, PostDeployTests tests) {
         this.svc = svc;
+        this.tests = tests;
     }
 
     // ---- session
@@ -305,6 +308,25 @@ public class ApiController {
     @DeleteMapping("/admin/user/{id}")
     public ResponseEntity<Object> deleteUser(@RequestHeader(value = AUTH, required = false) String auth,
                                              @PathVariable("id") String id) { return run(() -> svc.deleteUser(auth, id)); }
+
+    // ---------------- post-deploy tests + rollback (admin)
+    @GetMapping("/admin/tests")
+    public ResponseEntity<Object> tests(@RequestHeader(value = AUTH, required = false) String auth,
+                                        @RequestParam(value = "run", required = false) Long run) { return run(() -> { svc.adminName(auth); return tests.overview(run); }); }
+
+    @GetMapping("/admin/tests/alert")
+    public ResponseEntity<Object> testAlert(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> { svc.adminName(auth); return tests.alert(); }); }
+
+    @PostMapping("/admin/tests/run")
+    public ResponseEntity<Object> testRun(@RequestHeader(value = AUTH, required = false) String auth) {
+        return run(() -> { String by = svc.adminName(auth); if (!tests.startAsync("admin: " + by)) throw new ApiException(409, "Test ஏற்கனவே இயங்குகிறது"); return tests.alert(); });
+    }
+
+    @PostMapping("/admin/rollback")
+    public ResponseEntity<Object> rollback(@RequestHeader(value = AUTH, required = false) String auth,
+                                           @RequestBody(required = false) Map<String, Object> body) {
+        return run(() -> { String by = svc.adminName(auth); return tests.requestRollback(by, body != null && Boolean.TRUE.equals(body.get("withDb"))); });
+    }
 
     @PostMapping("/admin/open")
     public ResponseEntity<Object> open(@RequestHeader(value = AUTH, required = false) String auth,
