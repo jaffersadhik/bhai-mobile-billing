@@ -120,6 +120,8 @@ CREATE TABLE IF NOT EXISTS items (
   name_ta      VARCHAR(60)  NOT NULL,
   name_en      VARCHAR(60)  NOT NULL DEFAULT '',
   sort_order   INT          NOT NULL DEFAULT 0,
+  sold_by      VARCHAR(6)   NOT NULL DEFAULT 'count',   -- count | weight
+  wt_unit      VARCHAR(2)   NOT NULL DEFAULT 'kg',      -- weight items: kg | g
   PRIMARY KEY (company_id, id),
   KEY idx_items_group (company_id, group_id),
   CONSTRAINT fk_items_group FOREIGN KEY (company_id, group_id) REFERENCES item_groups (company_id, id) ON DELETE CASCADE

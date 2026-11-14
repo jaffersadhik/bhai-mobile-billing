@@ -175,6 +175,10 @@ public class BillingService {
         if (!hasIndex("bills", "idx_bills_branch_date")) db.update("ALTER TABLE bills ADD KEY idx_bills_branch_date (company_id, branch_id, created_at)");
         if (!hasColumn("bill_lines", "item_id")) db.update("ALTER TABLE bill_lines ADD COLUMN item_id VARCHAR(40) NULL AFTER line_no");
         if (!hasColumn("companies", "po_seq")) db.update("ALTER TABLE companies ADD COLUMN po_seq BIGINT NOT NULL DEFAULT 0 AFTER bill_seq");
+        if (!hasColumn("items", "sold_by")) db.update("ALTER TABLE items ADD COLUMN sold_by VARCHAR(6) NOT NULL DEFAULT 'count'");   // count | weight
+        if (!hasColumn("items", "wt_unit")) db.update("ALTER TABLE items ADD COLUMN wt_unit VARCHAR(2) NOT NULL DEFAULT 'kg'");      // weight items: kg | g
+        if (!hasColumn("bill_lines", "wt_g")) db.update("ALTER TABLE bill_lines ADD COLUMN wt_g INT NULL");                           // grams of one portion (weight lines)
+        if (!hasColumn("companies", "rate_change")) db.update("ALTER TABLE companies ADD COLUMN rate_change TINYINT(1) NOT NULL DEFAULT 0");
         if (!hasColumn("bill_lines", "cost")) db.update("ALTER TABLE bill_lines ADD COLUMN cost DECIMAL(10,2) NULL AFTER rate");   // unit cost at billing time
         if (!hasColumn("bills", "pay_mode_id")) {
             db.update("ALTER TABLE bills ADD COLUMN pay_mode_id VARCHAR(20) NULL AFTER total, ADD COLUMN pay_name VARCHAR(30) NOT NULL DEFAULT '' AFTER pay_mode_id, "
@@ -438,6 +442,7 @@ public class BillingService {
             n.put("cat", str(x.get("group_id")));
             n.put("ta", str(x.get("name_ta")));
             n.put("en", str(x.get("name_en")));
+            if ("weight".equals(str(x.get("sold_by")))) { n.put("by", "weight"); n.put("unit", "g".equals(str(x.get("wt_unit"))) ? "g" : "kg"); }
             n.put("sizes", sz);
             Object pv = photos.get(str(x.get("id")));
             if (pv != null) n.put("photo", pv);
@@ -485,7 +490,7 @@ public class BillingService {
             }
             t.update("DELETE FROM item_groups WHERE company_id = ?", cid);   // cascades to items and item_sizes
             t.batch("INSERT INTO item_groups (company_id, id, name_ta, name_en, emoji, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)", clean.groups(cid));
-            t.batch("INSERT INTO items (company_id, id, group_id, name_ta, name_en, sort_order) VALUES (?, ?, ?, ?, ?, ?)", clean.items(cid));
+            t.batch("INSERT INTO items (company_id, id, group_id, name_ta, name_en, sort_order, sold_by, wt_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clean.items(cid));
             t.batch("INSERT INTO item_sizes (company_id, item_id, size_label, rate, sort_order, barcode, cost, wrate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clean.sizes(cid));
             t.update("UPDATE companies SET catalog_version = ?, catalog_setup = 1, updated_at = ? WHERE id = ?", version + 1, now(), cid);
             return loadCatalog(t, cid, c.seesCost());
@@ -574,15 +579,66 @@ public class BillingService {
                 sz.add(new Object[]{id, label, BigDecimal.valueOf(r), sz.size(), code, cost, wrate});
             }
             if (sz.isEmpty()) continue;
+            // weight item: one size only = the price of 1 kg (or 1 g)
+            boolean byWt = "weight".equals(str(x.get("by")));
+            String unit = "g".equals(str(x.get("unit"))) ? "g" : "kg";
+            if (byWt) {
+                Object[] f = sz.get(0);
+                f[1] = "1 " + unit;
+                f[3] = 0;
+                sz.clear();
+                sz.add(f);
+            }
             if (out.items.size() >= 3000) throw new ApiException(400, "அதிகபட்சம் 3000 ஐட்டங்கள்");
             iids.add(id);
-            out.items.add(new Object[]{id, gid, ta, clip(x.get("en"), 60), out.items.size()});
+            out.items.add(new Object[]{id, gid, ta, clip(x.get("en"), 60), out.items.size(), byWt ? "weight" : "count", unit});
             out.sizes.addAll(sz);
         }
         return out;
     }
 
     // ================================================================ bills
+    /** what a bill line is linked to: catalog item + size pairs, weight items (stock in grams) and cost prices */
+    static final class Link {
+        final Set<String> known = new HashSet<>();
+        final Map<String, Object> costOf = new HashMap<>(), rateOf = new HashMap<>();
+        final Map<String, String> wtSize = new HashMap<>();      // weight item -> its only size label ("1 kg" / "1 g")
+        final Map<String, Integer> unitG = new HashMap<>();      // weight item -> grams in one unit (1000 / 1)
+
+        boolean linked(String iid, Map<String, Object> l) {
+            if (iid == null) return false;
+            if (wtSize.containsKey(iid)) return l.get("wt") != null;
+            return known.contains(iid + "|" + l.get("size"));
+        }
+        boolean weight(String iid) { return iid != null && wtSize.containsKey(iid); }
+        String stockSize(String iid, Map<String, Object> l) { return weight(iid) ? wtSize.get(iid) : (String) l.get("size"); }
+        long stockQty(String iid, Map<String, Object> l) { return weight(iid) ? (Long) l.get("qty") * (Long) l.get("wt") : (Long) l.get("qty"); }
+        /** cost of ONE portion (weight line) or one piece */
+        Object cost(String iid, Map<String, Object> l) {
+            Object c = costOf.get(iid + "|" + stockSize(iid, l));
+            if (c == null || !weight(iid)) return c;
+            return BigDecimal.valueOf(round2(dbl(c) * (Long) l.get("wt") / unitG.get(iid)));
+        }
+        Double catalogRate(String iid, Map<String, Object> l) {
+            Object r = rateOf.get(iid + "|" + stockSize(iid, l));
+            if (r == null) return null;
+            return weight(iid) ? round2(dbl(r) * (Long) l.get("wt") / unitG.get(iid)) : dbl(r);
+        }
+    }
+
+    private static Link link(Db d, String cid) {
+        Link k = new Link();
+        for (Map<String, Object> z : d.query("SELECT z.item_id, z.size_label, z.cost, z.rate, i.sold_by, i.wt_unit FROM item_sizes z "
+                + "JOIN items i ON i.company_id = z.company_id AND i.id = z.item_id WHERE z.company_id = ?", cid)) {
+            String iid = str(z.get("item_id")), key = iid + "|" + str(z.get("size_label"));
+            k.known.add(key);
+            k.rateOf.put(key, z.get("rate"));
+            if (z.get("cost") != null) k.costOf.put(key, z.get("cost"));
+            if ("weight".equals(str(z.get("sold_by")))) { k.wtSize.put(iid, str(z.get("size_label"))); k.unitG.put(iid, "g".equals(str(z.get("wt_unit"))) ? 1 : 1000); }
+        }
+        return k;
+    }
+
     /** validated bill lines (catalog lines keep their item id; custom lines have none) */
     private static List<Map<String, Object>> parseLines(List<Object> raw) {
         if (raw.size() > 300) throw new ApiException(400, "அதிக ஐட்டங்கள்");
@@ -604,6 +660,8 @@ public class BillingService {
             n.put("qty", qty);
             n.put("rate", rate);
             n.put("amt", round2(rate * qty));
+            double w = dbl(l.get("wt"));                       // weight line: grams of one portion
+            if (w >= 1 && w <= 9_999_999 && w == Math.floor(w)) n.put("wt", (long) w);
             lines.add(n);
         }
         return lines;
@@ -613,7 +671,7 @@ public class BillingService {
     private static List<Map<String, Object>> mergeLines(List<Map<String, Object>> in) {
         Map<String, Map<String, Object>> m = new LinkedHashMap<>();
         for (Map<String, Object> l : in) {
-            String k = (l.get("id") != null ? "i:" + l.get("id") : "c:" + str(l.get("name")).toLowerCase(Locale.ROOT)) + "|" + l.get("size") + "|" + l.get("rate");
+            String k = (l.get("id") != null ? "i:" + l.get("id") : "c:" + str(l.get("name")).toLowerCase(Locale.ROOT)) + "|" + l.get("size") + "|" + l.get("rate") + "|" + l.get("wt");
             Map<String, Object> e = m.get(k);
             if (e == null) m.put(k, new LinkedHashMap<>(l));
             else {
@@ -664,6 +722,16 @@ public class BillingService {
             }
             all.addAll(newLines);
             if (all.isEmpty()) throw new ApiException(400, "பில்லில் ஐட்டம் இல்லை");
+            if (!bool(t.one("SELECT rate_change FROM companies WHERE id = ?", cid).get("rate_change"))) {
+                Link rk = link(t, cid);                           // rate change is off for this company: catalog lines are billed at the catalog rate
+                for (Map<String, Object> l : newLines) {
+                    String iid = (String) l.get("id");
+                    if (iid == null || !rk.linked(iid, l)) continue;
+                    Double cr = rk.catalogRate(iid, l);
+                    if (cr != null && Math.abs(cr - (Double) l.get("rate")) > 0.01)
+                        throw new ApiException(400, "இந்த கம்பெனிக்கு ரேட் மாற்றம் அனுமதி இல்லை: " + l.get("name"));
+                }
+            }
             List<Map<String, Object>> lines = mergeLines(all);
             if (lines.size() > 300) throw new ApiException(400, "அதிக ஐட்டங்கள்");
             double total = 0;
@@ -705,24 +773,20 @@ public class BillingService {
                     nilBalance ? null : payModeId, nilBalance ? "Exchange" : payName, nilBalance ? "exchange" : payKind, cid, BigDecimal.valueOf(exchange), exRef);
             for (Long xid : exIds) t.update("UPDATE cancel_bills SET used_bill_no = ?, used_at = ? WHERE company_id = ? AND id = ?", no, at, cid, xid);
             // only real catalog item + size pairs are linked (and reduce stock); anything else is a custom line
-            Set<String> known = new HashSet<>();
-            Map<String, Object> costOf = new HashMap<>();          // cost price now = the bill keeps it (later changes don't alter old profit)
-            for (Map<String, Object> z : t.query("SELECT item_id, size_label, cost FROM item_sizes WHERE company_id = ?", cid)) {
-                String k = str(z.get("item_id")) + "|" + str(z.get("size_label"));
-                known.add(k);
-                if (z.get("cost") != null) costOf.put(k, z.get("cost"));
-            }
+            Link lk = link(t, cid);                                // cost price now = the bill keeps it (later changes don't alter old profit)
             List<Object[]> rows = new ArrayList<>(), stockRows = new ArrayList<>();
             int ln = 1;
             for (Map<String, Object> l : lines) {
                 String iid = (String) l.get("id");
-                if (iid != null && !known.contains(iid + "|" + l.get("size"))) { iid = null; l.put("id", null); }
+                if (iid != null && !lk.linked(iid, l)) { iid = null; l.put("id", null); }
                 rows.add(new Object[]{cid, billId, ln++, iid, l.get("name"), l.get("en"), l.get("size"), l.get("qty"),
-                        BigDecimal.valueOf((Double) l.get("rate")), iid == null ? null : costOf.get(iid + "|" + l.get("size")), BigDecimal.valueOf((Double) l.get("amt"))});
-                if (iid != null && branch != null)
-                    stockRows.add(new Object[]{cid, branch, iid, l.get("size"), -((Long) l.get("qty")), at, "bill " + no, l.get("qty"), at, "bill " + no});
+                        BigDecimal.valueOf((Double) l.get("rate")), iid == null ? null : lk.cost(iid, l), BigDecimal.valueOf((Double) l.get("amt")), l.get("wt")});
+                if (iid != null && branch != null) {
+                    long dq = lk.stockQty(iid, l);
+                    stockRows.add(new Object[]{cid, branch, iid, lk.stockSize(iid, l), -dq, at, "bill " + no, dq, at, "bill " + no});
+                }
             }
-            t.batch("INSERT INTO bill_lines (company_id, bill_id, line_no, item_id, item_name, item_name_en, size_label, qty, rate, cost, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
+            t.batch("INSERT INTO bill_lines (company_id, bill_id, line_no, item_id, item_name, item_name_en, size_label, qty, rate, cost, amount, wt_g) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
             if (!stockRows.isEmpty())
                 t.batch("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
                         + "ON DUPLICATE KEY UPDATE qty = qty - ?, updated_at = ?, updated_by = ?", stockRows);
@@ -1051,24 +1115,20 @@ public class BillingService {
                     cid, branch, seq, no, at, str(party.get("name")), str(party.get("phone")), str(c.user.get("username")), by, pieces, BigDecimal.valueOf(total),
                     cid, str(party.get("id")), at.toLocalDate().plusDays(dueDays), BigDecimal.valueOf(tx), BigDecimal.valueOf(gstPct), BigDecimal.valueOf(gst),
                     BigDecimal.valueOf(pn), clip(in.get("notes"), 300));
-            Set<String> known = new HashSet<>();
-            Map<String, Object> costOf = new HashMap<>();
-            for (Map<String, Object> z : t.query("SELECT item_id, size_label, cost FROM item_sizes WHERE company_id = ?", cid)) {
-                String k = str(z.get("item_id")) + "|" + str(z.get("size_label"));
-                known.add(k);
-                if (z.get("cost") != null) costOf.put(k, z.get("cost"));
-            }
+            Link lk = link(t, cid);
             List<Object[]> rows = new ArrayList<>(), stockRows = new ArrayList<>();
             int ln = 1;
             for (Map<String, Object> l : lines) {
                 String iid = (String) l.get("id");
-                if (iid != null && !known.contains(iid + "|" + l.get("size"))) iid = null;
+                if (iid != null && !lk.linked(iid, l)) iid = null;
                 rows.add(new Object[]{cid, id, ln++, iid, l.get("name"), l.get("en"), l.get("size"), l.get("qty"),
-                        BigDecimal.valueOf((Double) l.get("rate")), iid == null ? null : costOf.get(iid + "|" + l.get("size")), BigDecimal.valueOf((Double) l.get("amt"))});
-                if (iid != null && branch != null)
-                    stockRows.add(new Object[]{cid, branch, iid, l.get("size"), -((Long) l.get("qty")), at, "invoice " + no, l.get("qty"), at, "invoice " + no});
+                        BigDecimal.valueOf((Double) l.get("rate")), iid == null ? null : lk.cost(iid, l), BigDecimal.valueOf((Double) l.get("amt")), l.get("wt")});
+                if (iid != null && branch != null) {
+                    long dq = lk.stockQty(iid, l);
+                    stockRows.add(new Object[]{cid, branch, iid, lk.stockSize(iid, l), -dq, at, "invoice " + no, dq, at, "invoice " + no});
+                }
             }
-            t.batch("INSERT INTO bill_lines (company_id, bill_id, line_no, item_id, item_name, item_name_en, size_label, qty, rate, cost, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
+            t.batch("INSERT INTO bill_lines (company_id, bill_id, line_no, item_id, item_name, item_name_en, size_label, qty, rate, cost, amount, wt_g) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
             if (!stockRows.isEmpty())
                 t.batch("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
                         + "ON DUPLICATE KEY UPDATE qty = qty - ?, updated_at = ?, updated_by = ?", stockRows);
@@ -1192,21 +1252,19 @@ public class BillingService {
             t.update("UPDATE companies SET cn_seq = ? WHERE id = ?", seq, cid);
             String no = str(co.get("bill_prefix")) + "-C" + String.format("%04d", seq);
             LocalDateTime at = now();
-            Set<String> known = new HashSet<>();
-            Map<String, Object> costOf = new HashMap<>();          // cost price now: the cancel bill keeps it, so profit is reduced by the right margin
-            for (Map<String, Object> z : t.query("SELECT item_id, size_label, cost FROM item_sizes WHERE company_id = ?", cid)) {
-                String k = str(z.get("item_id")) + "|" + str(z.get("size_label"));
-                known.add(k);
-                if (z.get("cost") != null) costOf.put(k, dbl(z.get("cost")));
-            }
+            Link lk = link(t, cid);                                // cost price now: the cancel bill keeps it, so profit is reduced by the right margin
             for (Map<String, Object> l : lines) {
                 String iid = (String) l.get("id");
-                if (iid != null && !known.contains(iid + "|" + l.get("size"))) { l.put("id", null); continue; }
-                if (iid != null && costOf.containsKey(iid + "|" + l.get("size"))) l.put("cost", costOf.get(iid + "|" + l.get("size")));
-                if (iid != null && branch != null)
+                if (iid != null && !lk.linked(iid, l)) { l.put("id", null); continue; }
+                if (iid == null) continue;
+                Object cst = lk.cost(iid, l);
+                if (cst != null) l.put("cost", dbl(cst));
+                if (branch != null) {
+                    long dq = lk.stockQty(iid, l);
                     t.update("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
                             + "ON DUPLICATE KEY UPDATE qty = qty + ?, updated_at = ?, updated_by = ?",
-                            cid, branch, iid, l.get("size"), l.get("qty"), at, "ரத்து " + no, l.get("qty"), at, "ரத்து " + no + " · " + by);
+                            cid, branch, iid, lk.stockSize(iid, l), dq, at, "ரத்து " + no, dq, at, "ரத்து " + no + " · " + by);
+                }
             }
             t.update("INSERT INTO cancel_bills (company_id, branch_id, cn_seq, cn_no, ref_bill_no, created_at, customer_name, customer_phone, by_user, by_name, pieces, total, reason, lines_json, platform_fee) "
                     + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", cid, branch, seq, no, ref, at, clip(in.get("customer"), 60), phone,
@@ -1845,22 +1903,26 @@ public class BillingService {
         double[] bVal = new double[nb], bCost = new double[nb], bValCosted = new double[nb];
         long[] bNeg = new long[nb], bZero = new long[nb];
         List<Object> rows = new ArrayList<>();
-        for (Map<String, Object> r : db.query("SELECT i.id, i.group_id, i.name_ta, i.name_en, z.size_label, z.rate, z.wrate, z.cost FROM items i "
+        for (Map<String, Object> r : db.query("SELECT i.id, i.group_id, i.name_ta, i.name_en, i.sold_by, i.wt_unit, z.size_label, z.rate, z.wrate, z.cost FROM items i "
                 + "JOIN item_groups g ON g.company_id = i.company_id AND g.id = i.group_id "
                 + "JOIN item_sizes z ON z.company_id = i.company_id AND z.item_id = i.id "
                 + "WHERE i.company_id = ? ORDER BY g.sort_order, i.sort_order, z.sort_order", cid)) {
             String k = str(r.get("id")) + "|" + str(r.get("size_label"));
             long[] q = qty.getOrDefault(k, new long[nb]);
-            double rate = dbl(r.get("rate"));
+            boolean wt = "weight".equals(str(r.get("sold_by")));         // weight item: stock is kept in grams, rate / cost are per kg (or per g)
+            int ug = wt ? ("g".equals(str(r.get("wt_unit"))) ? 1 : 1000) : 1;
+            double rate = dbl(r.get("rate")), rv = rate / ug;
             Double cost = r.get("cost") == null ? null : dbl(r.get("cost"));
+            double cv = cost == null ? 0 : cost / ug;
             long tot = 0, inHand = 0;                 // inHand = positive stock per branch (a branch's minus never lowers another's value)
             for (int i = 0; i < nb; i++) {
                 tot += q[i];
                 if (q[i] > 0) inHand += q[i];
                 if (q[i] > 0) {
-                    bPcs[i] += q[i]; bVal[i] += q[i] * rate;
-                    if (cost != null) { bCost[i] += q[i] * cost; bValCosted[i] += q[i] * rate; }
-                    else bNoCost[i] += q[i];
+                    if (!wt) bPcs[i] += q[i];
+                    bVal[i] += q[i] * rv;
+                    if (cost != null) { bCost[i] += q[i] * cv; bValCosted[i] += q[i] * rv; }
+                    else if (!wt) bNoCost[i] += q[i];
                 }
                 else if (q[i] < 0) bNeg[i]++;
                 else bZero[i]++;
@@ -1876,12 +1938,13 @@ public class BillingService {
             n.put("rate", round2(rate));
             n.put("wrate", r.get("wrate") == null ? round2(rate) : round2(dbl(r.get("wrate"))));   // wholesale price (blank = retail)
             n.put("cost", cost == null ? null : round2(cost));
-            n.put("costValue", cost == null ? null : round2(inHand * cost));
+            n.put("costValue", cost == null ? null : round2(inHand * cv));
+            if (wt) { n.put("by", "weight"); n.put("unit", ug == 1 ? "g" : "kg"); }
             List<Long> ql = new ArrayList<>();
             for (long v : q) ql.add(v);
             n.put("qty", ql);
             n.put("total", tot);
-            n.put("value", round2(inHand * rate));
+            n.put("value", round2(inHand * rv));
             n.put("sold30", sold.getOrDefault(k, 0L));
             rows.add(n);
         }
@@ -2864,6 +2927,7 @@ public class BillingService {
         if (db.one("SELECT 1 AS x FROM companies WHERE id = ? AND shop_slug IS NULL", id) != null)
             db.update("UPDATE companies SET shop_slug = ? WHERE id = ?", newSlug(name, id), id);
         if (in.containsKey("shopWa")) setShopWa(id, in.get("shopWa"));
+        if (in.containsKey("rateChange")) db.update("UPDATE companies SET rate_change = ? WHERE id = ?", bool(in.get("rateChange")) ? 1 : 0, id);
         ensureBranches(id);
         ensurePayModes(id);
         Map<String, Object> out = obj("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", id)));
@@ -3006,6 +3070,7 @@ public class BillingService {
         p.put("shopCode", str(c.get("shop_code")));
         p.put("shopSlug", str(c.get("shop_slug")));
         p.put("shopWa", str(c.get("shop_wa")));
+        p.put("rateChange", bool(c.get("rate_change")));
         p.put("shopEnabled", c.get("shop_enabled") == null || bool(c.get("shop_enabled")));
         return p;
     }
@@ -3338,7 +3403,7 @@ public class BillingService {
         if (lng(db.one("SELECT COUNT(*) AS n FROM shop_orders WHERE company_id = ? AND phone = ? AND status IN ('new','accepted')", cid, phone).get("n")) >= 5)
             throw new ApiException(429, "இந்த எண்ணுக்கு ஏற்கனவே 5 ஆர்டர்கள் நிலுவையில் உள்ளன — கடையை அழைக்கவும்");
         Map<String, Object[]> cat = new HashMap<>();
-        for (Map<String, Object> z : db.query("SELECT z.item_id, z.size_label, z.rate, i.name_ta, i.name_en FROM item_sizes z JOIN items i ON i.company_id = z.company_id AND i.id = z.item_id WHERE z.company_id = ?", cid))
+        for (Map<String, Object> z : db.query("SELECT z.item_id, z.size_label, z.rate, i.name_ta, i.name_en FROM item_sizes z JOIN items i ON i.company_id = z.company_id AND i.id = z.item_id WHERE z.company_id = ? AND i.sold_by = 'count'", cid))
             cat.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), new Object[]{dbl(z.get("rate")), str(z.get("name_ta")), str(z.get("name_en"))});
         Map<String, Long> have = new HashMap<>();
         for (Map<String, Object> r : db.query("SELECT item_id, size_label, qty FROM stock WHERE company_id = ? AND branch_id = ?", cid, branch))
@@ -3671,7 +3736,7 @@ public class BillingService {
             CleanCatalog clean = cleanCatalog(cin);
             t.update("DELETE FROM item_groups WHERE company_id = ?", cid);   // cascades to items and item_sizes
             t.batch("INSERT INTO item_groups (company_id, id, name_ta, name_en, emoji, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)", clean.groups(cid));
-            t.batch("INSERT INTO items (company_id, id, group_id, name_ta, name_en, sort_order) VALUES (?, ?, ?, ?, ?, ?)", clean.items(cid));
+            t.batch("INSERT INTO items (company_id, id, group_id, name_ta, name_en, sort_order, sold_by, wt_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clean.items(cid));
             t.batch("INSERT INTO item_sizes (company_id, item_id, size_label, rate, sort_order, barcode, cost, wrate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clean.sizes(cid));
             LocalDateTime now = now();
             t.update("UPDATE companies SET catalog_version = ?, catalog_setup = 1, updated_at = ? WHERE id = ?", version + 1, now, cid);

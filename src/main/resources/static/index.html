@@ -96,6 +96,21 @@ input,textarea{font:inherit;color:inherit}
 .step{display:flex;align-items:center;height:40px;border-radius:12px;background:var(--leaf);color:#fff;flex:none}
 .step button{width:38px;height:40px;font-size:21px;font-weight:700;color:#fff}
 .step span{min-width:34px;text-align:center;font-size:15px;font-weight:700}
+.step .qin{width:48px;height:40px;border:0;background:transparent;color:#fff;text-align:center;font-size:15px;font-weight:700;padding:0;-moz-appearance:textfield}
+.bl .step .qin{height:34px}
+.wbox{display:flex;align-items:center;gap:6px;flex:none}
+.win{width:78px;height:40px;border:1.5px solid var(--line,#d9dee3);border-radius:10px;padding:0 8px;font-size:15px;font-weight:700;text-align:center;background:#fff}
+.wbox select,.r2.wr select{height:40px;border:1.5px solid var(--line,#d9dee3);border-radius:10px;background:#fff;font-size:14px;font-weight:700;padding:0 4px}
+.wdel{height:34px;min-width:34px;border-radius:10px;background:#fdecea;color:#9b1c1c;font-weight:800}
+.wsum{margin:6px 2px 0;font-size:13px;color:var(--muted,#667)}
+.r2.wr{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.r2.wr .win{height:34px;width:70px}.r2.wr select{height:34px}
+.wl{font-size:12.5px;color:var(--muted,#667)}
+.rin{width:76px;height:32px;border:1.5px solid var(--leaf,#2e7d32);border-radius:9px;padding:0 6px;font-size:14px;font-weight:700;text-align:center}
+.rchg{color:#b45309}
+.item.flash{animation:flashit 2.4s ease}
+@keyframes flashit{0%,60%{box-shadow:0 0 0 3px #f5b301}100%{box-shadow:none}}
+.bar-bc{display:flex;gap:8px;margin:0 0 10px}.bar-bc input{flex:1;height:44px;border:1.5px solid #d9dee3;border-radius:12px;padding:0 12px;font-size:15px}.bar-bc button{height:44px;padding:0 16px;border-radius:12px;background:var(--leaf,#2e7d32);color:#fff;font-weight:700}
 .none{padding:46px 12px;text-align:center;color:var(--muted)}
 .none b{display:block;font-size:42px;margin-bottom:6px}
 footer{padding:26px 16px 8px;text-align:center;font-size:12.5px;color:var(--muted)}
@@ -750,7 +765,7 @@ function apiErr(e){ if(e && e.status!==401) toast(e.message||"Error"); }
 let me=null, company=null, defaultPw=false, adminData=null;
 let catalog={version:0,setup:false,cats:[],items:[]};
 let CATS=[], ITEMS=[], byId={}, catById={}, byCode={};
-let cart={}, sel={}, customs={};
+let cart={}, sel={}, customs={}, ovr={}, wu={};   // cart: "id|size"→qty (count) · "id|W"→grams (weight item) · ovr: rate typed at billing · wu: kg/g chosen for typing
 let customQty=1, customFrom="home", customCat=null, cameFromHome=false;
 
 const isAdmin = () => !!(me && me.type==="admin");
@@ -771,7 +786,7 @@ function buildCatalog(){
   catById={}; CATS.forEach(c=>catById[c[0]]=c);
   ITEMS=[]; byId={}; byCode={};
   CATS.forEach(c=>(catalog.items||[]).filter(x=>x.cat===c[0]).forEach(x=>{
-    const it={id:x.id,cat:x.cat,ta:x.ta,en:x.en||"",emoji:c[3],photo:x.photo||0,sizes:x.sizes.map(z=>({size:z.size,rate:Number(z.rate),wrate:z.wrate==null?null:Number(z.wrate),code:z.code||"",cost:z.cost==null?null:Number(z.cost)}))};
+    const it={id:x.id,cat:x.cat,ta:x.ta,en:x.en||"",emoji:c[3],photo:x.photo||0,by:x.by==="weight"?"weight":"count",unit:x.unit==="g"?"g":"kg",sizes:x.sizes.map(z=>({size:z.size,rate:Number(z.rate),wrate:z.wrate==null?null:Number(z.wrate),code:z.code||"",cost:z.cost==null?null:Number(z.cost)}))};
     ITEMS.push(it); byId[it.id]=it;
     it.sizes.forEach(z=>{ if(z.code) byCode[z.code]={id:it.id,size:z.size}; });
   }));
@@ -791,12 +806,14 @@ async function loadData(){ const r=await api("data"); company=r.company; catalog
 /* cart is kept on this phone, separately for every company */
 const ck = n => "bmb_"+n+"_"+(company?company.id:"x");
 function loadCart(){
-  cart={}; customs={}; sel={};
-  try{ const s=JSON.parse(localStorage.getItem(ck("cart"))||"{}"); for(const k in s){ const [id,size]=parseKey(k); if(byId[id]&&byId[id].sizes.some(z=>z.size===size)&&s[k]>0) cart[k]=Math.min(99,s[k]|0); } }catch(e){}
-  try{ const c=JSON.parse(localStorage.getItem(ck("custom"))||"{}"); for(const id in c){ const v=c[id]; if(v&&v.name&&v.rate>0&&v.qty>0) customs[id]={name:String(v.name),size:String(v.size||""),rate:Number(v.rate),qty:Math.min(99,v.qty|0),code:String(v.code||"")}; } }catch(e){}
+  cart={}; customs={}; ovr={}; sel={};
+  try{ const s=JSON.parse(localStorage.getItem(ck("cart"))||"{}"); for(const k in s){ const [id,size]=parseKey(k); const it=byId[id]; if(!it||!(s[k]>0)) continue;
+    if(isW(it)){ if(size==="W") cart[k]=Math.min(9999999,s[k]|0); } else if(it.sizes.some(z=>z.size===size)) cart[k]=Math.min(999,s[k]|0); } }catch(e){}
+  try{ const o=JSON.parse(localStorage.getItem(ck("ovr"))||"{}"); for(const k in o) if(cart[k]!==undefined && o[k]>0) ovr[k]=Number(o[k]); }catch(e){}
+  try{ const c=JSON.parse(localStorage.getItem(ck("custom"))||"{}"); for(const id in c){ const v=c[id]; if(v&&v.name&&v.rate>0&&v.qty>0) customs[id]={name:String(v.name),size:String(v.size||""),rate:Number(v.rate),qty:Math.min(999,v.qty|0),wt:v.wt>0?v.wt|0:0,cat:String(v.cat||""),code:String(v.code||"")}; } }catch(e){}
 }
-function save(){ if(!company) return; try{ localStorage.setItem(ck("cart"),JSON.stringify(cart)); localStorage.setItem(ck("custom"),JSON.stringify(customs)); }catch(e){} }
-function purgeCart(){ for(const k in cart){ const [id,size]=parseKey(k); if(!byId[id]||!byId[id].sizes.some(z=>z.size===size)) delete cart[k]; } save(); }
+function save(){ if(!company) return; try{ localStorage.setItem(ck("cart"),JSON.stringify(cart)); localStorage.setItem(ck("custom"),JSON.stringify(customs)); localStorage.setItem(ck("ovr"),JSON.stringify(ovr)); }catch(e){} }
+function purgeCart(){ for(const k in cart){ const [id,size]=parseKey(k); if(!byId[id]||(isW(byId[id])?size!=="W":!byId[id].sizes.some(z=>z.size===size))){ delete cart[k]; delete ovr[k]; } } save(); }
 
 /* every change to groups/items is saved on the server (with a version check, so two phones can't overwrite each other) */
 let catBusy=false;
@@ -861,11 +878,24 @@ async function runImport(){
 const rateOf = (id,size) => byId[id].sizes.find(z=>z.size===size).rate;
 const wrateOf = (id,size) => { const z=byId[id]&&byId[id].sizes.find(x=>x.size===size); return z?(z.wrate!=null?z.wrate:z.rate):0; };   // wholesale selling price (blank = retail)
 const selSize = id => (byId[id].sizes.some(z=>z.size===sel[id]) ? sel[id] : byId[id].sizes[0].size);
+/* ---- weight items: stock + cart are in grams; the item's rate is the price of 1 kg (or 1 g) ---- */
+const isW = it => !!it && it.by==="weight";
+const unitG = it => it.unit==="g" ? 1 : 1000;
+const wKey = id => id+"|W";
+const fmtG = g => g>=1000 ? (+(g/1000).toFixed(3))+" kg" : g+" g";
+const toG = (v,u) => Math.round(u==="kg" ? v*1000 : v);
+const wUnit = id => wu[id] || (byId[id]?byId[id].unit:"kg");
+const fromG = (g,u) => u==="kg" ? +(g/1000).toFixed(3) : g;
+const rateChangeOn = () => !!(company && company.rateChange);
+const unitSel = (u,attr) => `<select ${attr} aria-label="Measure"><option value="kg"${u==="kg"?" selected":""}>kg</option><option value="g"${u==="g"?" selected":""}>g</option></select>`;
 const lines = () => {
-  const cat = Object.keys(cart).filter(k=>{ const [id,size]=parseKey(k); return byId[id]&&byId[id].sizes.some(z=>z.size===size); })
-    .map(k=>{ const [id,size]=parseKey(k); const it=byId[id], rate=rateOf(id,size); return {k,it,size,rate,qty:cart[k],amt:money(rate*cart[k])}; })
+  const cat = Object.keys(cart).filter(k=>{ const [id,size]=parseKey(k); const it=byId[id]; return it&&(isW(it)?size==="W":it.sizes.some(z=>z.size===size)); })
+    .map(k=>{ const [id,size]=parseKey(k); const it=byId[id];
+      if(isW(it)){ const g=cart[k], ur=ovr[k]!=null?ovr[k]:it.sizes[0].rate, amt=money(ur*g/unitG(it));
+        return {k,it,size:fmtG(g),rate:amt,qty:1,amt,wt:g,unitRate:ur,stdRate:it.sizes[0].rate,w:true}; }
+      const std=rateOf(id,size), rate=ovr[k]!=null?ovr[k]:std; return {k,it,size,rate,stdRate:std,qty:cart[k],amt:money(rate*cart[k])}; })
     .sort((a,b)=>ITEMS.indexOf(a.it)-ITEMS.indexOf(b.it));
-  const cus = Object.keys(customs).map(id=>{ const c=customs[id]; return {k:"c:"+id,it:{ta:c.name,en:"",custom:true},size:c.size,rate:c.rate,qty:c.qty,amt:money(c.rate*c.qty)}; });
+  const cus = Object.keys(customs).map(id=>{ const c=customs[id]; const L={k:"c:"+id,it:{ta:c.name,en:"",custom:true,grp:c.cat||""},size:c.size,rate:c.rate,qty:c.qty,amt:money(c.rate*c.qty)}; if(c.wt) L.wt=c.wt; return L; });
   return cat.concat(cus);
 };
 const pieces = () => lines().reduce((a,l)=>a+l.qty,0);
@@ -939,10 +969,22 @@ function heroHtml(){
 const pwWarn = () => defaultPw ? `<div class="warnbox">⚠️ Default password பயன்படுத்துகிறீர்கள். உடனே மாற்றவும்<button id="chgPw">மாற்று</button></div>` : "";
 function ctl(id){
   const q=cart[id+"|"+selSize(id)];
-  return q ? `<div class="step"><button data-act="dec" aria-label="Decrease">−</button><span>${q}</span><button data-act="inc" aria-label="Increase">+</button></div>`
+  return q ? `<div class="step"><button data-act="dec" aria-label="Decrease">−</button><input class="qin" data-qin inputmode="numeric" value="${q}" aria-label="Quantity"><button data-act="inc" aria-label="Increase">+</button></div>`
            : `<button class="add" data-act="inc">ADD</button>`;
 }
+/* weight item tile: type the weight, pick kg / g, ADD */
+function wcard(it){
+  const k=wKey(it.id), g=cart[k], u=wUnit(it.id), ul=it.unit;
+  return `<article class="item witem" data-item="${esc(it.id)}" style="--tint:${catById[it.cat][4]}">
+    <div class="top"><span class="ico" aria-hidden="true">${it.photo?`<img loading="lazy" src="${esc(photoSrc(it))}" alt="">`:esc(it.emoji)}</span><div class="nm"><b>${esc(it.ta)}</b><small>${esc(it.en)}</small></div>${canEdit()?`<button class="edit" data-edit="${esc(it.id)}" aria-label="Edit ${esc(it.ta)}">✏️ மாற்று</button>`:""}</div>
+    <div class="buy"><div class="rate"><b>${inr(it.sizes[0].rate)}</b><small>⚖️ ஒரு ${ul}${it.sizes[0].wrate!=null&&it.sizes[0].wrate!==it.sizes[0].rate?` · Wholesale ${inr(it.sizes[0].wrate)}`:""}</small></div>
+      <div class="wbox"><input class="win" data-win inputmode="decimal" autocomplete="off" placeholder="எடை" value="${g?fromG(g,u):""}" aria-label="Weight">${unitSel(u,'data-wu')}
+        ${g?`<button class="wdel" data-wdel aria-label="Remove">✕</button>`:`<button class="add" data-wadd>ADD</button>`}</div></div>
+    ${g?`<div class="wsum">${fmtG(g)} = <b>${inr(money((ovr[k]!=null?ovr[k]:it.sizes[0].rate)*g/unitG(it)))}</b></div>`:""}
+  </article>`;
+}
 function card(it){
+  if(isW(it)) return wcard(it);
   const s=selSize(it.id);
   return `<article class="item" data-item="${esc(it.id)}" style="--tint:${catById[it.cat][4]}">
     <div class="top"><span class="ico" aria-hidden="true">${it.photo?`<img loading="lazy" src="${esc(photoSrc(it))}" alt="">`:esc(it.emoji)}</span><div class="nm"><b>${esc(it.ta)}</b><small>${esc(it.en)}</small></div>${canEdit()?`<button class="edit" data-edit="${esc(it.id)}" aria-label="Edit ${esc(it.ta)}">✏️ மாற்று</button>`:""}</div>
@@ -1000,6 +1042,7 @@ function renderView(){
         <li><i>2</i>சைஸ் தேர்வு செய்து ADD அழுத்தவும்</li>
         <li><i>3</i>பில் பார்த்து WhatsApp-ல் அனுப்புங்கள்</li></ol></div>
       <button class="admin" id="openPending"><span class="pl" aria-hidden="true">⏳</span><div><b>Pending பில்கள் <span class="pbadge" id="pendHomeN">${pendCount}</span></b><small>சேமித்து வைத்த பில்கள் · மொபைல் எண் வாரியாக · ஒரே பில்லாக அனுப்பலாம்</small></div></button>
+      <div class="bar-bc"><input id="bcIn" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="🔢 Barcode எண்ணை type செய்யவும் (scan இல்லாமல்)" aria-label="Barcode number"><button id="bcGo">திற</button></div>
       <button class="admin" id="scanHome"><span class="pl" aria-hidden="true">📷</span><div><b>Barcode Scan செய்து பில் போடு</b><small>Mobile camera அல்லது USB / Bluetooth scanner · ஒவ்வொரு scan-உம் பில்லில் சேரும்</small></div></button>
       ${manualBtn("பட்டியலில் இல்லாத பொருளை பெயர், சைஸ், ரேட் கொடுத்து சேர்க்கவும்")}
       <button class="admin" id="billHist"><span class="pl" aria-hidden="true">🧾</span><div><b>பில் வரலாறு (Bills)</b><small>இந்த கம்பெனியின் பில்கள், இன்றைய விற்பனை, மீண்டும் WhatsApp</small></div></button>
@@ -1037,13 +1080,35 @@ function refreshCard(id){
 function change(key,dir){
   if(key.startsWith("c:")){
     const id=key.slice(2), c=customs[id]; if(!c) return;
-    const n=c.qty+dir; if(n<=0) delete customs[id]; else c.qty=Math.min(n,99);
+    const n=c.qty+dir; if(n<=0) delete customs[id]; else c.qty=Math.min(n,999);
     save(); renderDock(); if($("#sheet").classList.contains("on")) renderBillList(); return;
   }
   const q=cart[key]||0, nq=q+dir;
-  if(nq<=0) delete cart[key]; else cart[key]=Math.min(nq,99);
+  if(nq<=0){ delete cart[key]; delete ovr[key]; } else cart[key]=Math.min(nq,999);
   save(); refreshCard(parseKey(key)[0]); renderDock();
   if($("#sheet").classList.contains("on")) renderBillList();
+}
+/* quantity typed in the box (tile or bill): 0 / blank removes the line */
+function setQty(key,v){
+  const n=Math.floor(Number(v)); const ok=isFinite(n)&&n>0;
+  if(key.startsWith("c:")){ const id=key.slice(2), c=customs[id]; if(!c) return; if(ok) c.qty=Math.min(n,999); else delete customs[id]; }
+  else { if(ok) cart[key]=Math.min(n,999); else { delete cart[key]; delete ovr[key]; } }
+  save(); if(!key.startsWith("c:")) refreshCard(parseKey(key)[0]); renderDock(); if($("#sheet").classList.contains("on")) renderBillList();
+}
+/* weight typed in the box: value + kg/g -> grams (0 / blank removes) */
+function setWeight(id,v,u,quiet){
+  const it=byId[id]; if(!it) return; const k=wKey(id); u=u||wUnit(id); wu[id]=u;
+  const n=Number(String(v).replace(",",".")), g=isFinite(n)&&n>0?toG(n,u):0;
+  if(g<1||g>9999999){ if(String(v).trim()!==""&&!quiet) toast("சரியான எடையை உள்ளிடவும்"); if(String(v).trim()===""||g<1){ delete cart[k]; delete ovr[k]; } }
+  else cart[k]=g;
+  save(); refreshCard(id); renderDock(); if($("#sheet").classList.contains("on")) renderBillList();
+}
+/* rate typed in the bill (only when the company has "rate change" on) */
+function setRate(key,v){
+  const n=money(numIn(v)); if(!(isFinite(n)&&n>0&&n<=999999)){ toast("சரியான ரேட்டை உள்ளிடவும்"); renderBillList(); return; }
+  if(key.startsWith("c:")){ const c=customs[key.slice(2)]; if(c){ if(c.wt&&c.unitRate){ c.unitRate=n; c.rate=money(n*c.wt/(c.unit==="g"?1:1000)); } else c.rate=n; } }
+  else { const [id]=parseKey(key); const it=byId[id]; const std=isW(it)?it.sizes[0].rate:rateOf(id,parseKey(key)[1]); if(n===std) delete ovr[key]; else ovr[key]=n; }
+  save(); if(byId[parseKey(key)[0]]) refreshCard(parseKey(key)[0]); renderDock(); renderBillList();
 }
 
 /* ================= SHEET ================= */
@@ -1057,11 +1122,25 @@ function renderBillList(){
   if(!el) return;
   if(!L.length && !billPendingOnly){ closeSheet(); return; }
   if(!L.length){ el.innerHTML=`<p class="sub" style="margin:6px 0">புதிய ஐட்டம் இல்லை — கீழே உள்ள pending ஐட்டங்கள் மட்டும் பில்லாகும் (Scan / ஐட்டம் சேர்க்கலாம்)</p>`; $("#sumPcs").textContent="0 pcs"; $("#sumTot").textContent=inr(0); renderPendBox(); return; }
-  el.innerHTML=L.map(l=>`<div class="bl" data-key="${esc(l.k)}">
-      <div class="r1"><div class="nm">${esc(l.it.ta)}<small>${l.it.custom?"✏️ Custom item":esc(l.it.en)}</small></div><div class="amt">${inr(l.amt)}</div></div>
-      <div class="r2"><span>Size: <b>${esc(l.size||"-")}</b> &nbsp;|&nbsp; Rate: <b>${inr(l.rate)}</b></span>
-        <div class="step"><button data-act="dec" aria-label="Decrease">−</button><span>${l.qty}</span><button data-act="inc" aria-label="Increase">+</button></div></div>
-    </div>`).join("");
+  const RC=rateChangeOn();
+  el.innerHTML=L.map(l=>{
+    const cu=l.it.custom&&customs[l.k.slice(2)];
+    const sub=l.it.custom?`✏️ Custom item${l.it.grp?" · 📁 "+esc(l.it.grp):""}`:esc(l.it.en);
+    let r2;
+    if(l.w){      // weight item: typed weight (kg / g) · rate per kg / g
+      const u=wUnit(l.it.id), ul=l.it.unit;
+      r2=`<div class="r2 wr"><span class="wl">⚖️ எடை</span><input class="win" data-bwin inputmode="decimal" value="${fromG(l.wt,u)}" aria-label="Weight">${unitSel(u,'data-bwu')}
+        <span class="wl">ரேட் / ${ul}</span>${RC?`<input class="rin" data-rin inputmode="decimal" value="${l.unitRate}" aria-label="Rate per ${ul}">`:`<b>${inr(l.unitRate)}</b>`}
+        <button class="wdel" data-bdel aria-label="Remove">✕</button></div>`;
+    } else if(cu&&cu.wt){   // custom weight line
+      const u=cu.unit||"kg";
+      r2=`<div class="r2 wr"><span class="wl">⚖️ ${esc(fmtG(cu.wt))}</span><span class="wl">ரேட் / ${u}</span>${RC?`<input class="rin" data-rin inputmode="decimal" value="${cu.unitRate||""}" aria-label="Rate">`:`<b>${inr(cu.unitRate||l.rate)}</b>`}
+        <button class="wdel" data-bdel aria-label="Remove">✕</button></div>`;
+    } else {
+      r2=`<div class="r2"><span>Size: <b>${esc(l.size||"-")}</b> &nbsp;|&nbsp; Rate: ${RC?`<input class="rin" data-rin inputmode="decimal" value="${l.rate}" aria-label="Rate">`:`<b>${inr(l.rate)}</b>`}${l.stdRate!=null&&l.rate!==l.stdRate?` <small class="rchg">(அசல் ${inr(l.stdRate)})</small>`:""}</span>
+        <div class="step"><button data-act="dec" aria-label="Decrease">−</button><input class="qin" data-qin inputmode="numeric" value="${l.qty}" aria-label="Quantity"><button data-act="inc" aria-label="Increase">+</button></div></div>`;
+    }
+    return `<div class="bl" data-key="${esc(l.k)}"><div class="r1"><div class="nm">${esc(l.it.ta)}<small>${sub}</small></div><div class="amt">${inr(l.amt)}</div></div>${r2}</div>`; }).join("");
   $("#sumPcs").textContent=pieces()+" pcs";
   $("#sumTot").textContent=inr(grand());
   renderPendBox(); renderExBox();
@@ -1149,8 +1228,8 @@ async function savePendingBill(){
   busy(true);
   try{
     const r=await api("pending","POST",{customer:$("#iName").value.trim(),phone:ph,
-      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate}))});
-    cart={}; customs={}; save(); closeSheet(); renderAll(); loadPendingCount();
+      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate,wt:l.wt}))});
+    cart={}; customs={}; ovr={}; save(); closeSheet(); renderAll(); loadPendingCount();
     toast(`⏸ Pending-ல் சேமிக்கப்பட்டது · ${ph} · இன்று மொத்தம் ${r.count} pending (${inr(r.total)})`);
   }catch(e){ apiErr(e); } finally{ busy(false); }
 }
@@ -1204,8 +1283,10 @@ async function loadPendingToCart(id){
   busy(false);
   let skipped=0;
   x.lines.forEach(l=>{
-    if(l.id&&byId[l.id]&&byId[l.id].sizes.some(z=>z.size===l.size&&z.rate===l.rate)){ const k=l.id+"|"+l.size; cart[k]=Math.min(99,(cart[k]||0)+l.qty); }
-    else { const cid="x"+Date.now().toString(36)+Math.floor(Math.random()*1000); customs[cid]={name:l.name,size:l.size||"",rate:l.rate,qty:Math.min(99,l.qty),code:""}; if(l.id) skipped++; }
+    const it=l.id&&byId[l.id];
+    if(it&&isW(it)&&l.wt){ const k=wKey(l.id); cart[k]=Math.min(9999999,(cart[k]||0)+l.wt*l.qty); const ur=money(l.rate*unitG(it)/l.wt); if(Math.abs(ur-it.sizes[0].rate)>0.01) ovr[k]=ur; }
+    else if(it&&!isW(it)&&it.sizes.some(z=>z.size===l.size&&(z.rate===l.rate||rateChangeOn()))){ const k=l.id+"|"+l.size; cart[k]=Math.min(999,(cart[k]||0)+l.qty); const z=it.sizes.find(z=>z.size===l.size); if(z.rate!==l.rate) ovr[k]=l.rate; }
+    else { const cid="x"+Date.now().toString(36)+Math.floor(Math.random()*1000); customs[cid]={name:l.name,size:l.size||"",rate:l.rate,qty:Math.min(999,l.qty),wt:l.wt||0,cat:"",code:""}; if(l.id) skipped++; }
   });
   save(); renderAll(); loadPendingCount();
   openBill({phone:x.phone,customer:x.customer});
@@ -1288,11 +1369,11 @@ async function sendBill(){
   let bill;
   try{
     bill=(await api("bills","POST",{customer:$("#iName").value.trim(),phone:ph,payMode:payPick||undefined,exchange:exIds,
-      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate}))})).bill;
+      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate,wt:l.wt}))})).bill;
     stockData=null; srData=null;   // bill reduced the stock
   }catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; }
   finally{ busy(false); }
-  cart={}; customs={}; save(); renderAll(); billPendingOnly=false; pendPrev=null; exOpen=null; exPick=new Set(); loadPendingCount();
+  cart={}; customs={}; ovr={}; save(); renderAll(); billPendingOnly=false; pendPrev=null; exOpen=null; exPick=new Set(); loadPendingCount();
   if(ordForBill&&ordForBill.phone===ph){ const of=ordForBill; ordForBill=null;
     api("orders/"+of.id,"POST",{billNo:bill.no}).then(()=>{ ordData=null; loadOrderCount(); setTimeout(()=>toast(`ஆர்டர் ${of.no} → பில் ${bill.no} இணைக்கப்பட்டது`),900); }).catch(apiErr); }
   if(bill.mergedPending) setTimeout(()=>toast(`${bill.mergedPending} pending பில் இந்த பில்லில் சேர்க்கப்பட்டது`),300);
@@ -1352,11 +1433,11 @@ async function saveCancelBill(){
   const L=lines(), btn=$("#saveCancelBill"); btn.disabled=true; busy(true);
   let cx;
   try{ cx=(await api("cancel-bills","POST",{reason,refBill:$("#cxRef").value.trim(),customer:$("#cxName").value.trim(),phone:ph,
-      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate}))})).cancel;
+      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate,wt:l.wt}))})).cancel;
     stockData=null; srData=null; repData=null; }
   catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; }
   finally{ busy(false); }
-  cart={}; customs={}; save(); renderAll();
+  cart={}; customs={}; ovr={}; save(); renderAll();
   const text=cancelText(cx);
   $("#sheetBody").innerHTML=`<div class="ok"><div class="tick" style="background:var(--bad)">✖</div>
     <h2 style="padding:0">ரத்து பில் ${esc(cx.no)} சேமிக்கப்பட்டது</h2><p class="sub">${cx.refBill?"அசல் பில் "+esc(cx.refBill)+" மாறவில்லை · ":""}ஸ்டாக் திரும்ப சேர்ந்தது · − ${inr(cx.total)}</p>
@@ -1477,9 +1558,9 @@ async function saveTakeOrder(){
   const L=lines(), btn=$("#saveTakeOrder"); btn.disabled=true; busy(true);
   let o;
   try{ o=(await api("orders","POST",{name,phone,mode:toMode,address:addr,notes:$("#toNotes").value.trim(),
-      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate}))})).order; }
+      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate,wt:l.wt}))})).order; }
   catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; } finally{ busy(false); }
-  cart={}; customs={}; save(); renderAll(); ordData=null; loadOrderCount();
+  cart={}; customs={}; ovr={}; save(); renderAll(); ordData=null; loadOrderCount();
   const url=shopBase(company)?shopQ(shopBase(company),"o="+o.token):"";
   const msg=orderMsg(o,url);
   $("#sheetBody").innerHTML=`<div class="ok"><div class="tick" style="background:#075985">📝</div>
@@ -1655,7 +1736,7 @@ async function openInvoiceForm(){
     <button class="cta leaf" id="ifSave">📒 Invoice சேமி</button><button class="cta ghost" id="backToBill">← பில்லுக்கு திரும்பு</button>`;
   showSheet(); ifTotals();
 }
-const lwRate=l=>l.it.custom?l.rate:wrateOf(l.it.id,l.size);   // wholesale price of a cart line
+const lwRate=l=>(l.it.custom||l.w)?l.rate:wrateOf(l.it.id,l.size);   // wholesale price of a cart line
 function ifRates(){ document.querySelectorAll("[data-ifrate]").forEach(i=>{ invForm.rates[i.dataset.ifrate]=i.value; }); }
 function ifTotals(){
   if(!invForm) return; ifRates();
@@ -1668,11 +1749,11 @@ async function saveInvoice(){
   const pid=$("#ifParty").value; $("#fIfParty").classList.toggle("bad",!pid||pid==="__new"); if(!pid||pid==="__new"){ toast("Retailer-ஐ தேர்வு செய்யவும்"); return; }
   const L=lines(), body={partyId:pid,gstPct:invForm.gst,dueDays:parseInt($("#ifDays").value,10)||0,notes:$("#ifNotes").value.trim(),
     paid:{amount:Number($("#ifPaid").value)||0,mode:invForm.mode},
-    lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:invForm.rates[l.k]!=null?Number(invForm.rates[l.k]):lwRate(l)}))};
+    lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:invForm.rates[l.k]!=null?Number(invForm.rates[l.k]):lwRate(l),wt:l.wt}))};
   if(body.lines.some(x=>!(x.rate>0))){ toast("ரேட் தவறு"); return; }
   const btn=$("#ifSave"); btn.disabled=true; busy(true);
   try{ ptCur=await api("sales-invoices","POST",body); }catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; } finally{ busy(false); }
-  cart={}; customs={}; save(); renderAll(); invForm=null; invFormParty=""; ptData=null; stockData=null; srData=null; repData=null;
+  cart={}; customs={}; ovr={}; save(); renderAll(); invForm=null; invFormParty=""; ptData=null; stockData=null; srData=null; repData=null;
   const i=ptCur.invoices.findIndex(v=>v.id===ptCur.invoiceId); toast("Invoice "+ptCur.invoices[i].no+" சேமிக்கப்பட்டது");
   openInvoiceView(i);
 }
@@ -1697,63 +1778,100 @@ function catOptions(selId,withNew){
   return CATS.map(c=>`<option value="${esc(c[0])}"${c[0]===selId?" selected":""}>${esc(c[3]+" "+c[1])}</option>`).join("")
     + (withNew?`<option value="__new">➕ புது குரூப் உருவாக்கு…</option>`:"");
 }
-function updateCustomTotal(){ const r=numIn($("#cRate").value); $("#cTot").textContent=inr(isFinite(r)&&r>0?money(r*customQty):0); }
+let cBy="count";
+const DEF_GROUP="பொது (General)";
+const cWeightG = () => { const v=numIn(($("#cWt")||{}).value), u=($("#cWu")||{}).value||"kg"; return isFinite(v)&&v>0 ? toG(v,u) : 0; };
+function updateCustomTotal(){
+  const r=numIn($("#cRate").value);
+  if(cBy==="weight"){ const v=numIn(($("#cWt")||{}).value), u=$("#cWu").value; $("#cRateL").textContent=`ரேட் ₹ (ஒரு ${u})`;
+    $("#cTot").textContent=inr(isFinite(r)&&r>0&&isFinite(v)&&v>0?money(r*v):0); return; }
+  $("#cTot").textContent=inr(isFinite(r)&&r>0?money(r*customQty):0);
+}
+/* mode switch (count / weight): rebuild the form, keep what was typed */
+function cKeep(){ const d=customDraft(); openCustom(customFrom,"",{draft:d,mode:true}); }
+function customDraft(){ return {name:$("#cName").value,size:($("#cSize")||{}).value||"",rate:$("#cRate").value,code:$("#cCode").value,qty:customQty,by:cBy,wt:($("#cWt")||{}).value||"",unit:($("#cWu")||{}).value||"kg",perm:!!($("#cPerm")&&$("#cPerm").checked)}; }
 function openCustom(from,prefill,keep){
-  customFrom=from; customQty=1; keep=keep||null;
+  customFrom=from; keep=keep||null;
+  if(!keep||!keep.mode){ customQty=1; cBy="count"; }
+  if(keep&&keep.draft){ cBy=keep.draft.by||"count"; customQty=keep.draft.qty||1; }
   if(!keep){ const c=curCat(); customCat=c?c[0]:(CATS[0]&&CATS[0][0]); }
+  else if(keep.mode && $("#cCat")) customCat=$("#cCat").value;
+  const W=cBy==="weight", dr=keep&&keep.draft||{};
   $("#sheetBody").innerHTML=`
     <h2>Custom ஐட்டம் சேர்க்க</h2><p class="sub">பட்டியலில் இல்லாத பொருளை கையால் பில்லில் சேர்க்கவும்</p>
     <div class="box frm">
       <label class="fld" id="fCName">பொருள் பெயர் (Item name)<input id="cName" maxlength="60" autocomplete="off" placeholder="எ.கா. பேபி ப்ரிண்ட் நைட்டி"><span class="err">பொருள் பெயரை உள்ளிடவும்</span></label>
-      <div class="two">
+      <label class="fld" id="fCCat">📁 எந்த குரூப்பில் சேர்க்க? (Group)<select id="cCat">${CATS.length?catOptions(customCat,canEdit()):`<option value="">${esc(DEF_GROUP)} — default</option>`}</select></label>
+      ${CATS.length?"":`<p class="hint">குரூப் எதுவும் இல்லை — இந்த ஐட்டம் "${esc(DEF_GROUP)}" (default) குரூப்பில் சேரும்</p>`}
+      <div class="chips" style="margin:4px 0 8px"><button type="button" data-cby="count" class="${W?"":"on"}">🔢 எண்ணிக்கை (Count)</button><button type="button" data-cby="weight" class="${W?"on":""}">⚖️ எடை (Weight)</button></div>
+      ${W?`<div class="two">
+        <label class="fld" id="fCWt">எடை (Weight)<input id="cWt" inputmode="decimal" autocomplete="off" placeholder="எ.கா. 250"><span class="err">சரியான எடையை உள்ளிடவும்</span></label>
+        <label class="fld">அளவு (Measure)<select id="cWu" data-cwu><option value="kg">கிலோ (kg)</option><option value="g">கிராம் (g)</option></select></label></div>
+      <label class="fld" id="fCRate"><span id="cRateL">ரேட் ₹ (ஒரு kg)</span><input id="cRate" inputmode="decimal" autocomplete="off" placeholder="எ.கா. 950"><span class="err">சரியான ரேட்டை உள்ளிடவும்</span></label>`
+      :`<div class="two">
         <label class="fld">சைஸ் (Size, optional)<input id="cSize" maxlength="12" autocomplete="off" placeholder="எ.கா. L / 38"></label>
         <label class="fld" id="fCRate">ரேட் ₹ (ஒன்றுக்கு)<input id="cRate" inputmode="decimal" autocomplete="off" placeholder="எ.கா. 350"><span class="err">சரியான ரேட்டை உள்ளிடவும்</span></label>
       </div>
       <div class="qtyrow"><b style="font-size:14px">எண்ணிக்கை (Qty)</b>
-        <div class="step"><button data-cq="dec" aria-label="Decrease">−</button><span id="cQty">1</span><button data-cq="inc" aria-label="Increase">+</button></div></div>
+        <div class="step"><button data-cq="dec" aria-label="Decrease">−</button><input class="qin" id="cQty" data-cqin inputmode="numeric" value="1" aria-label="Quantity"><button data-cq="inc" aria-label="Increase">+</button></div></div>`}
       <div class="bcf"><label class="fld" id="fCCode">Barcode (optional)<input id="cCode" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Scan / type"><span class="err">இந்த barcode வேறு ஐட்டத்திற்கு உள்ளது</span></label><button type="button" class="scbtn2" id="cScan" aria-label="Scan barcode">📷</button></div>
       <div class="prev"><span>இந்த ஐட்டம் மொத்தம்</span><b id="cTot">₹0</b></div>
       ${canEdit()?`<div class="perm"><label class="rem"><input type="checkbox" id="cPerm">நிரந்தரமாக குரூப்பில் சேமி (Save permanently)</label>
-        <label class="fld" id="fCCat" hidden>எந்த குரூப்பில்? (Group)<select id="cCat">${CATS.length?"":`<option value="">— குரூப் இல்லை —</option>`}${catOptions(customCat,true)}</select></label>
         <p class="hint" id="cPermHint" hidden>அடுத்த முறை இந்த குரூப்பில் சாதாரண ஐட்டமாக தெரியும்</p></div>`:""}
     </div>
     <button class="cta leaf" id="customAdd">பில்லில் சேர்</button>
     <button class="cta ghost" id="customCancel">ரத்து (Cancel)</button>`;
-  $("#cName").value=prefill||"";
-  if(keep && keep.draft){ const d=keep.draft; $("#cName").value=d.name; $("#cSize").value=d.size; $("#cRate").value=d.rate; $("#cCode").value=d.code||""; customQty=d.qty; $("#cQty").textContent=d.qty; updateCustomTotal();
-    if($("#cPerm")){ $("#cPerm").checked=true; togglePerm(); } }
+  $("#cName").value=prefill||dr.name||"";
+  if(dr.name!==undefined){ if($("#cSize")) $("#cSize").value=dr.size||""; $("#cRate").value=dr.rate||""; $("#cCode").value=dr.code||"";
+    if(W){ $("#cWt").value=dr.wt||""; $("#cWu").value=dr.unit||"kg"; } else $("#cQty").value=customQty;
+    if($("#cPerm")&&(dr.perm||!keep.mode)){ $("#cPerm").checked=true; togglePerm(); } updateCustomTotal(); }
+  else if(W) updateCustomTotal();
   if(keep && keep.code){ $("#cCode").value=keep.code; if($("#cPerm")){ $("#cPerm").checked=true; togglePerm(); } setTimeout(()=>{ const i=$("#cName"); if(i) i.focus(); },250); }
   showSheet();
 }
-function togglePerm(){ const on=$("#cPerm").checked; $("#fCCat").hidden=!on; $("#cPermHint").hidden=!on; }
+function togglePerm(){ const on=$("#cPerm").checked; $("#cPermHint").hidden=!on; }
 async function submitCustom(){
-  const name=$("#cName").value.trim(), size=$("#cSize").value.trim(), rate=money(numIn($("#cRate").value));
+  const W=cBy==="weight", name=$("#cName").value.trim(), size=W?"":$("#cSize").value.trim(), rate=money(numIn($("#cRate").value));
   const okN=name.length>0, okR=isFinite(rate)&&rate>0&&rate<=999999;
   $("#fCName").classList.toggle("bad",!okN); $("#fCRate").classList.toggle("bad",!okR);
-  if(!okN||!okR){ toast("பெயர் மற்றும் ரேட்டை சரி பார்க்கவும்"); return; }
+  const g=W?cWeightG():0, unit=W?$("#cWu").value:"", okW=!W||(g>=1&&g<=9999999);
+  if(W) $("#fCWt").classList.toggle("bad",!okW);
+  if(!okN||!okR||!okW){ toast(W?"பெயர், எடை, ரேட்டை சரி பார்க்கவும்":"பெயர் மற்றும் ரேட்டை சரி பார்க்கவும்"); return; }
   const code=cleanCode($("#cCode").value);
   if(code && byCode[code]){ $("#fCCode").classList.add("bad"); const h=byCode[code]; toast("இந்த barcode ஏற்கனவே "+byId[h.id].ta+" ("+h.size+")-க்கு உள்ளது"); return; }
+  const amt=W?money(rate*g/(unit==="g"?1:1000)):0;
+  let catName=DEF_GROUP;
   if(canEdit() && $("#cPerm") && $("#cPerm").checked){
-    const cat=$("#cCat").value; if(!catById[cat]){ toast("குரூப்பை தேர்வு செய்யவும் / உருவாக்கவும்"); return; }
-    const sz=(size||"Free size").replace(/\|/g,"/").slice(0,12);
-    const ex=(catalog.items||[]).find(i=>i.cat===cat && i.ta.toLowerCase()===name.toLowerCase());
+    let cat=$("#cCat").value;
+    if(!CATS.length) cat="";
+    else if(!catById[cat]){ toast("குரூப்பை தேர்வு செய்யவும் / உருவாக்கவும்"); return; }
+    const sz=W?("1 "+unit):(size||"Free size").replace(/\|/g,"/").slice(0,12);
+    const ex=cat?(catalog.items||[]).find(i=>i.cat===cat && i.ta.toLowerCase()===name.toLowerCase()):null;
     const id=ex?ex.id:newId("u"), qty=customQty, from=customFrom;
     const ok=await commitCatalog(d=>{
+      if(!cat){ cat=newId("g"); d.cats.push({id:cat,ta:"பொது",en:"General",emoji:"🛍️",color:"#e8eef0"}); }
       const x=d.items.find(i=>i.id===id);
       const nz=code?{size:sz,rate,code}:{size:sz,rate};
       if(x){ const z=x.sizes.find(z=>z.size===sz); if(z){ z.rate=rate; if(code) z.code=code; } else x.sizes.push(nz); }
-      else d.items.push({id,cat,ta:name.slice(0,60),en:"",sizes:[nz]});
+      else { const n={id,cat,ta:name.slice(0,60),en:"",sizes:[nz]}; if(W){ n.by="weight"; n.unit=unit; } d.items.push(n); }
     });
     if(!ok) return;
-    const k=id+"|"+sz; if(byId[id]&&byId[id].sizes.some(z=>z.size===sz)){ cart[k]=Math.min(99,(cart[k]||0)+qty); save(); }
-    renderAll(); toast("நிரந்தரமாக சேமிக்கப்பட்டது: "+catById[cat][1]+" › "+name);
+    const it=byId[id];
+    if(it){ if(isW(it)){ cart[wKey(id)]=g; wu[id]=unit; save(); } else if(it.sizes.some(z=>z.size===sz)){ const k=id+"|"+sz; cart[k]=Math.min(999,(cart[k]||0)+qty); save(); } }
+    renderAll(); toast("நிரந்தரமாக சேமிக்கப்பட்டது: "+(catById[cat]?catById[cat][1]:DEF_GROUP)+" › "+name);
     if(from==="bill") openBill(); else closeSheet();
     return;
   }
-  let id=Object.keys(customs).find(i=>{ const c=customs[i]; return c.name.toLowerCase()===name.toLowerCase() && c.size.toLowerCase()===size.toLowerCase() && c.rate===rate; });
-  if(id){ customs[id].qty=Math.min(99,customs[id].qty+customQty); if(code) customs[id].code=code; }
-  else { id="x"+Date.now().toString(36)+Math.floor(Math.random()*1000); customs[id]={name,size,rate,qty:customQty,code}; }
-  save(); renderDock(); toast("சேர்க்கப்பட்டது: "+name);
+  { const cc=$("#cCat").value; if(cc&&catById[cc]) catName=catById[cc][1]; }
+  if(W){
+    const id="x"+Date.now().toString(36)+Math.floor(Math.random()*1000);
+    customs[id]={name,size:fmtG(g),rate:amt,qty:1,wt:g,unit,unitRate:rate,cat:catName,code};
+  } else {
+    let id=Object.keys(customs).find(i=>{ const c=customs[i]; return !c.wt && c.name.toLowerCase()===name.toLowerCase() && c.size.toLowerCase()===size.toLowerCase() && c.rate===rate; });
+    if(id){ customs[id].qty=Math.min(999,customs[id].qty+customQty); if(code) customs[id].code=code; customs[id].cat=catName; }
+    else { id="x"+Date.now().toString(36)+Math.floor(Math.random()*1000); customs[id]={name,size,rate,qty:customQty,cat:catName,code}; }
+  }
+  save(); renderDock(); toast("சேர்க்கப்பட்டது: "+name+" · 📁 "+catName);
   if(customFrom==="bill") openBill(); else closeSheet();
 }
 
@@ -1843,7 +1961,7 @@ async function deleteGroup(){
 
 function openItemForm(cat,draft){
   if(!CATS.length){ toast("முதலில் ஒரு குரூப் உருவாக்கவும்"); openGroupForm(null); return; }
-  iForm={cat:catById[cat]?cat:CATS[0][0], set:(draft&&draft.set)||"alpha", vals:(draft&&draft.vals)||{}, codes:(draft&&draft.codes)||{}, costs:(draft&&draft.costs)||{}};
+  iForm={cat:catById[cat]?cat:CATS[0][0], by:(draft&&draft.by)||"count", unit:(draft&&draft.unit)||"kg", set:(draft&&draft.set)||"alpha", vals:(draft&&draft.vals)||{}, codes:(draft&&draft.codes)||{}, costs:(draft&&draft.costs)||{}};
   $("#sheetBody").innerHTML=`
     <h2>புது ஐட்டம் சேர்க்க</h2><p class="sub">எந்த குரூப்பிலும் நிரந்தர ஐட்டம் · சைஸ் வாரியாக ரேட்</p>
     <div class="box frm">
@@ -1851,12 +1969,16 @@ function openItemForm(cat,draft){
       <label class="fld" id="fITa">ஐட்டம் பெயர் (தமிழ்)<input id="iTa" maxlength="60" autocomplete="off" placeholder="எ.கா. காட்டன் சேலை"><span class="err">ஐட்டம் பெயரை உள்ளிடவும்</span></label>
       <label class="fld">English பெயர் (optional)<input id="iEn" maxlength="60" autocomplete="off" placeholder="e.g. Cotton Saree"></label>
     </div>
-    <div class="box"><h3>சைஸ் (Sizes)</h3>
+    <div class="box"><h3>விற்பனை முறை (Sold by)</h3>
+      <div class="chips"><button type="button" data-iby="count" class="${iForm.by==="count"?"on":""}">🔢 எண்ணிக்கை (Count)</button><button type="button" data-iby="weight" class="${iForm.by==="weight"?"on":""}">⚖️ எடை (Weight)</button></div>
+      ${iForm.by==="weight"?`<div class="chips" style="margin-top:8px"><button type="button" data-iunit="kg" class="${iForm.unit==="kg"?"on":""}">கிலோ (kg)</button><button type="button" data-iunit="g" class="${iForm.unit==="g"?"on":""}">கிராம் (g)</button></div>
+      <p class="hint">எடை ஐட்டம்: ரேட் ஒரு ${iForm.unit==="kg"?"கிலோவுக்கு":"கிராமுக்கு"} · பில்லில் எடையை type செய்யலாம் · ஸ்டாக் கிராமில் கணக்கிடப்படும்</p>`:""}</div>
+    <div class="box"${iForm.by==="weight"?" hidden":""}><h3>சைஸ் (Sizes)</h3>
       <div class="chips">${Object.keys(SET_LABEL).map(k=>`<button type="button" data-iset="${k}" class="${k===iForm.set?"on":""}">${SET_LABEL[k]}</button>`).join("")}</div>
       <label class="fld" id="fISizes" ${iForm.set==="custom"?"":"hidden"}>சைஸ்களை comma போட்டு எழுதவும்<input id="iSizes" maxlength="200" autocomplete="off" placeholder="எ.கா. 28, 30, 32  அல்லது  2-3Y, 4-5Y"><span class="err">குறைந்தது ஒரு சைஸ் தேவை</span></label>
     </div>
-    <div class="box"><h3>ரேட் (ஒரு துண்டுக்கு)</h3>
-      <div class="fillrow"><label class="fld">முதல் சைஸ் ரேட் ₹<input id="iBase" inputmode="decimal" autocomplete="off" placeholder="350"></label>
+    <div class="box"><h3>${iForm.by==="weight"?`ரேட் (ஒரு ${iForm.unit==="kg"?"கிலோவுக்கு":"கிராமுக்கு"})`:"ரேட் (ஒரு துண்டுக்கு)"}</h3>
+      <div class="fillrow"${iForm.by==="weight"?" hidden":""}><label class="fld">முதல் சைஸ் ரேட் ₹<input id="iBase" inputmode="decimal" autocomplete="off" placeholder="350"></label>
         <label class="fld">ஒவ்வொரு சைஸுக்கும் கூடுதல் ₹<input id="iStep" inputmode="decimal" autocomplete="off" placeholder="0"></label>
         <button type="button" id="itemFill">நிரப்பு</button></div>
       <p class="hint">எ.கா. 350 + 20 → M ₹350, L ₹370, XL ₹390… (தனியாகவும் மாற்றலாம்)</p>
@@ -1869,7 +1991,7 @@ function openItemForm(cat,draft){
   if(draft){ $("#iTa").value=draft.ta||""; $("#iEn").value=draft.en||""; $("#iSizes").value=draft.sizes||""; }
   renderIRows(); showSheet();
 }
-const curISizes = () => iForm.set==="custom" ? parseSizes($("#iSizes").value) : SIZES[iForm.set].slice();
+const curISizes = () => iForm.by==="weight" ? ["1 "+iForm.unit] : iForm.set==="custom" ? parseSizes($("#iSizes").value) : SIZES[iForm.set].slice();
 /* cost (அடக்க விலை) is optional: "" = not known; returns NaN when typed but invalid */
 const parseCost = v => { const t=String(v==null?"":v).trim(); if(!t) return null; const n=money(numIn(t)); return isFinite(n)&&n>=0&&n<=999999 ? n : NaN; };
 function marginHint(el,rate,cost){
@@ -1899,11 +2021,11 @@ function renderIRows(){
   list.forEach((sz,i)=>newCostHint(i));
   document.querySelectorAll("[data-icode]").forEach(i=>{ const v=iForm.codes[i.dataset.icode]; if(v!==undefined) i.value=v; });
 }
-function itemDraft(){ keepIVals(); return {ta:$("#iTa").value, en:$("#iEn").value, set:iForm.set, sizes:$("#iSizes").value, vals:iForm.vals, codes:iForm.codes, costs:iForm.costs}; }
+function itemDraft(){ keepIVals(); return {ta:$("#iTa").value, en:$("#iEn").value, by:iForm.by, unit:iForm.unit, set:iForm.set, sizes:$("#iSizes").value, vals:iForm.vals, codes:iForm.codes, costs:iForm.costs}; }
 async function saveItem(){
   const cat=$("#iCat").value, ta=$("#iTa").value.trim(), en=$("#iEn").value.trim(), list=curISizes();
   $("#fITa").classList.toggle("bad",!ta);
-  if(iForm.set==="custom") $("#fISizes").classList.toggle("bad",!list.length);
+  if(iForm.set==="custom"&&iForm.by!=="weight") $("#fISizes").classList.toggle("bad",!list.length);
   let ok=!!ta && list.length>0 && !!catById[cat]; const sizes=[];
   document.querySelectorAll("[data-isz]").forEach((inp,i)=>{
     const v=money(numIn(inp.value)), good=isFinite(v)&&v>0&&v<=999999;
@@ -1914,7 +2036,7 @@ async function saveItem(){
   if(!ok){ toast("பெயர், சைஸ், ரேட், அடக்க விலையை சரி பார்க்கவும்"); return; }
   const clash=codeClash(sizes,null); if(clash){ toast(clash); return; }
   if(ITEMS.some(it=>it.cat===cat && it.ta.toLowerCase()===ta.toLowerCase())){ $("#fITa").classList.add("bad"); toast("இந்த குரூப்பில் இதே பெயரில் ஐட்டம் உள்ளது"); return; }
-  const done=await commitCatalog(d=>{ d.items.push({id:newId("u"),cat,ta,en,sizes}); },"புது ஐட்டம் சேர்க்கப்பட்டது: "+ta);
+  const done=await commitCatalog(d=>{ const n={id:newId("u"),cat,ta,en,sizes}; if(iForm.by==="weight"){ n.by="weight"; n.unit=iForm.unit; } d.items.push(n); },"புது ஐட்டம் சேர்க்கப்பட்டது: "+ta);
   if(!done) return;
   closeSheet(); iForm=null;
   if(location.hash.slice(1)===cat) renderAll(); else { cameFromHome=true; $("#q").value=""; location.hash=cat; }
@@ -1932,6 +2054,7 @@ function openItemEdit(id){
   const it=byId[id]; if(!it) return; editItem=id;
   $("#sheetBody").innerHTML=`
     <h2>ஐட்டம் மாற்றம்</h2><p class="sub">பெயர், குரூப், ரேட், barcode மாற்றலாம் · எல்லா மொபைலிலும் உடனே மாறும்</p>
+    ${isW(it)?`<div class="box"><b>⚖️ எடை ஐட்டம் (Weight)</b><p class="hint" style="margin:4px 0 0">ரேட் = ஒரு ${it.unit==="kg"?"கிலோவுக்கு":"கிராமுக்கு"} · ஸ்டாக் கிராமில் · (${it.unit}) மாற்ற முடியாது — புதிய ஐட்டம் உருவாக்கவும்</p></div>`:""}
     <div class="box frm"><label class="fld" id="fETa">ஐட்டம் பெயர் (தமிழ்)<input id="eTa" maxlength="60" autocomplete="off"><span class="err">பெயரை உள்ளிடவும்</span></label>
       <label class="fld">English பெயர் (optional)<input id="eEn" maxlength="60" autocomplete="off"></label>
       <label class="fld">குரூப் (Group)<select id="eCat">${catOptions(it.cat,false)}</select></label></div>
@@ -2150,18 +2273,19 @@ function openCompanyForm(id,ret){
       ${c?`<div class="meta" style="margin:2px 0 8px">🌐 Website: ${esc(shopBase(c))}</div>`:tplBlock("k")}
       <label class="fld">பில் கடைசி வரி<input id="kFoot" maxlength="120" autocomplete="off" placeholder="நன்றி! மீண்டும் வருக 🙏"></label>
       <label class="rem"><input type="checkbox" id="kBis" checked>பில்லில் "${esc(BISMILLAH)}" காட்டு</label>
+      <label class="rem"><input type="checkbox" id="kRc">✏️ பில் போடும்போது ரேட் மாற்ற அனுமதி (Rate change)</label>
     </div>
     <button class="cta leaf" id="compSave">${c?"சேமி":"கம்பெனியை உருவாக்கு"}</button>
     ${c?`<div class="two-b"><button class="cta warn" id="compDel">🗑 நீக்கு</button><button class="cta ghost" id="compCancel">ரத்து</button></div>`:`<button class="cta ghost" id="compCancel">ரத்து (Cancel)</button>`}`;
   if(c){ $("#kName").value=c.name||""; $("#kTag").value=c.tagline||""; $("#kOwner").value=c.owner||""; $("#kPhone").value=c.phone||""; $("#kAddr").value=c.address||"";
-    $("#kCity").value=c.city||""; $("#kPrefix").value=c.billPrefix||""; $("#kGst").value=c.gstin||""; $("#kEmail").value=c.email||""; $("#kFoot").value=c.footer||""; $("#kWa").value=c.shopWa||""; $("#kBis").checked=c.bismillah!==false; $("#kFee").value=c.billFee!=null?c.billFee:"0.25"; }
+    $("#kCity").value=c.city||""; $("#kPrefix").value=c.billPrefix||""; $("#kGst").value=c.gstin||""; $("#kEmail").value=c.email||""; $("#kFoot").value=c.footer||""; $("#kWa").value=c.shopWa||""; $("#kBis").checked=c.bismillah!==false; $("#kRc").checked=!!c.rateChange; $("#kFee").value=c.billFee!=null?c.billFee:"0.25"; }
   showSheet(); if(!c) setTimeout(()=>{ const i=$("#kName"); if(i) i.focus(); },250);
 }
 async function saveCompany(){
   const b={id:kForm.id||"", name:$("#kName").value.trim(), tagline:$("#kTag").value.trim(), owner:$("#kOwner").value.trim(),
     phone:$("#kPhone").value.replace(/\D/g,""), address:$("#kAddr").value.trim(), city:$("#kCity").value.trim(),
     gstin:$("#kGst").value.trim().toUpperCase(), email:$("#kEmail").value.trim(), billPrefix:$("#kPrefix").value.trim().toUpperCase(),
-    footer:$("#kFoot").value.trim(), bismillah:$("#kBis").checked, shopWa:$("#kWa").value.replace(/\D/g,""), billFee:$("#kFee").value.trim()===""?0.25:Number($("#kFee").value.trim())};
+    footer:$("#kFoot").value.trim(), bismillah:$("#kBis").checked, rateChange:$("#kRc").checked, shopWa:$("#kWa").value.replace(/\D/g,""), billFee:$("#kFee").value.trim()===""?0.25:Number($("#kFee").value.trim())};
   const okF=isFinite(b.billFee)&&b.billFee>=0&&b.billFee<=1000; $("#fkFee").classList.toggle("bad",!okF); if(!okF){ toast("ஒரு பில்லுக்கான கட்டணம் தவறு"); return; }
   const okN=!!b.name, okP=/^[6-9]\d{9}$/.test(b.phone), okG=!b.gstin||/^[0-9]{2}[A-Z0-9]{13}$/.test(b.gstin), okX=!b.billPrefix||/^[A-Z0-9]{1,8}$/.test(b.billPrefix);
   $("#fkName").classList.toggle("bad",!okN); $("#fkPhone").classList.toggle("bad",!okP); $("#fkGst").classList.toggle("bad",!okG); $("#fkPrefix").classList.toggle("bad",!okX);
@@ -2324,7 +2448,7 @@ async function enter(s){
   me=s.user; company=s.company||null; defaultPw=!!s.defaultPassword; myBranch=s.branch?s.branch.name:"";
   repData=null; repBranch=""; stockData=null; srData=null; srBranch="";
   if(company && !isOwner()){ await loadData(); loadCart(); pendCount=0; setTimeout(loadPendingCount,0); setTimeout(loadOrderCount,0); }
-  else { catalog={version:0,setup:false,cats:[],items:[]}; buildCatalog(); cart={}; customs={}; }
+  else { catalog={version:0,setup:false,cats:[],items:[]}; buildCatalog(); cart={}; customs={}; ovr={}; }
   document.body.classList.add("authed");
   if(isAdmin() && !company && location.hash!=="#admin"){ history.replaceState(null,"","#admin"); }
   renderAll(true);
@@ -2364,6 +2488,7 @@ $("#lEye").addEventListener("click",()=>{ const i=$("#lPass"), show=i.type==="pa
    USB / Bluetooth scanners type the code + Enter: caught anywhere on the billing screens. Camera needs HTTPS. */
 const SCAN_FORMATS=["ean_13","ean_8","upc_a","upc_e","code_128","code_39","code_93","itf","codabar","qr_code","data_matrix"];
 const cleanCode = c => String(c==null?"":c).replace(/[^\x21-\x7E]/g,"").slice(0,40);
+const findCode = c => byCode[c] ? c : (Object.keys(byCode).find(k=>k.toLowerCase()===String(c).toLowerCase()) || c);   // typed letters may differ in case
 let scanS=null, pendingCode=null;
 
 /* returns an error text when a barcode in `sizes` is already used by another item / size (or twice in the list) */
@@ -2474,11 +2599,35 @@ async function toggleTorch(){
   try{ await tr.applyConstraints({advanced:[{torch:on}]}); $("#scTorch").classList.toggle("on",on); }catch(e){ toast("Torch இல்லை"); }
 }
 
+/* open an item's card (its group), scroll to it, highlight it; weight items get the cursor in the weight box */
+function focusItem(id,msg,wfocus){
+  const it=byId[id]; if(!it) return;
+  const go=()=>{ const el=document.querySelector(`[data-item="${CSS.escape(id)}"]`); if(!el) return; el.scrollIntoView({block:"center"}); el.classList.add("flash"); setTimeout(()=>el.classList.remove("flash"),2500);
+    if(wfocus){ const w=el.querySelector("[data-win]"); if(w) w.focus(); } };
+  if(msg) toast(msg);
+  if(location.hash.slice(1)===it.cat){ $("#q").value=""; renderAll(); setTimeout(go,60); }
+  else { cameFromHome=true; $("#q").value=""; location.hash=it.cat; setTimeout(go,150); }
+}
+/* barcode number typed (no camera needed): registered -> the item opens (count items are also added); unknown -> link / add dialog */
+function typeBarcode(raw){
+  const code=findCode(cleanCode(raw));
+  if(code.length<3){ toast("சரியான barcode எண்ணை type செய்யவும்"); return; }
+  const h=byCode[code];
+  if(!h||!byId[h.id]){ beep(false); openUnknownCode(code,$("#billList")?"bill":"home"); return; }
+  const it=byId[h.id];
+  if(isW(it)){ scanToCart(code); return; }
+  scanToCart(code); focusItem(h.id,"");
+}
 /* billing scan: each code adds one piece to the bill; unknown code -> ask what to do */
 function scanToCart(code){
+  code=findCode(code);
   const hit=byCode[code];
+  if(hit && byId[hit.id] && isW(byId[hit.id])){            // weight item: the weight is not on the tag — open the item to type it
+    beep(true); closeScanner(true); if($("#sheet").classList.contains("on")) closeSheet();
+    focusItem(hit.id,"⚖️ "+byId[hit.id].ta+" — எடையை உள்ளிடவும்",true); return false;
+  }
   if(hit && byId[hit.id]){
-    const k=hit.id+"|"+hit.size; cart[k]=Math.min(99,(cart[k]||0)+1); save();
+    const k=hit.id+"|"+hit.size; cart[k]=Math.min(999,(cart[k]||0)+1); save();
     refreshCard(hit.id); renderDock(); if($("#billList")) renderBillList();
     const it=byId[hit.id]; beep(true);
     const msg=`✅ ${it.ta} (${hit.size}) · ${inr(rateOf(hit.id,hit.size))} — பில்லில் ${cart[k]}`;
@@ -2542,7 +2691,7 @@ async function saveLinkCode(){
   const ok=await commitCatalog(d=>{ const x=d.items.find(i=>i.id===id); if(!x) return false; const z=x.sizes.find(z=>z.size===size); if(!z) return false; z.code=pc.code; },
     "Barcode இணைக்கப்பட்டது: "+byId[id].ta+" ("+size+")");
   if(!ok) return;
-  const k=id+"|"+size; if(byId[id]&&byId[id].sizes.some(z=>z.size===size)){ cart[k]=Math.min(99,(cart[k]||0)+1); save(); }
+  const k=id+"|"+size; if(byId[id]&&!isW(byId[id])&&byId[id].sizes.some(z=>z.size===size)){ cart[k]=Math.min(999,(cart[k]||0)+1); save(); }
   pendingCode=null; renderAll();
   if(pc.back==="bill") openBill(); else closeSheet();
 }
@@ -2596,20 +2745,21 @@ async function loadStock(){
   if(view()==="stock"||view()==="labels") renderView();
 }
 const stQty = (id,size) => { const x=stockData&&stockData.map[id+"|"+size]; return x?x.qty:0; };
+const fmtW = v => (v<0?"−":"")+fmtG(Math.abs(v));      // weight stock is kept in grams
 function renderStock(){
   if(!stockData || stockData.co!==company.id){ if(!stockLoading) setTimeout(loadStock,0); return `<div class="none"><b>⏳</b>ஸ்டாக் ஏற்றுகிறது…</div>`; }
   if(stockData.error) return `<div class="none"><b>⚠️</b>${esc(stockData.error)}</div>`;
   const q=($("#stq")&&$("#stq").value||"").trim().toLowerCase();
   let pcs=0, neg=0, zero=0;
-  ITEMS.forEach(it=>it.sizes.forEach(z=>{ const v=stQty(it.id,z.size); if(v>0) pcs+=v; else if(v<0) neg++; else zero++; }));
-  const keep=(it,z)=>{ const v=stQty(it.id,z.size); return stockFlt==="neg"?v<0:stockFlt==="zero"?v===0:stockFlt==="low"?v>0&&v<=3:true; };
+  ITEMS.forEach(it=>it.sizes.forEach(z=>{ const v=stQty(it.id,z.size); if(v>0){ if(!isW(it)) pcs+=v; } else if(v<0) neg++; else zero++; }));
+  const keep=(it,z)=>{ const v=stQty(it.id,z.size); return stockFlt==="neg"?v<0:stockFlt==="zero"?v===0:stockFlt==="low"?(v>0&&v<=(isW(it)?500:3)):true; };
   const match=it=>!q || (it.ta+" "+it.en).toLowerCase().includes(q) || it.sizes.some(z=>z.code&&z.code.toLowerCase()===q);
   const groups=CATS.map(c=>{
     const its=ITEMS.filter(it=>it.cat===c[0] && match(it) && it.sizes.some(z=>keep(it,z)));
     if(!its.length) return "";
     return `<div class="st-g">${esc(c[3]+" "+c[1])}</div>`+its.map(it=>`<div class="st-it"><b>${esc(it.ta)}</b>${it.en?`<small>${esc(it.en)}</small>`:""}
       <div class="st-sz">${it.sizes.filter(z=>keep(it,z)).map(z=>{ const v=stQty(it.id,z.size);
-        return `<button data-stedit="${esc(it.id)}" data-stsize="${esc(z.size)}" class="${v<0?"neg":v===0?"zero":""}" aria-label="${esc(it.ta)} ${esc(z.size)} stock ${v}"><span>${esc(z.size)}</span><b>${v}</b></button>`; }).join("")}</div></div>`).join("");
+        return `<button data-stedit="${esc(it.id)}" data-stsize="${esc(z.size)}" class="${v<0?"neg":v===0?"zero":""}" aria-label="${esc(it.ta)} ${esc(z.size)} stock ${v}"><span>${isW(it)?"⚖️ "+esc(it.unit):esc(z.size)}</span><b>${isW(it)?fmtW(v):v}</b></button>`; }).join("")}</div></div>`).join("");
   }).join("");
   return `
     ${stockData.branches&&stockData.branches.length>1?`<div class="rp-br"><select id="stBranch" aria-label="Branch">${stockData.branches.map(b=>`<option value="${esc(b.id)}"${b.id===stockData.branch?" selected":""}>${brIco(b)} ${esc(b.name)}</option>`).join("")}</select></div>`
@@ -2630,7 +2780,8 @@ function openStockEdit(id,size){
   const cur=stQty(id,size), x=stockData.map[id+"|"+size];
   stockEdit={id,size,mode:"set"};
   $("#sheetBody").innerHTML=`<h2>${esc(it.ta)}</h2><p class="sub">சைஸ் ${esc(size)} · 🏬 ${esc(stockData.branchName||"")}</p>
-    <div class="box"><p class="sub" style="text-align:center">இப்போதைய ஸ்டாக்</p><div class="st-big ${cur<0?"neg":""}">${cur}</div>
+    <div class="box"><p class="sub" style="text-align:center">இப்போதைய ஸ்டாக்</p><div class="st-big ${cur<0?"neg":""}">${isW(it)?fmtW(cur):cur}</div>
+      ${isW(it)?`<p class="hint" style="text-align:center">⚖️ எடை ஐட்டம் — கீழே கிராமில் (g) உள்ளிடவும் · 1 kg = 1000 g</p>`:""}
       ${x&&x.by?`<p class="hint" style="text-align:center">கடைசி மாற்றம்: ${esc(x.by)} · ${esc(fmtDate(x.at))}</p>`:""}</div>
     <div class="box frm">
       <div class="chips"><button type="button" data-stmode="set" class="on">✏️ புது மதிப்பு (Set)</button><button type="button" data-stmode="add">➕➖ வரவு / குறைப்பு</button></div>
@@ -3234,7 +3385,7 @@ async function setOrder(body){
 function orderToBill(){
   const o=ordCur; if(!o) return;
   if(lines().length&&!confirm("Cart-ல் உள்ள ஐட்டங்கள் நீக்கப்பட்டு இந்த ஆர்டர் ஏற்றப்படும். சரியா?")) return;
-  cart={}; customs={};
+  cart={}; customs={}; ovr={};
   let miss=0; (o.lines||[]).forEach(l=>{ const it=byId[l.id]; if(it&&it.sizes.some(z=>z.size===l.size)) cart[l.id+"|"+l.size]=l.qty; else miss++; });
   save(); renderAll(); ordForBill={id:o.id,no:o.no,phone:o.phone,name:o.name};
   closeSheet(); if(location.hash==="#orders") location.hash="";
@@ -4009,11 +4160,20 @@ document.addEventListener("click",e=>{
   /* custom item */
   if(t.hasAttribute("data-custom")) return openCustom("home",d.prefill||"");
   if(t.id==="addCustomBill") return openCustom("bill","");
-  if(d.cq){ customQty=Math.max(1,Math.min(99,customQty+(d.cq==="inc"?1:-1))); $("#cQty").textContent=customQty; updateCustomTotal(); return; }
+  if(d.cq){ customQty=Math.max(1,Math.min(999,customQty+(d.cq==="inc"?1:-1))); $("#cQty").value=customQty; updateCustomTotal(); return; }
   if(t.id==="customAdd") return submitCustom();
   if(t.id==="customCancel"){ if(customFrom==="bill" && lines().length) openBill(); else closeSheet(); return; }
   /* billing */
   if(d.size!==undefined && t.closest("[data-item]")){ const id=t.closest("[data-item]").dataset.item; sel[id]=d.size; refreshCard(id); return; }
+  if(d.wadd!==undefined){ const h=t.closest("[data-item]"); if(!h) return; const v=h.querySelector("[data-win]").value; if(!String(v).trim()){ toast("எடையை உள்ளிடவும்"); h.querySelector("[data-win]").focus(); return; } setWeight(h.dataset.item,v,h.querySelector("[data-wu]").value); return; }
+  if(d.wdel!==undefined){ const h=t.closest("[data-item]"); if(h) setWeight(h.dataset.item,""); return; }
+  if(d.bdel!==undefined){ const h=t.closest("[data-key]"); if(!h) return; const key=h.dataset.key;
+    if(key.startsWith("c:")) delete customs[key.slice(2)]; else { delete cart[key]; delete ovr[key]; }
+    save(); if(!key.startsWith("c:")) refreshCard(parseKey(key)[0]); renderDock(); renderBillList(); return; }
+  if(d.iby){ const dr=itemDraft(); dr.by=d.iby; openItemForm($("#iCat").value,dr); return; }
+  if(d.iunit){ const dr=itemDraft(); dr.unit=d.iunit; openItemForm($("#iCat").value,dr); return; }
+  if(d.cby){ cBy=d.cby; cKeep(); return; }
+  if(t.id==="bcGo"){ typeBarcode($("#bcIn").value); $("#bcIn").value=""; return; }
   if(d.act){
     const h=t.closest("[data-key],[data-item]"); if(!h) return;
     const key=h.dataset.key || (h.dataset.item+"|"+selSize(h.dataset.item));
@@ -4023,7 +4183,7 @@ document.addEventListener("click",e=>{
   if(t.id==="back"){ $("#q").value=""; if(cameFromHome && history.length>1) history.back(); else location.hash=""; return; }
   if(t.id==="openBill") return openBill();
   if(t.id==="send") return sendBill();
-  if(t.id==="clearAll"){ if(!confirm("பில்லில் உள்ள புதிய ஐட்டங்கள் எல்லாவற்றையும் நீக்கவா? (Pending பில்கள் நீக்கப்படாது)")) return; cart={}; customs={}; save(); closeSheet(); renderAll(); toast("பில் நீக்கப்பட்டது"); return; }
+  if(t.id==="clearAll"){ if(!confirm("பில்லில் உள்ள புதிய ஐட்டங்கள் எல்லாவற்றையும் நீக்கவா? (Pending பில்கள் நீக்கப்படாது)")) return; cart={}; customs={}; ovr={}; save(); closeSheet(); renderAll(); toast("பில் நீக்கப்பட்டது"); return; }
   if(t.id==="newBill"){ closeSheet(); renderAll(true); return; }
   if(t.id==="savePending") return savePendingBill();
   /* purchase orders */
@@ -4053,7 +4213,7 @@ document.addEventListener("click",e=>{
   if(t.id==="poCancel"){ if(!confirm("இந்த PO-ஐ ரத்து செய்யவா?")) return;
     busy(true); api("po/"+poCur.id+"/update","POST",{cancel:true}).then(r=>{ poData=null; openPoDetail(r.po); if(view()==="po") loadPoList(); }).catch(apiErr).finally(()=>busy(false)); return; }
   if(t.id==="freshBill"){ if(lines().length && !confirm("இப்போதைய ஐட்டங்கள் நீக்கப்பட்டு புதிய பில் தொடங்கும். (வைத்திருக்க: ⏸ சேமிக்க மட்டும்) தொடரவா?")) return;
-    cart={}; customs={}; save(); billPendingOnly=false; pendPrev=null; closeSheet(); location.hash=""; renderAll(true); toast("🆕 புதிய பில் — ஐட்டங்களை சேர்க்கவும்"); return; }
+    cart={}; customs={}; ovr={}; save(); billPendingOnly=false; pendPrev=null; closeSheet(); location.hash=""; renderAll(true); toast("🆕 புதிய பில் — ஐட்டங்களை சேர்க்கவும்"); return; }
   if(t.id==="openPending"||t.id==="mPending") return openPendingList();
   if(d.usersof){ uFilterCo=d.usersof; try{ localStorage.setItem("bmb_ufilter",uFilterCo); }catch(x){} renderView(); setTimeout(()=>{ const h=$("#usersHead"); if(h) h.scrollIntoView({behavior:"smooth"}); },50); return; }
   if(d.pendbill){ closeSheet(); setTimeout(()=>openBill({phone:d.pendbill,customer:d.pendcust||""}),50); return; }
@@ -4118,6 +4278,9 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Enter" && e.target.id==="pendQ"){ const qd=e.target.value.replace(/\D/g,""); if(/^[6-9]\d{9}$/.test(qd)){ e.preventDefault(); const g=pendAll&&pendAll.pending.find(x=>x.phone===qd); closeSheet(); setTimeout(()=>openBill({phone:qd,customer:g?g.customer:""}),50); } return; }
   if(e.key==="Enter" && e.target.id==="scCode"){ e.preventDefault(); const c=e.target.value; e.target.value=""; gotScan(c,true); return; }
   if(e.key==="Enter" && e.target.id==="cfbPhone"){ e.preventDefault(); cfbFind(); return; }
+  if(e.key==="Enter" && e.target.id==="bcIn"){ e.preventDefault(); typeBarcode(e.target.value); e.target.value=""; return; }
+  if(e.key==="Enter" && e.target.dataset && e.target.dataset.win!==undefined){ e.preventDefault(); const h=e.target.closest("[data-item]"); if(h) setWeight(h.dataset.item,e.target.value,h.querySelector("[data-wu]").value); return; }
+  if(e.key==="Enter" && e.target.dataset && (e.target.dataset.win!==undefined||e.target.dataset.qin!==undefined||e.target.dataset.rin!==undefined||e.target.dataset.bwin!==undefined)){ e.preventDefault(); e.target.blur(); return; }
   if(e.key==="Enter" && e.target.id==="q"){ const c=cleanCode(e.target.value); if(c.length>=3 && byCode[c]){ e.preventDefault(); e.target.value=""; renderView(); scanToCart(c); } return; }
   if(e.key==="Enter" && e.target.dataset && e.target.dataset.ri!==undefined){ e.preventDefault(); saveItemEdit(); }
 });
@@ -4126,7 +4289,8 @@ document.addEventListener("input",e=>{
   const f=e.target.closest&&e.target.closest(".fld"); if(f) f.classList.remove("bad");
   if(e.target.classList && (e.target.classList.contains("bci")||e.target.id==="cCode")){ const c=cleanCode(e.target.value); if(c!==e.target.value) e.target.value=c; }
   const id=e.target.id;
-  if(id==="cRate") updateCustomTotal();
+  if(id==="cRate"||id==="cWt") updateCustomTotal();
+  if(id==="cQty"){ const n=Math.floor(Number(e.target.value)); if(n>0){ customQty=Math.min(n,999); updateCustomTotal(); } }
   if(id==="pendQ") renderPendGroups();
   if(id==="poQ") poSuggest();
   if(e.target.dataset && e.target.dataset.pol!==undefined && poForm){ poForm.lines[Number(e.target.dataset.pol)][e.target.dataset.f]=e.target.value; poTotals(); }
@@ -4154,6 +4318,16 @@ document.addEventListener("input",e=>{
   if(e.target.dataset && e.target.dataset.iri!==undefined) newCostHint(Number(e.target.dataset.iri));
 });
 document.addEventListener("change",e=>{
+  { const d=e.target.dataset||{}, h=e.target.closest&&e.target.closest("[data-key],[data-item]");
+    if(d.qin!==undefined&&h){ setQty(h.dataset.key||(h.dataset.item+"|"+selSize(h.dataset.item)),e.target.value); return; }
+    if(d.win!==undefined&&h){ if(cart[wKey(h.dataset.item)]===undefined) return; setWeight(h.dataset.item,e.target.value,h.querySelector("[data-wu]").value); return; }   // not added yet: ADD / Enter commits
+    if(d.wu!==undefined&&h){ const id=h.dataset.item, v=h.querySelector("[data-win]").value; wu[id]=e.target.value; refreshCard(id);
+      const n=document.querySelector(`[data-item="${CSS.escape(id)}"] [data-win]`); if(n&&!cart[wKey(id)]) n.value=v; return; }
+    if((d.bwin!==undefined||d.bwu!==undefined)&&h){ const id=parseKey(h.dataset.key)[0]; setWeight(id,h.querySelector("[data-bwin]").value,h.querySelector("[data-bwu]").value); return; }
+    if(d.rin!==undefined&&h){ setRate(h.dataset.key,e.target.value); return; }
+    if(d.cwu!==undefined){ updateCustomTotal(); return; }
+    if(e.target.id==="cCat"&&e.target.value!=="__new"){ customCat=e.target.value; }
+  }
   if(e.target.id==="ifParty"){ ifRates(); invForm.paid=($("#ifPaid")||{}).value||""; if(e.target.value==="__new"){ invForm.pickNew=true; openPartyForm(null); } else { invFormParty=e.target.value; openInvoiceForm(); } return; }
   if(e.target.id==="impFile"){ readImpFile(e.target.files&&e.target.files[0]); e.target.value=""; return; }
   if(e.target.id==="phFile"&&e.target.files&&e.target.files[0]){ uploadPhoto(e.target.files[0]); e.target.value=""; return; }
@@ -4161,7 +4335,7 @@ document.addEventListener("change",e=>{
   if(id==="cPerm") togglePerm();
   if(id==="lkItem") lkSizes();
   if(id==="lkSize") lkWarn();
-  if(id==="cCat"){ if(e.target.value==="__new"){ const d={name:$("#cName").value,size:$("#cSize").value,rate:$("#cRate").value,code:$("#cCode").value,qty:customQty}; openGroupForm(null,{type:"custom",from:customFrom,draft:d}); } else customCat=e.target.value; }
+  if(id==="cCat"){ if(e.target.value==="__new"){ const d=customDraft(); openGroupForm(null,{type:"custom",from:customFrom,draft:d}); } else customCat=e.target.value; }
   if(id==="iCat"){ if(e.target.value==="__new"){ const d=itemDraft(); d.cat=iForm.cat; openGroupForm(null,{type:"item",draft:d}); } else iForm.cat=e.target.value; }
   if(id==="rDate" && e.target.value) loadReport(e.target.value);
   if(id==="rBranch"){ repBranch=e.target.value; loadReport(repDate); }

@@ -19,7 +19,7 @@ import java.util.Set;
  * which BillingService then validates with its normal cleanCatalog() and saves.
  *
  * CSV columns (header row, any order; comma / tab / semicolon): group, group_en, emoji, color, item, item_en, size,
- * rate, wholesale, cost, barcode, stock.  Tamil / English aliases are accepted (see ALIAS).
+ * rate, wholesale, cost, barcode, stock, sold_by (count|weight), wt_unit (kg|g; weight items: rate per unit, stock in that unit).  Tamil / English aliases are accepted (see ALIAS).
  * Existing groups / items / sizes are matched by name, so loading the same file twice does not create duplicates.
  */
 final class CatalogImport {
@@ -47,12 +47,14 @@ final class CatalogImport {
         for (String s : new String[]{"color", "colour"}) ALIAS.put(s, "color");
         for (String s : new String[]{"item", "name", "item_ta", "item_name", "product", "ஐட்டம்", "பெயர்"}) ALIAS.put(s, "item");
         for (String s : new String[]{"item_en", "name_en", "product_en", "english"}) ALIAS.put(s, "item_en");
-        for (String s : new String[]{"size", "pack", "unit", "weight", "சைஸ்"}) ALIAS.put(s, "size");
+        for (String s : new String[]{"size", "pack", "unit", "weight", "சைஸ்"}) ALIAS.put(s, "size");   // (weight items: size is ignored)
         for (String s : new String[]{"rate", "price", "mrp", "selling_price", "retail", "விலை"}) ALIAS.put(s, "rate");
         for (String s : new String[]{"wholesale", "wrate", "wholesale_rate", "wholesale_price"}) ALIAS.put(s, "wholesale");
         for (String s : new String[]{"cost", "cost_price", "purchase", "purchase_price"}) ALIAS.put(s, "cost");
         for (String s : new String[]{"barcode", "code", "ean", "sku"}) ALIAS.put(s, "barcode");
         for (String s : new String[]{"stock", "qty", "quantity", "opening_stock"}) ALIAS.put(s, "stock");
+        for (String s : new String[]{"sold_by", "by", "type", "item_type", "முறை"}) ALIAS.put(s, "sold_by");          // count (default) | weight
+        for (String s : new String[]{"wt_unit", "weight_unit", "measure", "அளவு"}) ALIAS.put(s, "wt_unit");          // weight items: kg | g
     }
 
     // ------------------------------------------------------------------ CSV
@@ -149,6 +151,14 @@ final class CatalogImport {
             String gTa = cell(row, col, "group"), gEn = cell(row, col, "group_en");
             String name = cell(row, col, "item"), nameEn = cell(row, col, "item_en");
             String size = cell(row, col, "size");
+            String soldBy = cell(row, col, "sold_by").toLowerCase(Locale.ROOT), wtUnit = cell(row, col, "wt_unit").toLowerCase(Locale.ROOT);
+            boolean byWt = soldBy.startsWith("w") || soldBy.equals("எடை");
+            if (!soldBy.isEmpty() && !byWt && !(soldBy.startsWith("c") || soldBy.equals("எண்ணிக்கை"))) { res.skipped++; err(res, line, name + ": sold_by 'count' அல்லது 'weight' ஆக இருக்க வேண்டும்"); continue; }
+            if (byWt) {
+                if (wtUnit.isEmpty()) wtUnit = "kg";
+                if (!wtUnit.equals("kg") && !wtUnit.equals("g")) { res.skipped++; err(res, line, name + ": wt_unit 'kg' அல்லது 'g'"); continue; }
+                size = "1 " + wtUnit;                       // weight item: one size = the price of 1 kg / 1 g
+            }
             if (name.isEmpty()) { res.skipped++; err(res, line, "ஐட்டம் பெயர் இல்லை"); continue; }
             if (size.isEmpty()) size = "1 pc";
             if (size.length() > 12 || size.indexOf('|') >= 0) { res.skipped++; err(res, line, "Size '" + shorten(size) + "' 12 எழுத்துக்குள் இருக்க வேண்டும்"); continue; }
@@ -163,8 +173,8 @@ final class CatalogImport {
             String qs = cell(row, col, "stock");
             if (!qs.isEmpty()) {
                 Double qd = money(qs);
-                if (qd == null || qd < 0 || qd > 9999999 || qd != Math.floor(qd)) { res.skipped++; err(res, line, name + ": stock தவறு"); continue; }
-                qty = qd.longValue();
+                if (qd == null || qd < 0 || qd > 9999999 || (!byWt && qd != Math.floor(qd))) { res.skipped++; err(res, line, name + ": stock தவறு"); continue; }
+                qty = byWt ? Math.round(qd * (wtUnit.equals("kg") ? 1000 : 1)) : qd.longValue();   // weight stock is kept in grams
             }
 
             // group
@@ -197,9 +207,14 @@ final class CatalogImport {
                 x.put("ta", name);
                 x.put("en", nameEn.codePointCount(0, nameEn.length()) > 60 ? nameEn.substring(0, nameEn.offsetByCodePoints(0, 60)) : nameEn);
                 x.put("sizes", new ArrayList<Object>());
+                if (byWt) { x.put("by", "weight"); x.put("unit", wtUnit); }
                 res.items.add(x);
                 itemByKey.put(key, x);
-            } else if (!nameEn.isEmpty() && String.valueOf(x.get("en")).isEmpty()) x.put("en", nameEn);
+            } else {
+                boolean exWt = "weight".equals(x.get("by"));
+                if (exWt != byWt || (byWt && !wtUnit.equals(String.valueOf(x.get("unit"))))) { res.skipped++; err(res, line, name + ": ஏற்கனவே உள்ள ஐட்டத்தின் விற்பனை முறை / அளவு மாற்ற முடியாது"); continue; }
+                if (!nameEn.isEmpty() && String.valueOf(x.get("en")).isEmpty()) x.put("en", nameEn);
+            }
             List<Object> sizes = (List<Object>) x.get("sizes");
             Map<String, Object> z = null;
             for (Object so : sizes) if (norm(((Map<String, Object>) so).get("size")).equals(norm(size))) { z = (Map<String, Object>) so; break; }
