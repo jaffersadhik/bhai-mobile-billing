@@ -104,12 +104,13 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px 0 0}
 </style>
 </head>
 <body>
-<header class="top"><div class="in"><div class="mark" id="mark">🛒</div><div><h1 id="coName">Online Shop</h1><small id="coTag">ஏற்றுகிறது…</small></div><a class="call" id="coCall" hidden>📞 அழை</a></div></header>
+<header class="top"><div class="in"><div class="mark" id="mark">🛒</div><div><h1 id="coName">Online Shop</h1><small id="coTag">ஏற்றுகிறது…</small></div><button type="button" class="langbtn hdr" id="langBtn" data-langlabel aria-label="Language">🌐</button><a class="call" id="coCall" hidden>📞 அழை</a></div></header>
 <main class="wrap" id="app"><div class="none"><b>⏳</b>ஏற்றுகிறது…</div></main>
 <div class="bar" id="bar" hidden><button id="openCart"><span class="n" id="barN">0</span><span id="barT">₹0</span><span class="go">🛒 Cart பார் ›</span></button></div>
 <div class="veil" id="veil"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true"><button class="x" id="closeSheet" aria-label="Close">✕</button><div id="sb"></div></div>
 <div id="toast"></div>
+<script src="i18n.js"></script>
 <script>
 "use strict";
 const Q=new URLSearchParams(location.search), CODE=(Q.get("s")||"").trim(), ORDER=(Q.get("o")||"").trim();

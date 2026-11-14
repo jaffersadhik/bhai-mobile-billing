@@ -1,0 +1,38 @@
+[
+ {
+  "code": "ta",
+  "native": "தமிழ்",
+  "english": "Tamil",
+  "coverage": 100
+ },
+ {
+  "code": "en",
+  "native": "English",
+  "english": "English",
+  "coverage": 100
+ },
+ {
+  "code": "hi",
+  "native": "हिन्दी",
+  "english": "Hindi",
+  "coverage": 26
+ },
+ {
+  "code": "te",
+  "native": "తెలుగు",
+  "english": "Telugu",
+  "coverage": 26
+ },
+ {
+  "code": "kn",
+  "native": "ಕನ್ನಡ",
+  "english": "Kannada",
+  "coverage": 26
+ },
+ {
+  "code": "ml",
+  "native": "മലയാളം",
+  "english": "Malayalam",
+  "coverage": 26
+ }
+]

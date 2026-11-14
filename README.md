@@ -1,6 +1,6 @@
 # Bhai Mobile Billing — architecture notes (for future development)
 
-Updated: 2026-11-02 (sales report, no-cache fix, barcode scanning, user types + branches + stock)
+Updated: 2026-11-14 (language switcher with English minute line, quick add-branch button)
 
 ## Stack
 - Spring Boot 3.5.x, Java 17, MySQL 8.0.16+ (utf8mb4). Single jar, Docker on AWS EC2. Developer works on Windows (D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing).
@@ -49,8 +49,16 @@ stock has **no FK to item_sizes** on purpose (catalog save deletes and re-insert
 - Cart lives in localStorage per company (`cart` keyed `itemId|size`, `customs` for custom items, which can carry `code`).
 - Report state: `repData, repDate, repBranch`; `branchSalesHtml`, `userSalesHtml`, `reportText` (WhatsApp/copy).
 - Stock: `stockData{branch, branchName, branches?, map}`, `loadStock`, `renderStock` (filters all/neg/zero/low, search, 📷), `openStockEdit` (Set / ± modes), `stockScan`.
-- Admin: user form types sales/stock/owner/admin + branch select (`fillUBranches`); company card 🏬 கிளைகள் → `openBranches`.
+- Admin: user form types sales/stock/owner/admin + branch select (`fillUBranches`); company card ➕ கிளை சேர் (`data-addbranch`, opens the branch sheet with the name box focused) and 🏬 கிளைகள் → `openBranches` (rename / delete / add shop or warehouse).
 - Barcode: `byCode` map built in `buildCatalog()`. `openScanner({title,hint,done,onCode,onClose})` full-screen camera (`#scan`); `onCode` returns true to keep scanning. Native `BarcodeDetector` first, else lazy-loads `vendor/zxing.min.js` (ZXing 0.21.3, Apache-2.0). `scanToCart(code)` adds 1 piece; unknown → `openUnknownCode`. USB/Bluetooth scanners via keyboard-wedge listener. Camera needs HTTPS (`docker-compose.https.yaml`, Caddy).
+
+## Languages (i18n) — `static/i18n.js` + `static/i18n/*.json`
+- Source text in the app is Tamil. `i18n.js` (loaded by `index.html` and `shop.html`) swaps every Tamil phrase for the selected language and shows **English as a small line under it** (selected language is bold). The user picks the language with the 🌐 button on the login screen or in the ☰ menu (`mLang`); the choice is kept in `localStorage` (`bmb_lang`, `bmb_en2` = small English line on/off).
+- Packs: `i18n/languages.json` (list + coverage %), `i18n/en.json` (Tamil → English, complete), `i18n/hi|te|kn|ml.json` (Tamil → translation, screens only partly translated; anything missing falls back to English). Tamil is the source, so it has no pack.
+- How it works: a `MutationObserver` translates text nodes (wrapped in `<x-i18n data-src="Tamil">`), `placeholder / aria-label / title`, `<option>`, `wa.me` links; `confirm / alert / prompt`, `navigator.share`, clipboard and `window.open(wa.me…)` are wrapped; `I18N.html(str)` translates PDF / print HTML; `I18N.srcText(el)` gives the original Tamil of an element (copy buttons). Server error messages (Tamil) go through the same toast path, so no Java change is needed.
+- Item / group names and customer data are NOT translated (they are user data).
+- New screen text: just write Tamil in the code as before, then run `python3 i18n-tools/check_i18n.py` → lists phrases without English; add them to `i18n/en.json` (and other packs). It also writes `i18n-tools/missing-<code>.tsv` (work list for translators) and refreshes coverage.
+- New language: add an entry to `i18n/languages.json`, create `i18n/<code>.json`, add the Noto Sans font of its script to the Google Fonts link / `--body` in `index.html`.
 
 ## API list
 - Session: `POST /login {user, pass}`, `GET /me` (includes `branch` for sales/stock), `POST /logout`, `POST /password`

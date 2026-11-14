@@ -13,15 +13,15 @@
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700&family=Mukta+Malar:wght@600;800&family=Noto+Sans+Tamil:wght@400;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700&family=Mukta+Malar:wght@600;800&family=Noto+Sans+Tamil:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;700&family=Noto+Sans+Telugu:wght@400;700&family=Noto+Sans+Kannada:wght@400;700&family=Noto+Sans+Malayalam:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --leaf:#0e6b4a; --leaf-d:#09442f; --leaf-l:#dff0e7;
   --gold:#e9b431; --gold-l:#fbe7ac;
   --ink:#14231c; --muted:#5f6f66; --line:#dbe6df;
   --bg:#f2f7f4; --card:#fff; --wa:#1faa59; --bad:#b3261e;
-  --body:'DM Sans','Noto Sans Tamil','Latha','Nirmala UI',system-ui,sans-serif;
-  --head:'Mukta Malar','DM Sans','Noto Sans Tamil','Latha',system-ui,sans-serif;
+  --body:'DM Sans','Noto Sans Tamil','Noto Sans Devanagari','Noto Sans Telugu','Noto Sans Kannada','Noto Sans Malayalam','Latha','Nirmala UI',system-ui,sans-serif;
+  --head:'Mukta Malar','DM Sans','Noto Sans Tamil','Noto Sans Devanagari','Noto Sans Telugu','Noto Sans Kannada','Noto Sans Malayalam','Latha',system-ui,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{font-family:var(--body);background:#d9e6de;color:var(--ink);line-height:1.45}
@@ -619,6 +619,7 @@ footer .pw-by b{color:var(--leaf)}
 </head>
 <body>
 <section class="login" id="login" aria-label="Login">
+  <button type="button" class="langbtn" id="langBtn" data-langlabel aria-label="Language">🌐 தமிழ்</button>
   <div class="brand">
     <div class="lmark mlogo" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="16" fill="#0e6b4a"/><path d="M18 12h28a3 3 0 0 1 3 3v37l-5-3-5 3-5-3-5 3-5-3-5 3V15a3 3 0 0 1 3-3z" fill="#fff"/><path d="M23 38V22l9 10 9-10v16" fill="none" stroke="#e9b431" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
     <div class="bis" id="lBis"></div>
@@ -668,6 +669,7 @@ footer .pw-by b{color:var(--leaf)}
 </section>
 <div class="busy" id="busy" aria-hidden="true"><span></span></div>
 
+<script src="i18n.js"></script>
 <script>
 /* ================= EDIT HERE ================= */
 const APP_NAME     = "MBill";
@@ -1192,6 +1194,7 @@ function billText(b){
 const loadScript=src=>new Promise((ok,bad)=>{ if(document.querySelector(`script[src="${src}"]`)&&loadScript[src]) return ok(); const e=document.createElement("script"); e.src=src; e.onload=()=>{loadScript[src]=1;ok();}; e.onerror=bad; document.head.appendChild(e); });
 async function htmlToPdf(doc,name,width){
   await loadScript("vendor/html2canvas.min.js"); await loadScript("vendor/jspdf.umd.min.js");
+  doc=I18N.html(doc);
   const f=document.createElement("iframe"); f.style.cssText=`position:fixed;left:-10000px;top:0;width:${width}px;height:10px;border:0`; document.body.appendChild(f);
   try{
     f.contentDocument.open(); f.contentDocument.write(doc); f.contentDocument.close();
@@ -1568,7 +1571,7 @@ function invoiceText(v,P){
 }
 function printInvoice(i){
   const w=window.open("","_blank"); if(!w){ toast("Popup அனுமதி தேவை"); return; }
-  w.document.write(invoiceDoc(ptCur.invoices[i],ptCur.party,true)); w.document.close();
+  w.document.write(I18N.html(invoiceDoc(ptCur.invoices[i],ptCur.party,true))); w.document.close();
 }
 function invoiceDoc(v,P,print){
   const c=company, half=v.gstPct/2, cg=Math.round(v.gst*50)/100;
@@ -1969,6 +1972,7 @@ function openMenu(){
     ${company?`<button class="mrow" id="mCompany">🏬 கம்பெனி விவரம் (Company)</button>`:""}
     ${isAdmin()||isOwner()?`<button class="mrow" id="mInv">🧾 Software Invoice (${esc(APP_NAME)})</button>`:""}
     ${isAdmin()?`<button class="mrow" id="mAdmin">⚙ Admin Panel — Users / Companies</button>`:""}
+    <button class="mrow" id="mLang">🌐 மொழி / Language <em data-langlabel style="font-style:normal;margin-left:auto;opacity:.7"></em></button>
     <button class="mrow" id="mPw">🔑 கடவுச்சொல் மாற்று (Password)</button>
     <button class="mrow warnr" id="mLogout">⏻ வெளியேறு (Logout)</button>`;
   showSheet();
@@ -2062,7 +2066,7 @@ function renderAdmin(){
     ${cs.length?`<div class="list">${cs.map(c=>`<article class="acard">
         <div class="r1"><div><b>${esc(c.name)}</b><small>${esc([c.owner,c.city].filter(Boolean).join(" · ")||c.tagline||"")}</small></div>${company&&company.id===c.id?`<span class="tag on">திறந்துள்ளது</span>`:""}</div>
         <div class="meta">📞 ${esc(c.phone||"-")}${c.gstin?` · GST ${esc(c.gstin)}`:""}<br>👤 ${c.userCount} users · 🗂 ${c.groupCount} குரூப் · 👗 ${c.itemCount} ஐட்டம் · 🧾 ${c.billCount} பில்</div>
-        <div class="acts"><button class="mini" data-opencomp="${esc(c.id)}">🧾 Billing திற</button><button class="mini" data-editcomp="${esc(c.id)}">✏️ விவரம்</button><button class="mini" data-usersof="${esc(c.id)}">👥 Users · ${c.userCount}</button><button class="mini" data-adduserfor="${esc(c.id)}">👤 User சேர்</button><button class="mini" data-branches="${esc(c.id)}">🏬 கிளைகள் · ${(c.branches||[]).length}</button><button class="mini" data-paymodes="${esc(c.id)}">💳 Payment · ${(c.payModes||[]).filter(m=>m.active).length}</button></div>
+        <div class="acts"><button class="mini" data-opencomp="${esc(c.id)}">🧾 Billing திற</button><button class="mini" data-editcomp="${esc(c.id)}">✏️ விவரம்</button><button class="mini" data-usersof="${esc(c.id)}">👥 Users · ${c.userCount}</button><button class="mini" data-adduserfor="${esc(c.id)}">👤 User சேர்</button><button class="mini" data-addbranch="${esc(c.id)}">➕ கிளை சேர்</button><button class="mini" data-branches="${esc(c.id)}">🏬 கிளைகள் · ${(c.branches||[]).length}</button><button class="mini" data-paymodes="${esc(c.id)}">💳 Payment · ${(c.payModes||[]).filter(m=>m.active).length}</button></div>
       </article>`).join("")}</div>`:`<div class="none"><b>🏬</b>இன்னும் கம்பெனி இல்லை.<br>➕ புது கம்பெனி அழுத்தவும்</div>`}
     <div class="adm-head" id="usersHead"><h2 class="h2">பயனர்கள் · ${us.length}</h2><button class="gbtn" id="addUser">➕ புது User</button></div>
     <div class="ufl"><select id="uFilterCo" aria-label="Filter users by company"><option value="">🏬 எல்லா கம்பெனிகளும் (${us.length})</option>
@@ -3819,6 +3823,7 @@ document.addEventListener("click",e=>{
   if(d.stq){ const v=stNum(); $("#stVal").value=(isFinite(v)?v:0)+Number(d.stq); stPreview(); return; }
   if(t.id==="stSave") return saveStockEdit();
   if(d.branches) return openBranches(d.branches);
+  if(d.addbranch){ openBranches(d.addbranch); setTimeout(()=>{ const i=$("#brNew"); if(i) i.focus(); },300); return; }
   if(t.id==="brAdd"){ const n=$("#brNew").value.trim(); if(!n){ $("#fBrNew").classList.add("bad"); return; } return branchApi(()=>api("admin/branch","POST",{companyId:brCo,name:n,kind:brKind}),(brKind==="warehouse"?"Warehouse":"கிளை")+" சேர்க்கப்பட்டது: "+n); }
   if(d.brkind){ brKind=d.brkind; openBranches(brCo); return; }
   if(d.brsave){ const n=$("#brn_"+CSS.escape(d.brsave)).value.trim(); if(!n){ toast("பெயர் தேவை"); return; } return branchApi(()=>api("admin/branch","POST",{companyId:brCo,id:d.brsave,name:n}),"சேமிக்கப்பட்டது: "+n); }
@@ -3855,7 +3860,7 @@ document.addEventListener("click",e=>{
   if(t.id==="compSave") return saveCompany();
   if(t.id==="compDel") return deleteCompany();
   if(t.id==="compCancel"){ const r=kForm&&kForm.ret; kForm=null; if(r&&r.type==="user"){ r.draft.companyId=""; openUserForm(r.draft.id,r.draft); } else closeSheet(); return; }
-  if(t.id==="credCopy") return copyText($("#credTxt").textContent);
+  if(t.id==="credCopy") return copyText(I18N.srcText($("#credTxt")));
   /* setup */
   if(t.id==="setupSample") return setupCompany("sample");
   if(t.id==="setupEmpty") return setupCompany("empty");
@@ -3940,7 +3945,7 @@ document.addEventListener("click",e=>{
   if(d.pendload) return loadPendingToCart(Number(d.pendload));
   if(d.penddel){ if(!confirm("இந்த pending பில்லை நீக்கவா?")) return; busy(true);
     api("pending/"+d.penddel,"DELETE").then(async()=>{ pendAll=await api("pending"); pendCount=pendAll.count; renderPendingList(); renderView(); toast("Pending நீக்கப்பட்டது"); }).catch(apiErr).finally(()=>busy(false)); return; }
-  if(t.id==="copySum") return copyText($("#sum").textContent);
+  if(t.id==="copySum") return copyText(I18N.srcText($("#sum")));
   if(t.id==="sharePdf"){ sharePdf(d.ph||"",shareText); return; }
   if(d.bpdf!==undefined){ const b=billCache[+d.bpdf]; if(!b) return; shareText=billText(b); prepPdf("bill",b);
     $("#sheetBody").innerHTML=`<h2>📎 ${esc(b.no)} — PDF</h2><p class="sub">${esc(fmtDate(b.at))} · ${inr(b.total)}${b.phone?" · +"+COUNTRY_CODE+" "+esc(b.phone):""}</p>
