@@ -301,6 +301,19 @@ public class ApiController {
     public ResponseEntity<Object> deleteCompany(@RequestHeader(value = AUTH, required = false) String auth,
                                                 @PathVariable("id") String id) { return run(() -> svc.deleteCompany(auth, id)); }
 
+    /** ready-made master data sets (e.g. Dry Fruit Palace) */
+    @GetMapping("/admin/templates")
+    public ResponseEntity<Object> templates(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.templates(auth)); }
+
+    @PostMapping("/admin/company/{id}/template")
+    public ResponseEntity<Object> loadTemplate(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") String id,
+                                               @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.loadTemplate(auth, id, nn(body))); }
+
+    /** import groups / items / sizes (and stock) from CSV text into the company of the session */
+    @PostMapping("/catalog/import")
+    public ResponseEntity<Object> importCatalog(@RequestHeader(value = AUTH, required = false) String auth,
+                                                @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.importCatalog(auth, nn(body))); }
+
     @PostMapping("/admin/user")
     public ResponseEntity<Object> saveUser(@RequestHeader(value = AUTH, required = false) String auth,
                                            @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.saveUser(auth, nn(body))); }

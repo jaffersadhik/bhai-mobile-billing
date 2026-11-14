@@ -15,24 +15,24 @@
   "code": "hi",
   "native": "हिन्दी",
   "english": "Hindi",
-  "coverage": 26
+  "coverage": 24
  },
  {
   "code": "te",
   "native": "తెలుగు",
   "english": "Telugu",
-  "coverage": 26
+  "coverage": 24
  },
  {
   "code": "kn",
   "native": "ಕನ್ನಡ",
   "english": "Kannada",
-  "coverage": 26
+  "coverage": 24
  },
  {
   "code": "ml",
   "native": "മലയാളം",
   "english": "Malayalam",
-  "coverage": 26
+  "coverage": 24
  }
 ]

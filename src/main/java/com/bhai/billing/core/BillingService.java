@@ -108,6 +108,14 @@ public class BillingService {
         for (Map<String, Object> r : db.query("SELECT id FROM companies WHERE shop_code IS NULL"))
             db.update("UPDATE companies SET shop_code = ? WHERE id = ?", hex(bytes(5)), str(r.get("id")));
         if (!hasIndex("companies", "uk_companies_shop")) db.update("ALTER TABLE companies ADD UNIQUE KEY uk_companies_shop (shop_code)");
+        // every company gets its own web address /s/<shop_slug> (name based, editable) and an optional WhatsApp number for online orders
+        if (!hasColumn("companies", "shop_slug")) {
+            db.update("ALTER TABLE companies ADD COLUMN shop_slug VARCHAR(40) NULL");
+            db.update("ALTER TABLE companies ADD COLUMN shop_wa CHAR(10) NULL");
+        }
+        for (Map<String, Object> r : db.query("SELECT id, name FROM companies WHERE shop_slug IS NULL ORDER BY created_at, id"))
+            db.update("UPDATE companies SET shop_slug = ? WHERE id = ?", newSlug(str(r.get("name")), str(r.get("id"))), str(r.get("id")));
+        if (!hasIndex("companies", "uk_companies_slug")) db.update("ALTER TABLE companies ADD UNIQUE KEY uk_companies_slug (shop_slug)");
         if (!hasColumn("bills", "exchange_amount")) {
             db.update("ALTER TABLE bills ADD COLUMN exchange_amount DECIMAL(12,2) NOT NULL DEFAULT 0");
             db.update("ALTER TABLE bills ADD COLUMN exchange_ref VARCHAR(200) NOT NULL DEFAULT ''");
@@ -2842,6 +2850,7 @@ public class BillingService {
         LocalDateTime now = now();
         Object[] f = {name, clip(in.get("tagline"), 60), clip(in.get("owner"), 60), phone, clip(in.get("address"), 200),
                 clip(in.get("city"), 40), gst, email, prefix, bis, footer.isEmpty() ? DEFAULT_FOOTER : footer, now};
+        boolean fresh = id.isEmpty();
         if (id.isEmpty()) {
             id = newId("c");
             db.update("INSERT INTO companies (name, tagline, owner_name, phone, address, city, gstin, email, bill_prefix, show_bismillah, bill_footer, updated_at, id, created_at) "
@@ -2852,9 +2861,15 @@ public class BillingService {
         }
         db.update("UPDATE companies SET bill_fee = ? WHERE id = ?", BigDecimal.valueOf(fee), id);
         db.update("UPDATE companies SET shop_code = ? WHERE id = ? AND shop_code IS NULL", hex(bytes(5)), id);
+        if (db.one("SELECT 1 AS x FROM companies WHERE id = ? AND shop_slug IS NULL", id) != null)
+            db.update("UPDATE companies SET shop_slug = ? WHERE id = ?", newSlug(name, id), id);
+        if (in.containsKey("shopWa")) setShopWa(id, in.get("shopWa"));
         ensureBranches(id);
         ensurePayModes(id);
-        return obj("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", id)));
+        Map<String, Object> out = obj("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", id)));
+        String tpl = str(in.get("template")).trim();
+        if (fresh && !tpl.isEmpty()) out.putAll(tryTemplate(id, tpl, in));
+        return out;
     }
 
     /** Archives the company (its groups, items and bills stay in the database). */
@@ -2926,7 +2941,10 @@ public class BillingService {
             }
             if (!self && (!pw.isEmpty() || !active)) db.update("DELETE FROM auth_tokens WHERE user_id = ?", id);
         }
-        return obj("user", pubUser(db.one("SELECT * FROM users WHERE id = ?", id)));
+        Map<String, Object> out = obj("user", pubUser(db.one("SELECT * FROM users WHERE id = ?", id)));
+        String tpl = str(in.get("template")).trim();
+        if (cid != null && !tpl.isEmpty()) out.putAll(tryTemplate(cid, tpl, in));
+        return out;
     }
 
     public Map<String, Object> deleteUser(String auth, String id) {
@@ -2986,6 +3004,8 @@ public class BillingService {
         p.put("created", iso(ldt(c.get("created_at"))));
         p.put("billFee", round2(dbl(c.get("bill_fee"))));
         p.put("shopCode", str(c.get("shop_code")));
+        p.put("shopSlug", str(c.get("shop_slug")));
+        p.put("shopWa", str(c.get("shop_wa")));
         p.put("shopEnabled", c.get("shop_enabled") == null || bool(c.get("shop_enabled")));
         return p;
     }
@@ -3269,7 +3289,7 @@ public class BillingService {
 
     // ================================================================ online shop (public, by the company's shop code)
     private String shopCompany(String code) {
-        Map<String, Object> r = blank(code) ? null : db.one("SELECT id, shop_enabled FROM companies WHERE shop_code = ? AND archived = 0", code.trim());
+        Map<String, Object> r = blank(code) ? null : db.one("SELECT id, shop_enabled FROM companies WHERE (shop_slug = ? OR shop_code = ?) AND archived = 0", code.trim(), code.trim());
         if (r == null) throw new ApiException(404, "கடை இல்லை (Shop not found)");
         if (!bool(r.get("shop_enabled"))) throw new ApiException(403, "Online ஆர்டர் தற்போது இல்லை");
         return str(r.get("id"));
@@ -3285,6 +3305,8 @@ public class BillingService {
         c.put("phone", str(co.get("phone")));
         c.put("address", str(co.get("address")));
         c.put("city", str(co.get("city")));
+        c.put("wa", shopWa(co));
+        c.put("slug", str(co.get("shop_slug")));
         Map<String, Object> stock = new LinkedHashMap<>();
         for (Map<String, Object> r : db.query("SELECT branch_id, item_id, size_label, qty FROM stock WHERE company_id = ? AND qty > 0", cid)) {
             @SuppressWarnings("unchecked")
@@ -3516,7 +3538,184 @@ public class BillingService {
         if (!c.admin() && !c.owner()) throw new ApiException(403, "Owner / Admin மட்டும்");
         if (in.get("enabled") instanceof Boolean) db.update("UPDATE companies SET shop_enabled = ? WHERE id = ?", (Boolean) in.get("enabled"), cid);
         if (Boolean.TRUE.equals(in.get("newCode"))) db.update("UPDATE companies SET shop_code = ? WHERE id = ?", hex(bytes(5)), cid);
+        if (in.containsKey("slug")) {
+            String sl = clip(in.get("slug"), 40).toLowerCase(Locale.ROOT);
+            if (sl.isEmpty()) sl = newSlug(str(db.one("SELECT name FROM companies WHERE id = ?", cid).get("name")), cid);
+            else if (!CatalogImport.validSlug(sl)) throw new ApiException(400, "Shop address: a-z, 0-9, '-' மட்டும் (3 – 40 எழுத்து, '--' கூடாது)");
+            else if (!slugFree(sl, cid)) throw new ApiException(409, "இந்த shop address ஏற்கனவே வேறு கடைக்கு உள்ளது — வேறு பெயர் தரவும்");
+            db.update("UPDATE companies SET shop_slug = ? WHERE id = ?", sl, cid);
+        }
+        if (in.containsKey("wa")) setShopWa(cid, in.get("wa"));
         return obj("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", cid)));
+    }
+
+    /** web address word of a company: name based and unique, e.g. "Dry Fruit Palace" -> dry-fruit-palace (-2, -3 ... when taken) */
+    private String newSlug(String name, String cid) {
+        String base = CatalogImport.slugBase(name);
+        if (base.length() < 3 || !CatalogImport.validSlug(base)) base = "shop-" + hex(bytes(3));
+        String sl = base;
+        int n = 2;
+        while (!slugFree(sl, cid)) sl = base + "-" + (n++);
+        return sl;
+    }
+
+    private boolean slugFree(String sl, String cid) {
+        if (!CatalogImport.validSlug(sl)) return false;
+        Map<String, Object> r = db.one("SELECT id FROM companies WHERE shop_slug = ? OR shop_code = ?", sl, sl);
+        return r == null || str(r.get("id")).equals(cid);
+    }
+
+    /** WhatsApp number that receives the online orders (blank = the company phone) */
+    private void setShopWa(String cid, Object raw) {
+        String w = str(raw).replaceAll("[^0-9]", "");
+        if (w.length() > 10) w = w.substring(w.length() - 10);
+        if (!w.isEmpty() && !MOBILE.matcher(w).matches()) throw new ApiException(400, "WhatsApp எண்: சரியான 10 இலக்க மொபைல் எண் தேவை");
+        db.update("UPDATE companies SET shop_wa = ? WHERE id = ?", w.isEmpty() ? null : w, cid);
+    }
+
+    private static String shopWa(Map<String, Object> co) {
+        String w = str(co.get("shop_wa"));
+        return w.isEmpty() ? str(co.get("phone")) : w;
+    }
+
+    // ================================================================ master data: ready-made templates + CSV import
+    /** id, title, classpath resource. A template is just a CSV file in the import format (static/templates). */
+    private static final String[][] TEMPLATES = {
+            {"dryfruits", "Dry Fruit Palace — நட்ஸ், பேரீச்சை, உலர் பழம், விதை, பருப்பு, எண்ணெய், அரிசி, மசாலா, மளிகை", "/static/templates/dryfruits.csv"}};
+
+    private static String templateCsv(String id) {
+        for (String[] t : TEMPLATES) {
+            if (!t[0].equals(id)) continue;
+            try (java.io.InputStream is = BillingService.class.getResourceAsStream(t[2])) {
+                if (is == null) throw new ApiException(500, "Template கோப்பு இல்லை");
+                return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            } catch (java.io.IOException e) {
+                throw new ApiException(500, "Template படிக்க முடியவில்லை");
+            }
+        }
+        throw new ApiException(400, "அந்த template இல்லை");
+    }
+
+    /** admin: the ready-made master data sets that can be loaded into a company */
+    public Map<String, Object> templates(String auth) {
+        admin(auth);
+        List<Object> out = new ArrayList<>();
+        for (String[] t : TEMPLATES) {
+            CatalogImport.Result r = CatalogImport.merge(templateCsv(t[0]), null, true);
+            Map<String, Object> n = new LinkedHashMap<>();
+            n.put("id", t[0]);
+            n.put("name", t[1]);
+            n.put("groups", r.cats.size());
+            n.put("items", r.items.size());
+            out.add(n);
+        }
+        return obj("templates", out);
+    }
+
+    /** admin: load a template into one company (merge by name; replace = start from an empty catalog). stock = opening stock per size in every shop (0 = none). */
+    public Map<String, Object> loadTemplate(String auth, String companyId, Map<String, Object> in) {
+        admin(auth);
+        if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", companyId) == null) throw new ApiException(404, "கம்பெனி இல்லை");
+        return applyImport(companyId, templateCsv(str(in.get("template")).trim()), bool(in.get("replace")), tplStock(in, "stock"), null, "template", false);
+    }
+
+    private static long tplStock(Map<String, Object> in, String key) {
+        if (!in.containsKey(key) || in.get(key) == null || str(in.get(key)).isEmpty()) return 100;
+        long q = lng(in.get(key));
+        return Math.max(0, Math.min(100000, q));
+    }
+
+    /** used by saveCompany / saveUser: a template problem must not undo the company / user that was just saved */
+    private Map<String, Object> tryTemplate(String cid, String tpl, Map<String, Object> in) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        try {
+            m.put("template", applyImport(cid, templateCsv(tpl), bool(in.get("templateReplace")), tplStock(in, "templateStock"), null, "template", false));
+        } catch (ApiException e) {
+            m.put("templateError", e.getMessage());
+        }
+        return m;
+    }
+
+    /** admin / owner-less staff (admin, stock, warehouse): import items from CSV text into the company of the session */
+    public Map<String, Object> importCatalog(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireBilling(c);
+        if (c.sales()) throw new ApiException(403, "Sales user-க்கு import அனுமதி இல்லை");
+        String csv = in.get("csv") instanceof String ? (String) in.get("csv") : "";
+        if (csv.length() > 4_000_000) throw new ApiException(400, "CSV மிகப் பெரியது");
+        String br = str(in.get("branchId"));
+        if (br.isEmpty()) br = userBranch(c, cid);
+        else if (branchRow(cid, br) == null) throw new ApiException(400, "கிளை தவறு");
+        String by = str(c.user.get("full_name"));
+        if (by.isEmpty()) by = str(c.user.get("username"));
+        return applyImport(cid, csv, bool(in.get("replace")) && c.admin(), 0, br, by, true);
+    }
+
+    /**
+     * Merges (or replaces) the catalog of one company with CSV rows, in one transaction.
+     * Opening stock: the CSV "stock" column sets the stock of the rows at branchId; openingStock (> 0, templates) adds that qty per size to
+     * every shop of the company where the item has no stock row yet.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> applyImport(String cid, String csv, boolean replace, long openingStock, String branchId, String by, boolean withCatalog) {
+        return db.tx(t -> {
+            Map<String, Object> co = t.one("SELECT catalog_version FROM companies WHERE id = ? FOR UPDATE", cid);
+            if (co == null) throw new ApiException(404, "கம்பெனி இல்லை");
+            long version = lng(co.get("catalog_version"));
+            CatalogImport.Result r = CatalogImport.merge(csv, replace ? null : loadCatalog(t, cid, true), replace);
+            if (r.added + r.updated == 0)
+                throw new ApiException(400, "இறக்குமதி செய்ய சரியான வரிகள் இல்லை" + (r.errors.isEmpty() ? "" : " — " + r.errors.get(0)));
+            Map<String, Object> cin = new LinkedHashMap<>();
+            cin.put("cats", r.cats);
+            cin.put("items", r.items);
+            CleanCatalog clean = cleanCatalog(cin);
+            t.update("DELETE FROM item_groups WHERE company_id = ?", cid);   // cascades to items and item_sizes
+            t.batch("INSERT INTO item_groups (company_id, id, name_ta, name_en, emoji, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)", clean.groups(cid));
+            t.batch("INSERT INTO items (company_id, id, group_id, name_ta, name_en, sort_order) VALUES (?, ?, ?, ?, ?, ?)", clean.items(cid));
+            t.batch("INSERT INTO item_sizes (company_id, item_id, size_label, rate, sort_order, barcode, cost, wrate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clean.sizes(cid));
+            LocalDateTime now = now();
+            t.update("UPDATE companies SET catalog_version = ?, catalog_setup = 1, updated_at = ? WHERE id = ?", version + 1, now, cid);
+
+            Set<String> ok = new HashSet<>();
+            for (Object[] z : clean.sizes) ok.add(z[0] + "|" + z[1]);
+            int stockRows = 0;
+            List<Object[]> setRows = new ArrayList<>(), addRows = new ArrayList<>();
+            Set<String> explicit = new HashSet<>();
+            if (branchId != null) {
+                for (Object[] z : r.stock) {
+                    String k = z[0] + "|" + z[1];
+                    if (!ok.contains(k)) continue;
+                    explicit.add(k);
+                    setRows.add(new Object[]{cid, branchId, z[0], z[1], z[2], now, by, z[2], now, by});
+                }
+            }
+            if (openingStock > 0) {
+                List<String> shops = new ArrayList<>();
+                for (Object b : branchList(cid, "shop")) shops.add(str(((Map<String, Object>) b).get("id")));
+                for (Object[] z : r.touchedSizes) {
+                    String k = z[0] + "|" + z[1];
+                    if (!ok.contains(k) || explicit.contains(k)) continue;
+                    for (String sb : shops) addRows.add(new Object[]{cid, sb, z[0], z[1], openingStock, now, by});
+                }
+            }
+            if (!setRows.isEmpty())
+                t.batch("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                        + "ON DUPLICATE KEY UPDATE qty = ?, updated_at = ?, updated_by = ?", setRows);
+            if (!addRows.isEmpty())
+                t.batch("INSERT INTO stock (company_id, branch_id, item_id, size_label, qty, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                        + "ON DUPLICATE KEY UPDATE qty = qty", addRows);
+            stockRows = setRows.size() + addRows.size();
+
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("rows", r.rows);
+            out.put("added", r.added);
+            out.put("updated", r.updated);
+            out.put("skipped", r.skipped);
+            out.put("stockRows", stockRows);
+            out.put("errors", new ArrayList<Object>(r.errors));
+            if (withCatalog) out.put("catalog", loadCatalog(t, cid, true));
+            return out;
+        });
     }
 
     // ================================================================ passwords / crypto

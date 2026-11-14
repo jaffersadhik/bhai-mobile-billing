@@ -14,4 +14,4 @@ for d in ${1:-liba rasi seeds}; do
   docker compose exec -T -e MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql \
     mysql -uroot --default-character-set=utf8mb4 --max_allowed_packet=64M bmb < "$f"
 done
-echo "done. shop links: https://${DOMAIN:-<domain>}/shop.html?s=libademo | rasidemo | seedsdemo"
+echo "done. shop links: https://${DOMAIN:-<domain>}/s/libademo | /s/rasidemo | /s/seedsdemo  (after the next restart each company also gets a name based address, see Admin -> Website)"

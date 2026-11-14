@@ -271,7 +271,7 @@
 
   /* wa.me text param */
   function fixWa(u) {
-    var q = u.indexOf("?text="); if (q < 0) return u;
+    var q = u.indexOf("?text="); if (q < 0 || u.indexOf("&raw=1") > 0) return u;    // "&raw=1": keep the text as written (e.g. an order sent to the shop stays in the shop's language)
     var t; try { t = decodeURIComponent(u.slice(q + 6)); } catch (e) { return u; }
     return u.slice(0, q + 6) + encodeURIComponent(msgOnly(t));
   }

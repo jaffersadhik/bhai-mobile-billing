@@ -164,6 +164,7 @@ public class PostDeployTests {
         String[][] pages = {
                 {"/", "MBill", "முகப்பு பக்கம் (App)"},
                 {"/shop.html", "<html", "Online shop பக்கம்"},
+                {"/s/dry-fruit-palace", "<base href", "Company website address (/s/<name>)"},
                 {"/vendor/zxing.min.js", "", "Barcode scanner script"},
                 {"/vendor/jspdf.umd.min.js", "", "PDF script (jsPDF)"},
                 {"/vendor/html2canvas.min.js", "", "PDF script (html2canvas)"},
@@ -183,9 +184,9 @@ public class PostDeployTests {
             out.add(new Res("web" + p[0], "web", p[2] + " — " + p[0], st, det, null, System.currentTimeMillis() - t));
         }
         // public shop pages of the companies that have the online shop on
-        for (Map<String, Object> c : db.query("SELECT id, name, shop_code FROM companies WHERE shop_enabled = 1 AND shop_code IS NOT NULL AND shop_code <> '' ORDER BY name")) {
+        for (Map<String, Object> c : db.query("SELECT id, name, shop_code, shop_slug FROM companies WHERE shop_enabled = 1 AND shop_code IS NOT NULL AND shop_code <> '' AND archived = 0 ORDER BY name")) {
             long t = System.currentTimeMillis();
-            String code = s(c.get("shop_code")), st, det;
+            String code = s(c.get("shop_slug")).isEmpty() ? s(c.get("shop_code")) : s(c.get("shop_slug")), st, det;
             try {
                 HttpResponse<String> r = get("/api/shop/" + code, null);
                 boolean ok = r.statusCode() == 200 && r.body().contains("\"items\"");

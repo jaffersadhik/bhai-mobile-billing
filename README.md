@@ -1,6 +1,6 @@
 # Bhai Mobile Billing — architecture notes (for future development)
 
-Updated: 2026-11-14 (language switcher with English minute line, quick add-branch button)
+Updated: 2026-11-14 (language switcher, quick add-branch, per-company website address `/s/<name>`, WhatsApp order number, Dry Fruit Palace master-data template, CSV import)
 
 ## Stack
 - Spring Boot 3.5.x, Java 17, MySQL 8.0.16+ (utf8mb4). Single jar, Docker on AWS EC2. Developer works on Windows (D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing).
@@ -77,3 +77,14 @@ Patches on Windows: extracting the full zip over the folder is simpler than `git
 - Date-range / Excel export of the report.
 - Printing barcode labels for items that have no barcode.
 - Stock movement log (who changed what, bill-wise reductions) and stock transfer between branches.
+
+## Company website (online shop) + WhatsApp orders + master data
+- **Every company has its own web address**: `https://<domain>/s/<shop address>` (e.g. `/s/dry-fruit-palace`). `companies.shop_slug` (unique, a-z 0-9 `-`) is made from the company name (`CatalogImport.slugBase`, `-2`, `-3` if taken) by `migrate()` for all existing companies and by `saveCompany` for new ones. Owner / admin can change it in **🔗 Online shop link** (`POST /shop-settings {slug, wa}`). `shopCompany(code)` resolves slug **or** the old `shop_code`, so old `shop.html?s=<code>` links still work.
+- `web/ShopPageController` serves `static/shop.html` for `GET /s/{slug}` (adds `<base href="/">`; the page reads the slug from the URL path). Public API stays `/api/shop/{slug-or-code}` (+ `/orders`, `/orders/{token}`, `/photo/{id}`).
+- Customers order from catalogue + live stock (existing logic: stock per shop / warehouse, max 5 open orders per mobile). The customer's mobile number is mandatory. After ordering, `shop.html` opens WhatsApp with the full order (name, mobile, address, items, total, status link) to `companies.shop_wa` (blank = company phone) — `https://wa.me/91<number>?text=...&raw=1` (`raw=1` = i18n.js keeps the text in Tamil, the shop's language). Browsers may block the automatic open, so the success screen has a **💬 WhatsApp-ல் ஆர்டரை அனுப்பு** button. Orders also appear in the app under 🛒 ஆர்டர்கள் (existing).
+- Admin company form: *Online ஆர்டர் WhatsApp எண்* (`shopWa`). Company card: **🌐 Website** (opens the shop), **📦 Master data**.
+- **Master data templates**: `static/templates/<id>.csv` + registry `TEMPLATES` in `BillingService` (id, title, path). Only `dryfruits` now (Dry Fruit Palace: 11 groups, 165 items, 502 sizes — nuts, dates, dry fruits, seeds, pulses, oils & ghee, rice & grains, spices, grocery, gift boxes, sweets; **sample prices**, cost = 84 %, wholesale = 95 % of rate). Regenerate with a script that writes the CSV; add a template = add a CSV + one registry row.
+  - Load: company form (new company → *Master data* select), **user form** (new user → select; works for the user's company), company card **📦 Master data** (`POST /admin/company/{id}/template {template, replace, stock}`), `GET /admin/templates`. Default opening stock = 100 per size in every *shop* branch (not warehouses), only where no stock row exists; 0 = none. Loading twice never duplicates (items matched by name; ids are SHA-1 of group+name).
+  - A template problem never undoes the company / user that was just saved: the response then has `templateError`.
+- **CSV import** (☰ → 📥 ஐட்டம் Import; admin / stock): `POST /catalog/import {csv, replace}`; columns `group, group_en, emoji, color, item, item_en, size, rate, wholesale, cost, barcode, stock` (aliases in `CatalogImport.ALIAS`; comma / tab / semicolon; UTF-8). `stock` sets the stock at the user's branch. `replace` = admin only. The sample file is `static/templates/dryfruits.csv`. Logic is in `core/CatalogImport.java` (pure functions: parse → merge into the current catalog → normal `cleanCatalog()` validation → one transaction).
+

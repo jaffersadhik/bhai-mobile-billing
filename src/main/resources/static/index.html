@@ -817,6 +817,46 @@ async function commitCatalog(mutate,okMsg){
   }finally{ catBusy=false; busy(false); }
 }
 
+/* ================= ITEM IMPORT (CSV) ================= */
+let impCsv="";
+function openImport(){
+  impCsv="";
+  $("#sheetBody").innerHTML=`<h2>📥 ஐட்டம் Import (CSV)</h2>
+    <p class="sub">Excel-ல் ஐட்டம் பட்டியல் தயார் செய்து <b>CSV UTF-8</b> ஆக Save செய்யவும். குரூப், ஐட்டம், size, விலை ஏற்றப்படும். ஏற்கனவே உள்ள பெயர் இருந்தால் விலை மட்டும் புதுப்பிக்கப்படும் (duplicate ஆகாது).</p>
+    <div class="box"><p class="hint" style="margin:0 0 6px">Columns: group, group_en, emoji, item, item_en, size, rate, wholesale, cost, barcode, stock<br>தேவை: item, rate (மற்றவை விருப்பம்) · ஒரு size = ஒரு வரி</p>
+      <a class="cta ghost" href="templates/dryfruits.csv" download="sample-items.csv">⬇ Sample CSV பதிவிறக்கு (Dry Fruit Palace)</a></div>
+    <label class="cta ghost" style="display:block;text-align:center;cursor:pointer">📂 CSV கோப்பை தேர்வு செய்<input type="file" id="impFile" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden></label>
+    <p class="hint" id="impInfo" style="text-align:center"></p>
+    ${isAdmin()?`<label class="rem"><input type="checkbox" id="impRep">இருக்கும் எல்லா ஐட்டங்களையும் நீக்கி மாற்று (Replace)</label>`:""}
+    <button class="cta leaf" id="impGo" disabled>📥 Import செய்</button>
+    <button class="cta ghost" data-close>மூடு</button>`;
+  showSheet();
+}
+async function readImpFile(f){
+  if(!f) return;
+  let t=""; try{ t=await f.text(); }catch(e){ toast("கோப்பை படிக்க முடியவில்லை"); return; }
+  impCsv=t; const n=Math.max(0,t.split(/\r?\n/).filter(x=>x.trim()).length-1);
+  const bad=t.indexOf("\uFFFD")>=0;
+  $("#impInfo").textContent=(bad?"⚠️ கோப்பு UTF-8 அல்ல — Excel-ல் 'CSV UTF-8' ஆக Save செய்யவும் · ":"")+"📄 "+f.name+" · "+n+" வரிகள்";
+  $("#impGo").disabled=!n;
+}
+async function runImport(){
+  if(!impCsv) return;
+  const rep=!!($("#impRep")&&$("#impRep").checked);
+  if(rep&&!confirm("இருக்கும் எல்லா ஐட்டம் / குரூப் நீக்கப்படும் (பில் வரலாறு அப்படியே இருக்கும்). உறுதியா?")) return;
+  busy(true);
+  try{
+    const r=await api("catalog/import","POST",{csv:impCsv,replace:rep});
+    catalog=r.catalog; buildCatalog(); purgeCart(); stockData=null; srData=null; impCsv="";
+    const e=r.errors||[];
+    $("#sheetBody").innerHTML=`<div class="ok"><div class="tick">📥</div><h2 style="padding:0">Import முடிந்தது</h2>
+      <p class="sub">✅ புதிய ${r.added} · 🔄 புதுப்பிப்பு ${r.updated}${r.skipped?` · ⚠️ தவிர்த்தது ${r.skipped}`:""}${r.stockRows?` · 📦 ஸ்டாக் ${r.stockRows}`:""}</p>
+      ${e.length?`<div class="warnbox" style="text-align:left">${e.map(esc).join("<br>")}</div>`:""}
+      <button class="cta leaf" data-close>சரி</button></div>`;
+    renderAll();
+  }catch(e){ apiErr(e); } finally{ busy(false); }
+}
+
 /* ================= CART HELPERS ================= */
 const rateOf = (id,size) => byId[id].sizes.find(z=>z.size===size).rate;
 const wrateOf = (id,size) => { const z=byId[id]&&byId[id].sizes.find(x=>x.size===size); return z?(z.wrate!=null?z.wrate:z.rate):0; };   // wholesale selling price (blank = retail)
@@ -1440,7 +1480,7 @@ async function saveTakeOrder(){
       lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate}))})).order; }
   catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; } finally{ busy(false); }
   cart={}; customs={}; save(); renderAll(); ordData=null; loadOrderCount();
-  const url=company.shopCode?location.origin+location.pathname.replace(/[^/]*$/,"")+"shop.html?s="+encodeURIComponent(company.shopCode)+"&o="+o.token:"";
+  const url=shopBase(company)?shopQ(shopBase(company),"o="+o.token):"";
   const msg=orderMsg(o,url);
   $("#sheetBody").innerHTML=`<div class="ok"><div class="tick" style="background:#075985">📝</div>
     <h2 style="padding:0">ஆர்டர் ${esc(o.no)} சேமிக்கப்பட்டது</h2><p class="sub">${esc(o.name)} · ${inr(o.total)} · ${o.mode==="pickup"?"🏬 பிக்அப்":"🚚 டெலிவரி"}<br>🛒 ஆர்டர்கள் (Online + கடை) பட்டியலில் உள்ளது → தயாரானதும் "பில்லாக மாற்று"</p>
@@ -1967,6 +2007,7 @@ function openMenu(){
     ${company&&!isWh()?`<button class="mrow" id="mCancels">✖ ரத்து பில் வரலாறு (Cancel bills)</button>`:""}
     ${company&&!isWh()&&!isSales()?`<button class="mrow" id="mReport">📊 விற்பனை அறிக்கை (Report)</button>`:""}
     ${canEdit()&&catalog.setup?`<button class="mrow" id="mLabels">🏷 Barcode Labels Print</button>`:""}
+    ${company&&(isAdmin()||isStock())?`<button class="mrow" id="mImport">📥 ஐட்டம் Import (CSV / Excel)</button>`:""}
     ${canStock()&&catalog.setup?`<button class="mrow" id="mStock">${isWh()?"🏭 Warehouse ஸ்டாக்":"📦 ஸ்டாக் (Stock)"}</button>`:""}
     ${company&&(isOwner()||isAdmin()||isStock()||isWh())?`<button class="mrow" id="mStockRep">📋 ஸ்டாக் அறிக்கை (Stock report)</button><button class="mrow" id="mPo">📥 Purchase Orders</button><button class="mrow" id="mTr">🚚 Stock Transfers (Warehouse → கிளை)</button>`:""}
     ${company?`<button class="mrow" id="mCompany">🏬 கம்பெனி விவரம் (Company)</button>`:""}
@@ -2065,8 +2106,8 @@ function renderAdmin(){
     <div class="adm-head"><h2 class="h2">கம்பெனிகள் · ${cs.length}</h2><button class="gbtn" id="addCompany">➕ புது கம்பெனி</button></div>
     ${cs.length?`<div class="list">${cs.map(c=>`<article class="acard">
         <div class="r1"><div><b>${esc(c.name)}</b><small>${esc([c.owner,c.city].filter(Boolean).join(" · ")||c.tagline||"")}</small></div>${company&&company.id===c.id?`<span class="tag on">திறந்துள்ளது</span>`:""}</div>
-        <div class="meta">📞 ${esc(c.phone||"-")}${c.gstin?` · GST ${esc(c.gstin)}`:""}<br>👤 ${c.userCount} users · 🗂 ${c.groupCount} குரூப் · 👗 ${c.itemCount} ஐட்டம் · 🧾 ${c.billCount} பில்</div>
-        <div class="acts"><button class="mini" data-opencomp="${esc(c.id)}">🧾 Billing திற</button><button class="mini" data-editcomp="${esc(c.id)}">✏️ விவரம்</button><button class="mini" data-usersof="${esc(c.id)}">👥 Users · ${c.userCount}</button><button class="mini" data-adduserfor="${esc(c.id)}">👤 User சேர்</button><button class="mini" data-addbranch="${esc(c.id)}">➕ கிளை சேர்</button><button class="mini" data-branches="${esc(c.id)}">🏬 கிளைகள் · ${(c.branches||[]).length}</button><button class="mini" data-paymodes="${esc(c.id)}">💳 Payment · ${(c.payModes||[]).filter(m=>m.active).length}</button></div>
+        <div class="meta">📞 ${esc(c.phone||"-")}${c.gstin?` · GST ${esc(c.gstin)}`:""}<br>🌐 ${esc(shopBase(c).replace(/^https?:\/\//,""))}<br>👤 ${c.userCount} users · 🗂 ${c.groupCount} குரூப் · 👗 ${c.itemCount} ஐட்டம் · 🧾 ${c.billCount} பில்</div>
+        <div class="acts"><button class="mini" data-opencomp="${esc(c.id)}">🧾 Billing திற</button><button class="mini" data-editcomp="${esc(c.id)}">✏️ விவரம்</button><button class="mini" data-usersof="${esc(c.id)}">👥 Users · ${c.userCount}</button><button class="mini" data-adduserfor="${esc(c.id)}">👤 User சேர்</button><button class="mini" data-loadtpl="${esc(c.id)}">📦 Master data</button><button class="mini" data-openshop="${esc(c.id)}">🌐 Website</button><button class="mini" data-addbranch="${esc(c.id)}">➕ கிளை சேர்</button><button class="mini" data-branches="${esc(c.id)}">🏬 கிளைகள் · ${(c.branches||[]).length}</button><button class="mini" data-paymodes="${esc(c.id)}">💳 Payment · ${(c.payModes||[]).filter(m=>m.active).length}</button></div>
       </article>`).join("")}</div>`:`<div class="none"><b>🏬</b>இன்னும் கம்பெனி இல்லை.<br>➕ புது கம்பெனி அழுத்தவும்</div>`}
     <div class="adm-head" id="usersHead"><h2 class="h2">பயனர்கள் · ${us.length}</h2><button class="gbtn" id="addUser">➕ புது User</button></div>
     <div class="ufl"><select id="uFilterCo" aria-label="Filter users by company"><option value="">🏬 எல்லா கம்பெனிகளும் (${us.length})</option>
@@ -2105,31 +2146,35 @@ function openCompanyForm(id,ret){
       <label class="fld" id="fkFee">🧾 Software கட்டணம் — ஒரு பில்லுக்கு ₹ (மாத invoice)<input id="kFee" inputmode="decimal" autocomplete="off" placeholder="0.25" value="0.25"><span class="err">0 – 1000 ₹</span></label>
       <label class="fld" id="fkGst">GSTIN (optional)<input id="kGst" maxlength="15" autocomplete="off" style="text-transform:uppercase"><span class="err">15 எழுத்து GSTIN</span></label>
       <label class="fld">Email (optional)<input id="kEmail" type="email" maxlength="80" autocomplete="off"></label>
+      <label class="fld" id="fkWa">💬 Online ஆர்டர் WhatsApp எண் (காலி = மேலே உள்ள மொபைல்)<input id="kWa" inputmode="numeric" maxlength="10" autocomplete="off"><span class="err">சரியான 10 இலக்க எண்</span></label>
+      ${c?`<div class="meta" style="margin:2px 0 8px">🌐 Website: ${esc(shopBase(c))}</div>`:tplBlock("k")}
       <label class="fld">பில் கடைசி வரி<input id="kFoot" maxlength="120" autocomplete="off" placeholder="நன்றி! மீண்டும் வருக 🙏"></label>
       <label class="rem"><input type="checkbox" id="kBis" checked>பில்லில் "${esc(BISMILLAH)}" காட்டு</label>
     </div>
     <button class="cta leaf" id="compSave">${c?"சேமி":"கம்பெனியை உருவாக்கு"}</button>
     ${c?`<div class="two-b"><button class="cta warn" id="compDel">🗑 நீக்கு</button><button class="cta ghost" id="compCancel">ரத்து</button></div>`:`<button class="cta ghost" id="compCancel">ரத்து (Cancel)</button>`}`;
   if(c){ $("#kName").value=c.name||""; $("#kTag").value=c.tagline||""; $("#kOwner").value=c.owner||""; $("#kPhone").value=c.phone||""; $("#kAddr").value=c.address||"";
-    $("#kCity").value=c.city||""; $("#kPrefix").value=c.billPrefix||""; $("#kGst").value=c.gstin||""; $("#kEmail").value=c.email||""; $("#kFoot").value=c.footer||""; $("#kBis").checked=c.bismillah!==false; $("#kFee").value=c.billFee!=null?c.billFee:"0.25"; }
+    $("#kCity").value=c.city||""; $("#kPrefix").value=c.billPrefix||""; $("#kGst").value=c.gstin||""; $("#kEmail").value=c.email||""; $("#kFoot").value=c.footer||""; $("#kWa").value=c.shopWa||""; $("#kBis").checked=c.bismillah!==false; $("#kFee").value=c.billFee!=null?c.billFee:"0.25"; }
   showSheet(); if(!c) setTimeout(()=>{ const i=$("#kName"); if(i) i.focus(); },250);
 }
 async function saveCompany(){
   const b={id:kForm.id||"", name:$("#kName").value.trim(), tagline:$("#kTag").value.trim(), owner:$("#kOwner").value.trim(),
     phone:$("#kPhone").value.replace(/\D/g,""), address:$("#kAddr").value.trim(), city:$("#kCity").value.trim(),
     gstin:$("#kGst").value.trim().toUpperCase(), email:$("#kEmail").value.trim(), billPrefix:$("#kPrefix").value.trim().toUpperCase(),
-    footer:$("#kFoot").value.trim(), bismillah:$("#kBis").checked, billFee:$("#kFee").value.trim()===""?0.25:Number($("#kFee").value.trim())};
+    footer:$("#kFoot").value.trim(), bismillah:$("#kBis").checked, shopWa:$("#kWa").value.replace(/\D/g,""), billFee:$("#kFee").value.trim()===""?0.25:Number($("#kFee").value.trim())};
   const okF=isFinite(b.billFee)&&b.billFee>=0&&b.billFee<=1000; $("#fkFee").classList.toggle("bad",!okF); if(!okF){ toast("ஒரு பில்லுக்கான கட்டணம் தவறு"); return; }
   const okN=!!b.name, okP=/^[6-9]\d{9}$/.test(b.phone), okG=!b.gstin||/^[0-9]{2}[A-Z0-9]{13}$/.test(b.gstin), okX=!b.billPrefix||/^[A-Z0-9]{1,8}$/.test(b.billPrefix);
   $("#fkName").classList.toggle("bad",!okN); $("#fkPhone").classList.toggle("bad",!okP); $("#fkGst").classList.toggle("bad",!okG); $("#fkPrefix").classList.toggle("bad",!okX);
-  if(!okN||!okP||!okG||!okX){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
+  const okW=!b.shopWa||/^[6-9]\d{9}$/.test(b.shopWa); $("#fkWa").classList.toggle("bad",!okW);
+  if(!okN||!okP||!okG||!okX||!okW){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
+  if(!b.id){ const tb=tplBody("k"); if(tb){ b.template=tb.template; b.templateStock=tb.stock; } }
   busy(true);
   try{
     const r=await api("admin/company","POST",b);
     if(company && company.id===r.company.id) company=r.company;
     const ret=kForm.ret; kForm=null;
     await loadAdmin();
-    toast((b.id?"சேமிக்கப்பட்டது: ":"புது கம்பெனி: ")+r.company.name);
+    toast((b.id?"சேமிக்கப்பட்டது: ":"புது கம்பெனி: ")+r.company.name+tplToast(r));
     if(ret && ret.type==="user"){ ret.draft.companyId=r.company.id; openUserForm(ret.draft.id,ret.draft); }
     else closeSheet();
     renderAll();
@@ -2142,6 +2187,43 @@ async function deleteCompany(){
   busy(true);
   try{ await api("admin/company/"+encodeURIComponent(c.id),"DELETE"); if(company&&company.id===c.id){ company=null; catalog={version:0,setup:false,cats:[],items:[]}; buildCatalog(); }
     kForm=null; closeSheet(); await loadAdmin(); renderAll(); toast("கம்பெனி நீக்கப்பட்டது"); }
+  catch(e){ apiErr(e); } finally{ busy(false); }
+}
+/* ---- ready-made master data (templates) ---- */
+const TPL=[{id:"dryfruits",name:"🥜 Dry Fruit Palace — நட்ஸ், பேரீச்சை, உலர் பழம், விதை, பருப்பு, எண்ணெய், அரிசி, மசாலா, மளிகை (165 ஐட்டம்)"}];
+function tplBlock(p,pick){
+  return `<div class="fld" id="${p}TplBox">📦 Master data — தயார் ஐட்டம் பட்டியல் ஏற்று<select id="${p}Tpl">${pick?"":`<option value="">— வேண்டாம் (காலியாக தொடங்கு) —</option>`}${TPL.map(t=>`<option value="${esc(t.id)}">${esc(t.name)}</option>`).join("")}</select>
+    <span class="hint" id="${p}TplCnt"></span>
+    <p class="hint">குரூப், ஐட்டம், size, விலை (மாதிரி விலை) எல்லாம் ஏற்றப்படும்; பின்னர் கடையின் விலைக்கு மாற்றலாம். ஏற்கனவே உள்ள ஐட்டங்களை அழிக்காது.</p>
+    <label class="fld">தொடக்க ஸ்டாக் — ஒவ்வொரு size-க்கும், எல்லா கடைகளிலும் (0 = வேண்டாம்)<input id="${p}TplStock" inputmode="numeric" maxlength="6" value="100"></label></div>`;
+}
+function tplBody(p){
+  const t=$("#"+p+"Tpl"); if(!t||!t.value) return null;
+  const q=($("#"+p+"TplStock").value||"").trim();
+  return {template:t.value, stock:/^\d{1,6}$/.test(q)?Number(q):100};
+}
+function tplToast(r){
+  if(r&&r.template) return " · 📦 "+r.template.added+" புதிய, "+r.template.updated+" புதுப்பிப்பு ஐட்டம்";
+  if(r&&r.templateError) return " · ⚠️ Master data: "+r.templateError;
+  return "";
+}
+function openTplSheet(id){
+  const c=adminData&&adminData.companies.find(x=>x.id===id); if(!c) return;
+  $("#sheetBody").innerHTML=`<h2>📦 Master data ஏற்று</h2><p class="sub">${esc(c.name)} · தற்போது ${c.itemCount||0} ஐட்டம்</p>
+    <div class="box frm">${tplBlock("t",true)}
+      <label class="rem"><input type="checkbox" id="tReplace">இருக்கும் எல்லா ஐட்டங்களையும் நீக்கி புதிதாக ஏற்று (Replace)</label></div>
+    <button class="cta leaf" id="tplGo" data-tplcomp="${esc(id)}">📦 ஏற்று</button><button class="cta ghost" data-close>மூடு</button>`;
+  showSheet();
+}
+async function loadTpl(id){
+  const b=tplBody("t"); if(!b) return;
+  const rep=$("#tReplace").checked;
+  if(rep&&!confirm("இந்த கம்பெனியின் இருக்கும் ஐட்டம் / குரூப் எல்லாம் நீக்கப்படும் (பில் வரலாறு அப்படியே இருக்கும்). உறுதியா?")) return;
+  busy(true);
+  try{ const r=await api("admin/company/"+encodeURIComponent(id)+"/template","POST",{template:b.template,stock:b.stock,replace:rep});
+    if(company&&company.id===id){ try{ const d=await api("data"); catalog=d.catalog||catalog; buildCatalog(); purgeCart(); }catch(_){} }
+    stockData=null; srData=null; closeSheet(); await loadAdmin();
+    toast("📦 "+r.added+" புதிய, "+r.updated+" புதுப்பிப்பு ஐட்டம் ஏற்றப்பட்டது"+(r.stockRows?" · ஸ்டாக் "+r.stockRows:"")); }
   catch(e){ apiErr(e); } finally{ busy(false); }
 }
 let uForm=null;
@@ -2158,7 +2240,7 @@ function openUserForm(id,draft){
       <label class="fld" id="fuName">பெயர் *<input id="uName" maxlength="60" autocomplete="off" placeholder="எ.கா. அமீன்"><span class="err">பெயர் தேவை</span></label>
       <label class="fld" id="fuUser">Username * (login-க்கு)<input id="uUser" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="எ.கா. ameen"><span class="err">3-30 எழுத்து: a-z 0-9 . _ -</span></label>
       <label class="fld" id="fuPass">${u?"புது கடவுச்சொல் (மாற்ற மட்டும்)":"கடவுச்சொல் *"}<div class="pw"><input id="uPass" maxlength="100" autocomplete="off" placeholder="குறைந்தது 6 எழுத்து"><button type="button" class="eye" id="uGen" aria-label="Generate password">🎲</button></div><span class="err">குறைந்தது 6 எழுத்து</span></label>
-      ${u?`<label class="rem"><input type="checkbox" id="uActive">கணக்கு செயலில் (Active)</label>`:""}
+      ${u?`<label class="rem"><input type="checkbox" id="uActive">கணக்கு செயலில் (Active)</label>`:`<div id="fuTpl">${tplBlock("u")}</div>`}
     </div>
     <button class="cta leaf" id="userSave">${u?"சேமி":"User-ஐ உருவாக்கு"}</button>
     <button class="cta ghost" id="userCancel">ரத்து (Cancel)</button>`;
@@ -2176,6 +2258,7 @@ const U_HINT={
 function syncUType(){
   document.querySelectorAll("[data-utype]").forEach(b=>b.classList.toggle("on",b.dataset.utype===uForm.type));
   $("#fuComp").hidden = uForm.type==="admin";
+  if($("#fuTpl")) $("#fuTpl").hidden = uForm.type==="admin";
   $("#fuBranch").hidden = !(uForm.type==="sales"||uForm.type==="stock"||uForm.type==="warehouse");
   $("#uTypeHint").textContent = U_HINT[uForm.type]||"";
   fillUBranches();
@@ -2183,6 +2266,7 @@ function syncUType(){
 function fillUBranches(){
   const sel=$("#uBranch"); if(!sel) return;
   const c=adminData.companies.find(x=>x.id===$("#uComp").value), keep=sel.value||sel.dataset.sel||"";
+  const tc=$("#uTplCnt"); if(tc) tc.textContent=c?(c.itemCount?"ℹ️ இந்த கம்பெனியில் ஏற்கனவே "+c.itemCount+" ஐட்டம் உள்ளது":"ℹ️ இந்த கம்பெனியில் இன்னும் ஐட்டம் எதுவும் இல்லை"):"";
   const wh=uForm&&uForm.type==="warehouse", bs=(c&&c.branches||[]).filter(b=>(b.kind==="warehouse")===wh);
   sel.innerHTML=bs.length?bs.map(b=>`<option value="${esc(b.id)}"${b.id===keep?" selected":""}>${brIco(b)} ${esc(b.name)}</option>`).join("")
     :`<option value="">${c?(wh?"— Warehouse இல்லை: கிளைகள் பகுதியில் 🏭 Warehouse சேர்க்கவும் —":"— கடை கிளை இல்லை —"):"— கம்பெனியை முதலில் தேர்வு செய்யவும் —"}</option>`;
@@ -2196,8 +2280,11 @@ async function saveUser(){
   if(!okU||!okN||!okC||!okP||!okB){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
   busy(true);
   try{
-    const r=await api("admin/user","POST",{id:d.id||"",user:d.user,name:d.name,type:d.type,companyId:d.type!=="admin"?d.companyId:"",branchId:(d.type==="sales"||d.type==="stock"||d.type==="warehouse")?d.branchId:"",password:d.password,active:d.active});
+    const body={id:d.id||"",user:d.user,name:d.name,type:d.type,companyId:d.type!=="admin"?d.companyId:"",branchId:(d.type==="sales"||d.type==="stock"||d.type==="warehouse")?d.branchId:"",password:d.password,active:d.active};
+    const tb=(!d.id&&d.type!=="admin")?tplBody("u"):null; if(tb){ body.template=tb.template; body.templateStock=tb.stock; }
+    const r=await api("admin/user","POST",body);
     uForm=null; await loadAdmin(); renderAll();
+    if(tb||r.templateError){ if(company&&company.id===d.companyId){ try{ const dd=await api("data"); catalog=dd.catalog||catalog; buildCatalog(); purgeCart(); stockData=null; srData=null; renderAll(); }catch(_){} } setTimeout(()=>toast((r.template?"✅":"")+tplToast(r).replace(/^ · /,"")),400); }
     if(d.password) openCreds(r.user,d.password); else { closeSheet(); toast("சேமிக்கப்பட்டது: "+r.user.name); }
   }catch(e){ apiErr(e); } finally{ busy(false); }
 }
@@ -3080,10 +3167,17 @@ async function deletePhoto(){
 }
 
 /* ================= ONLINE SHOP LINK + ONLINE ORDERS ================= */
+/* each company's own web address: https://<domain>/s/<shop address>  (old shop.html?s=<code> links still work) */
+function shopBase(c){
+  c=c||company; if(!c) return "";
+  if(c.shopSlug) return location.origin+"/s/"+encodeURIComponent(c.shopSlug);
+  return c.shopCode?location.origin+location.pathname.replace(/[^/]*$/,"")+"shop.html?s="+encodeURIComponent(c.shopCode):"";
+}
+const shopQ=(base,q)=>base+(base.indexOf("?")<0?"?":"&")+q;
 function shopLink(phone){
-  const c=company; if(!c||!c.shopCode||c.shopEnabled===false) return "";
-  const base=location.origin+location.pathname.replace(/[^/]*$/,"")+"shop.html?s="+encodeURIComponent(c.shopCode);
-  return base+(phone&&/^\d{10}$/.test(phone)?"&m="+phone:"");
+  const c=company; if(!c||(!c.shopSlug&&!c.shopCode)||c.shopEnabled===false) return "";
+  const base=shopBase(c);
+  return phone&&/^\d{10}$/.test(phone)?shopQ(base,"m="+phone):base;
 }
 let ordData=null, ordLoading=false, ordFlt="open", ordCur=null, ordNew=0, ordForBill=null;
 const OST={new:"🆕 புதிய ஆர்டர்",accepted:"👍 ஏற்கப்பட்டது",billed:"🧾 பில் ஆனது",out:"🚚 டெலிவரியில்",delivered:"✅ டெலிவரி ஆனது",cancelled:"✖ ரத்து"};
@@ -3110,7 +3204,7 @@ function renderOrders(){
 function openOrder(id){
   const o=(ordData.orders||[]).find(x=>x.id===+id); if(!o) return; ordCur=o;
   const can=ordData.canAct, done=o.status==="delivered"||o.status==="cancelled";
-  const statusUrl=company.shopCode?location.origin+location.pathname.replace(/[^/]*$/,"")+"shop.html?s="+encodeURIComponent(company.shopCode)+"&o="+o.token:"";
+  const statusUrl=shopBase(company)?shopQ(shopBase(company),"o="+o.token):"";
   $("#sheetBody").innerHTML=`<h2>🛒 ${esc(o.no)} <span class="ost ${esc(o.status)}">${OST[o.status]||""}</span></h2>
     <p class="sub">${o.source==="staff"?`📝 ${esc(o.takenBy)} எடுத்த ஆர்டர் · `:"🌐 Online ஆர்டர் · "}${esc(fmtDate(o.at))}${o.handledBy?" · 👤 "+esc(o.handledBy):""}${o.billNo?" · 🧾 "+esc(o.billNo):""}</p>
     <div class="box"><dl class="dl"><dt>பெயர்</dt><dd>${esc(o.name)}</dd><dt>மொபைல்</dt><dd><a href="tel:+${COUNTRY_CODE}${esc(o.phone)}">${esc(o.phone)}</a></dd>
@@ -3153,9 +3247,24 @@ function openShopLink(){
     <a class="cta leaf" href="${esc(url)}" target="_blank" rel="noopener">🛍 Shop-ஐ திற</a>
     <a class="cta" href="https://wa.me/?text=${encodeURIComponent(company.name+" — Online-ல் ஆர்டர் செய்ய: "+url)}" target="_blank" rel="noopener">📤 WhatsApp-ல் பகிர்</a>
     <button class="cta ghost" id="shopCopy">📋 Copy link</button>`:`<div class="warnbox">Online shop தற்போது நிறுத்தப்பட்டுள்ளது</div>`}
-    ${isOwner()||isAdmin()?`<button class="cta ghost" id="shopToggle">${company.shopEnabled===false?"▶ Online shop-ஐ தொடங்கு":"⏸ Online shop-ஐ நிறுத்து"}</button>`:""}
+    <p class="hint" style="margin:8px 2px 0">💬 ஆர்டர்கள் வரும் WhatsApp: <b>${esc(company.shopWa||company.phone||"-")}</b></p>
+    ${isOwner()||isAdmin()?`<div class="box frm" style="margin-top:10px">
+      <label class="fld" id="fsSlug">🌐 Shop address (a-z, 0-9, -)<input id="shSlug" maxlength="40" autocomplete="off" autocapitalize="none" spellcheck="false" value="${esc(company.shopSlug||"")}"><span class="err">3 – 40 எழுத்து: a-z 0-9 - (ஆங்கிலம்)</span></label>
+      <label class="fld" id="fsWa">💬 ஆர்டர் வரும் WhatsApp எண்<input id="shWa" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="${esc(company.phone||"")}" value="${esc(company.shopWa||"")}"><span class="err">சரியான 10 இலக்க எண்</span></label>
+      <p class="hint">வாடிக்கையாளர் ஆர்டர் செய்தவுடன் ஆர்டர் விவரம் இந்த WhatsApp எண்ணுக்கு செல்லும் (காலி = கம்பெனி மொபைல்). Address மாற்றினால் பழைய address வேலை செய்யாது.</p></div>
+    <button class="cta leaf" id="shopSave">💾 Address / WhatsApp சேமி</button>
+    <button class="cta ghost" id="shopToggle">${company.shopEnabled===false?"▶ Online shop-ஐ தொடங்கு":"⏸ Online shop-ஐ நிறுத்து"}</button>`:""}
     <button class="cta ghost" data-close>மூடு</button>`;
   showSheet();
+}
+async function shopSave(){
+  const slug=$("#shSlug").value.trim().toLowerCase(), wa=$("#shWa").value.replace(/\D/g,"");
+  const okS=/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(slug)&&slug.indexOf("--")<0, okW=!wa||/^[6-9]\d{9}$/.test(wa);
+  $("#fsSlug").classList.toggle("bad",!okS); $("#fsWa").classList.toggle("bad",!okW);
+  if(!okS||!okW){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
+  busy(true);
+  try{ const r=await api("shop-settings","POST",{slug,wa}); company=r.company; if(adminData) loadAdmin(); toast("சேமிக்கப்பட்டது"); openShopLink(); }
+  catch(e){ apiErr(e); } finally{ busy(false); }
 }
 async function shopToggle(){
   busy(true);
@@ -3753,8 +3862,11 @@ document.addEventListener("click",e=>{
   if(t.id==="toStock"){ stockData=null; location.hash="stock"; return; }
   if(t.id==="mOrders"){ closeSheet(); ordData=null; if(location.hash!=="#orders") location.hash="orders"; else loadOrders(); return; }
   if(t.id==="mShop"){ openShopLink(); return; }
+  if(t.id==="mImport"){ openImport(); return; }
+  if(t.id==="impGo"){ runImport(); return; }
   if(t.id==="shopCopy"){ copyText(shopLink("")); return; }
   if(t.id==="shopToggle"){ shopToggle(); return; }
+  if(t.id==="shopSave"){ shopSave(); return; }
   if(d.ordflt){ ordFlt=d.ordflt; ordData=null; loadOrders(); return; }
   if(d.ordopen){ openOrder(d.ordopen); return; }
   if(d.ordset){ if(d.ordset==="cancelled"){ const n=prompt("ரத்து காரணம் (வாடிக்கையாளருக்கு தெரியும்)"); if(n===null) return; setOrder({status:"cancelled",note:n}); } else setOrder({status:d.ordset}); return; }
@@ -3823,6 +3935,9 @@ document.addEventListener("click",e=>{
   if(d.stq){ const v=stNum(); $("#stVal").value=(isFinite(v)?v:0)+Number(d.stq); stPreview(); return; }
   if(t.id==="stSave") return saveStockEdit();
   if(d.branches) return openBranches(d.branches);
+  if(d.loadtpl){ openTplSheet(d.loadtpl); return; }
+  if(t.id==="tplGo"){ loadTpl(d.tplcomp); return; }
+  if(d.openshop){ const c=adminData&&adminData.companies.find(x=>x.id===d.openshop); if(c&&shopBase(c)) window.open(shopBase(c),"_blank","noopener"); return; }
   if(d.addbranch){ openBranches(d.addbranch); setTimeout(()=>{ const i=$("#brNew"); if(i) i.focus(); },300); return; }
   if(t.id==="brAdd"){ const n=$("#brNew").value.trim(); if(!n){ $("#fBrNew").classList.add("bad"); return; } return branchApi(()=>api("admin/branch","POST",{companyId:brCo,name:n,kind:brKind}),(brKind==="warehouse"?"Warehouse":"கிளை")+" சேர்க்கப்பட்டது: "+n); }
   if(d.brkind){ brKind=d.brkind; openBranches(brCo); return; }
@@ -4040,6 +4155,7 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   if(e.target.id==="ifParty"){ ifRates(); invForm.paid=($("#ifPaid")||{}).value||""; if(e.target.value==="__new"){ invForm.pickNew=true; openPartyForm(null); } else { invFormParty=e.target.value; openInvoiceForm(); } return; }
+  if(e.target.id==="impFile"){ readImpFile(e.target.files&&e.target.files[0]); e.target.value=""; return; }
   if(e.target.id==="phFile"&&e.target.files&&e.target.files[0]){ uploadPhoto(e.target.files[0]); e.target.value=""; return; }
   const id=e.target.id;
   if(id==="cPerm") togglePerm();

@@ -113,7 +113,11 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px 0 0}
 <script src="i18n.js"></script>
 <script>
 "use strict";
-const Q=new URLSearchParams(location.search), CODE=(Q.get("s")||"").trim(), ORDER=(Q.get("o")||"").trim();
+const Q=new URLSearchParams(location.search), PM=location.pathname.match(/\/s\/([^\/?#]+)/), PATHCODE=PM?decodeURIComponent(PM[1]):"",
+      CODE=(PATHCODE||Q.get("s")||"").trim(), ORDER=(Q.get("o")||"").trim();
+/* the shop's own address: /s/<name> (new) or shop.html?s=<code> (old links) */
+const SHOPURL=PATHCODE?location.origin+"/s/"+encodeURIComponent(PATHCODE):location.origin+location.pathname+"?s="+encodeURIComponent(CODE);
+const trackUrl=t=>SHOPURL+(SHOPURL.indexOf("?")<0?"?":"&")+"o="+t;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const inr=v=>"₹"+Number(v||0).toLocaleString("en-IN",{maximumFractionDigits:2});
@@ -251,13 +255,22 @@ async function placeOrder(){
   try{
     const r=await api("/orders","POST",{name,phone,mode,address,branch,notes,lines:cartKeys().map(k=>({itemId:k.split("|")[0],size:k.split("|")[1],qty:cart[k]}))});
     const L=ls.get("orders",[]); L.unshift({no:r.no,token:r.token,at:new Date().toISOString(),total:r.total}); ls.set("orders",L.slice(0,30));
+    const ordLines=cartKeys().map(k=>{ const [id,sz]=k.split("|"); return {n:byId[id].ta,sz,q:cart[k],r:rateOf(k)}; });
+    const brName=((S.branches.find(b=>b.id===branch))||{}).name||"";
     cart={}; saveCart(); render();
-    const link=location.origin+location.pathname+"?s="+encodeURIComponent(CODE)+"&o="+r.token;
+    const link=trackUrl(r.token);
+    const waNo=(S.company.wa||S.company.phone||"").replace(/\D/g,"").slice(-10);
+    const waMsg=[`*${S.company.name}* — புதிய Online ஆர்டர் ${r.no}`,
+      `👤 ${name}`,`📱 ${phone}`,mode==="pickup"?"🏬 கடையில் பெறுவார் (Pickup)":"🚚 டோர் டெலிவரி",mode==="pickup"?null:`📍 ${address}`,brName?`🏬 கடை: ${brName}`:null,"",
+      ...ordLines.map((l,i)=>`${i+1}. ${l.n} (${l.sz}) × ${l.q} = ${inr(l.r*l.q)}`),"",`*மொத்தம்: ${inr(r.total)}*`,notes?`📝 ${notes}`:null,
+      `ஆர்டர் நிலை: ${link}`].filter(x=>x!==null).join("\n");
+    const waUrl="https://wa.me/91"+waNo+"?text="+encodeURIComponent(waMsg)+"&raw=1";
     $("#sb").innerHTML=`<div class="ok"><div class="tick">✓</div><h2>ஆர்டர் ${esc(r.no)} பெறப்பட்டது</h2>
       <p class="sub">${inr(r.total)} · கடை உறுதி செய்தவுடன் நிலை மாறும். இந்த link-ல் எப்போதும் நிலையை பார்க்கலாம்.</p>
-      <a class="cta" href="${esc(link)}">📦 ஆர்டர் நிலை பார் (Track)</a>
-      ${S.company.phone?`<a class="cta ghost" href="https://wa.me/91${esc(S.company.phone)}?text=${encodeURIComponent("அந்த ஏக இறைவனின் சாந்தியும் சமாதானமும் உண்டாவதாக. Online ஆர்டர் "+r.no+" ("+inr(r.total)+") செய்துள்ளேன். நிலை: "+link)}" target="_blank" rel="noopener">💬 கடைக்கு WhatsApp</a>`:""}
+      <a class="cta ghost" href="${esc(link)}">📦 ஆர்டர் நிலை பார் (Track)</a>
+      ${waNo?`<p class="sub" style="margin-top:6px">📲 கடைக்கு WhatsApp-ல் ஆர்டர் விவரத்தை அனுப்பினால் உடனே பார்ப்பார்கள்</p><a class="cta" id="waSend" href="${esc(waUrl)}" target="_blank" rel="noopener">💬 WhatsApp-ல் ஆர்டரை அனுப்பு</a>`:""}
       <button class="cta ghost" id="closeSheet2">மேலும் ஷாப்பிங்</button></div>`;
+    if(waNo){ try{ window.open(waUrl,"_blank","noopener"); }catch(e){} }   // opens WhatsApp right away where the browser allows it; the button above always works
   }catch(e){ toast(e.message); btn.disabled=false; }
 }
 const FLOW=[["new","ஆர்டர் பெறப்பட்டது","🧾"],["accepted","கடை ஏற்றுக்கொண்டது","👍"],["billed","பில் போடப்பட்டது / பேக் ஆனது","📦"],["out","டெலிவரிக்கு புறப்பட்டது","🚚"],["delivered","டெலிவரி / பெறப்பட்டது","✅"]];
@@ -275,7 +288,7 @@ async function showOrder(token){
     <div class="box">${(o.lines||[]).map(l=>{ const it=byId[l.id]||{cat:"",ta:l.name}; return `<div class="cl"><div class="th" style="--tint:${esc(tint(it))}">${it.id?pic(it):"🛍"}</div><div><b>${esc(l.name)}</b><small>${esc(l.size)} · ${inr(l.rate)} × ${l.qty}</small></div><b>${inr(l.amt)}</b></div>`; }).join("")}
       <div class="tot"><span>மொத்தம்</span><span>${inr(o.total)}</span></div></div>
     <button class="cta ghost" id="refresh">🔄 நிலையை புதுப்பி</button>
-    <a class="cta" href="${esc(location.pathname+"?s="+encodeURIComponent(CODE))}">🛍 மேலும் ஷாப்பிங்</a>
+    <a class="cta" href="${esc(PATHCODE?"/s/"+encodeURIComponent(PATHCODE):location.pathname+"?s="+encodeURIComponent(CODE))}">🛍 மேலும் ஷாப்பிங்</a>
     <footer>${esc(S.company.name)} · Powered by MBill · Mobile Bill</footer>`;
 }
 async function openMyOrders(){
