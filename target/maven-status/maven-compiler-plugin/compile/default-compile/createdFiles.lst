@@ -1,12 +1,12 @@
-com\bhai\billing\config\AppConfig.class
 com\bhai\billing\core\Db$TxWork.class
 com\bhai\billing\core\BillingService$Ctx.class
-com\bhai\billing\core\BillingService$CleanCatalog.class
 com\bhai\billing\core\DbException.class
 com\bhai\billing\core\ApiException.class
-com\bhai\billing\core\JdbcDb$ConnWork.class
 com\bhai\billing\core\Db.class
-com\bhai\billing\BillingApplication.class
 com\bhai\billing\web\ApiController.class
 com\bhai\billing\core\BillingService.class
+com\bhai\billing\config\AppConfig.class
+com\bhai\billing\core\BillingService$CleanCatalog.class
+com\bhai\billing\core\JdbcDb$ConnWork.class
+com\bhai\billing\BillingApplication.class
 com\bhai\billing\core\JdbcDb.class

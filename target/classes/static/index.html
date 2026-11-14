@@ -607,6 +607,14 @@ footer .pw-by b{color:var(--leaf)}
 .lmark.mlogo{background:none;padding:0;overflow:hidden}.lmark.mlogo svg{width:100%;height:100%;display:block}
 .brkind{font-size:11px;font-weight:800;border-radius:7px;padding:2px 6px;background:#dff1ff;color:#0b4f80;margin-left:4px}
 .whcats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.whcat{border:0;border-radius:12px;padding:10px 6px;display:flex;flex-direction:column;align-items:center;gap:4px;font:inherit;cursor:pointer}.whcat span{font-size:24px}.whcat b{font-size:12px}
+.qa-al{display:block;width:100%;text-align:left;border:0;border-radius:14px;padding:12px 14px;margin:10px 0;font:inherit;line-height:1.45}.qa-al.bad{background:#fde2e2;color:#8a1c12;border:2px solid #f19c94;cursor:pointer}.qa-al.ok{background:#e3f4ea;color:#14532d}.qa-al.run{background:#fff4d6;color:#7a4b00}
+.qa-head{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.qa-head div{flex:1;min-width:110px;background:#fff;border-radius:12px;padding:8px 10px;border:1px solid #e3ebe6}.qa-head small{display:block;color:#5c6b63;font-size:11px}.qa-head b{font-size:13px;word-break:break-all}
+.qa-r{padding:8px 0;border-bottom:1px solid #eef2ef}.qa-r .r1{display:flex;gap:6px;align-items:flex-start}.qa-r b{font-size:13px;flex:1}.qa-r small{display:block;color:#5c6b63;font-size:11.5px;margin-top:2px;word-break:break-word}.qa-r.fail b{color:#b42318}
+.qa-run{display:grid;grid-template-columns:1fr auto;gap:2px 8px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid #eef2ef;padding:8px 4px;font:inherit;cursor:pointer}.qa-run.on{background:#eef7f1}.qa-run small{grid-column:1/-1;color:#5c6b63}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:8px 0}
+.sr-gbar{display:flex;gap:8px;margin:12px 0 4px}.sr-gbar select{flex:1;min-width:0;padding:10px;border-radius:12px;border:1.5px solid #cfe0d6;font:inherit;font-weight:700;background:#fff}
+.sr-gtiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}.sr-gt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:#fff;border:1.5px solid #e1ebe5;border-radius:14px;padding:12px;font:inherit;cursor:pointer}
+.sr-gt .e{font-size:26px}.sr-gt b{font-size:14px}.sr-gt small{color:#5c6b63;font-size:12px}.sr-gt small.neg{color:var(--bad);font-weight:700}
 </style>
 </head>
 <body>
@@ -827,6 +835,7 @@ function view(){
   const h=location.hash.slice(1);
   if(h==="admin" && isAdmin()) return "admin";
   if(h==="inv" && (isAdmin()||isOwner())) return "inv";
+  if(h==="qa" && isAdmin()) return "qa";
   if(!company) return isAdmin() ? "admin" : "nocompany";
   if(isWh()&&catalog.setup&&catById[h]) return "cat";
   if(isWh()&&(h==="parties"||h==="money")) return h;
@@ -868,6 +877,7 @@ function renderBar(){
   else if(v==="money") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">💳 பணம் — வர / செலுத்த வேண்டியது</h1></div>`;
   else if(v==="parties") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">📒 Wholesale / Retailers</h1></div>`;
   else if(v==="orders") left=`${isOwner()?`<div class="mark" aria-hidden="true">🛒</div>`:`<button class="back" id="toHome" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">🛒 ஆர்டர்கள் (Online + கடை)</h1></div>`;
+  else if(v==="qa") left=`<button class="back" id="toAdmin" aria-label="Back">←</button><div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">🧪 Post-deploy Tests</h1></div>`;
   else if(v==="inv") left=`<button class="back" id="${isAdmin()?"toAdmin":"toHome"}" aria-label="Back">←</button><div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">🧾 Software Invoice</h1></div>`;
   else if(v==="labels") left=`<button class="back" id="toHome" aria-label="Back">←</button><div><span class="appline">${esc(company.name)}</span><h1 class="co">🏷 Barcode Labels</h1></div>`;
   else if(v==="tr") left=`${isOwner()?`<div class="mark" aria-hidden="true">🚚</div>`:`<button class="back" id="toHome" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">🚚 Stock Transfers</h1></div>`;
@@ -916,6 +926,7 @@ function renderView(){
   else if(v==="po") html=renderPoList();
   else if(v==="tr") html=renderTr();
   else if(v==="labels") html=renderLabels();
+  else if(v==="qa") html=renderQa();
   else if(v==="inv") html=renderInv();
   else if(v==="orders") html=renderOrders();
   else if(v==="parties") html=renderParties();
@@ -1990,14 +2001,62 @@ async function savePw(){
 
 /* ================= ADMIN PANEL ================= */
 async function loadAdmin(){
-  try{ const [ov,sl]=await Promise.all([api("admin/overview"),api("admin/sales").catch(()=>null)]); adminData=ov; adminData.sales=sl; }
+  try{ const [ov,sl,qa]=await Promise.all([api("admin/overview"),api("admin/sales").catch(()=>null),api("admin/tests/alert").catch(()=>null)]); adminData=ov; adminData.sales=sl; adminData.qa=qa; }
   catch(e){ apiErr(e); if(!adminData) adminData={companies:[],users:[]}; }
   if(view()==="admin") renderView();
+}
+/* ---- post-deploy (live) tests: results, alert for failures, rollback request ---- */
+let qaData=null, qaSel=null, qaFlt="bad", qaLoading=false, qaPoll=null;
+function qaBanner(q){
+  const tile=`<button class="admin" id="openQa" style="margin:10px 0"><span class="pl" aria-hidden="true">🧪</span><div><b>Post-deploy Tests — Build ${esc(q?q.build:"")}</b><small>ஒவ்வொரு deploy-க்குப் பிறகும் தானாக இயங்கும் · முடிவுகள் · முந்தைய build ஒப்பீடு · Rollback</small></div></button>`;
+  if(!q||!q.last) return tile;
+  const L=q.last;
+  if(q.running) return `<div class="qa-al run">⏳ Build ${esc(q.build)} — tests இயங்குகிறது…</div>`+tile;
+  if(L.failed>0) return `<button class="qa-al bad" id="openQa">🚨 <b>ALERT: ${L.failed} test தோல்வி</b>${L.regressions?` · ${L.regressions} regression (முந்தைய build-ல் சரியாக இருந்தது)`:""}<br><small>Build ${esc(L.build)} · ${esc(fmtDate(L.at))} · பார்த்து தேவையெனில் Rollback செய்யவும் →</small></button>`+tile;
+  return `<div class="qa-al ok">✅ Build ${esc(L.build)} — ${L.passed}/${L.total} tests சரி${L.warned?` · ⚠️ ${L.warned} எச்சரிக்கை`:""}</div>`+tile;
+}
+async function loadQa(){
+  if(qaLoading) return; qaLoading=true;
+  try{ qaData=await api("admin/tests"+(qaSel?"?run="+qaSel:"")); }catch(e){ apiErr(e); qaData={error:e.message}; } finally{ qaLoading=false; }
+  clearTimeout(qaPoll); if(qaData&&qaData.running) qaPoll=setTimeout(()=>{ if(view()==="qa"){ qaSel=null; loadQa(); } },3000);
+  if(view()==="qa") renderView();
+}
+async function qaRerun(){ busy(true); try{ await api("admin/tests/run","POST",{}); toast("Tests தொடங்கியது"); qaSel=null; setTimeout(loadQa,800); }catch(e){ apiErr(e); } finally{ busy(false); } }
+async function qaRollback(){
+  const D=qaData&&qaData.deploy, info=D&&D.info||{};
+  const withDb=$("#qaDb")&&$("#qaDb").checked;
+  if(!confirm(`Build ${info.current||qaData.build} → முந்தைய build ${info.previous} க்கு திரும்ப (Rollback)?${withDb?"\n\n⚠️ Database-ம் deploy-க்கு முந்தைய backup-க்கு திரும்பும் — அதன் பிறகு போட்ட பில்கள் அழியும்!":""}`)) return;
+  busy(true); try{ const r=await api("admin/rollback","POST",{withDb}); qaData.deploy=r; toast("Rollback கோரப்பட்டது — 1-2 நிமிடத்தில் நடக்கும்"); renderView(); }catch(e){ apiErr(e); } finally{ busy(false); }
+}
+function renderQa(){
+  if(!qaData){ if(!qaLoading) setTimeout(loadQa,0); return `<div class="none"><b>⏳</b>ஏற்றுகிறது…</div>`; }
+  if(qaData.error) return `<div class="none"><b>⚠️</b>${esc(qaData.error)}</div>`;
+  const q=qaData, R=q.run, D=q.deploy||{}, info=D.info||{}, rb=D.rollback;
+  const res=(q.results||[]), cnt=k=>res.filter(x=>k==="bad"?x.status!=="pass":k==="all"?true:x.status===k).length;
+  const shown=res.filter(x=>qaFlt==="bad"?x.status!=="pass":qaFlt==="all"?true:x.status===qaFlt);
+  const ST={pass:"✅",fail:"❌",warn:"⚠️"};
+  return `<section class="qa-head"><div><small>இயங்கும் Build</small><b>${esc(q.build)}</b></div>${info.previous?`<div><small>முந்தைய Build</small><b>${esc(info.previous)}</b></div>`:""}${info.deployedAt?`<div><small>Deploy</small><b>${esc(info.deployedAt)}</b></div>`:""}</section>
+    ${q.running?`<div class="qa-al run">⏳ Tests இயங்குகிறது… (தானாக refresh ஆகும்)</div>`:""}
+    ${R?`<div class="qa-al ${R.failed?"bad":"ok"}">${R.failed?`🚨 <b>${R.failed} தோல்வி</b>`:"✅ <b>எல்லாம் சரி</b>"} · ${R.passed} pass · ${R.warned} warn · மொத்தம் ${R.total}${R.regressions?` · <b>${R.regressions} regression</b>`:""}<br><small>Run #${R.id} · ${esc(fmtDate(R.at))} · ${esc(R.trigger)}${R.prevBuild?` · ஒப்பீடு: build ${esc(R.prevBuild)}`:""}</small></div>`:`<div class="none" style="padding:14px">இன்னும் test run இல்லை</div>`}
+    <button class="cta leaf" id="qaRerun"${q.running?" disabled":""}>▶ இப்போது Tests இயக்கு</button>
+    <div class="box"><h3>↩ Build Rollback</h3>
+      ${!D.ctl?`<p class="hint">இந்த server-ல் rollback வசதி அமைக்கப்படவில்லை. Server-ல் <code>sudo bash deploy/oracle/setup.sh &lt;domain&gt;</code> மீண்டும் இயக்கவும் (deploy/oracle/README.md).</p>`
+      :!info.previous?`<p class="hint">முந்தைய build இல்லை (முதல் deploy). அடுத்த update-க்குப் பிறகு rollback கிடைக்கும்.</p>`
+      :D.requested?`<p class="hint">⏳ Rollback கோரப்பட்டுள்ளது — server ஒரு நிமிடத்துக்குள் செய்யும். பிறகு இந்த பக்கத்தை refresh செய்யவும்.</p>`
+      :`<p class="hint">இப்போதைய build ${esc(q.build)} → <b>${esc(info.previous)}</b>. App மட்டும் பழைய பதிப்புக்கு மாறும்; தரவு அப்படியே இருக்கும்.</p>
+        <label class="chk"><input type="checkbox" id="qaDb"> Database-ஐயும் deploy-க்கு முந்தைய backup-க்கு மாற்று${info.backup?` (${esc(String(info.backup).split("/").pop())})`:""} — ⚠️ அதன் பிறகு போட்ட பில்கள் அழியும்</label>
+        <button class="cta" id="qaRollback" style="background:var(--bad)">↩ முந்தைய Build-க்கு Rollback</button>`}
+      ${rb?`<p class="hint">கடைசி rollback: <b>${esc(rb.state||"")}</b> · ${esc(rb.at||"")}${rb.to?" → "+esc(rb.to):""}${rb.message?"<br>"+esc(rb.message):""}</p>`:""}</div>
+    <div class="chips">${[["bad","❌⚠️ பிரச்சனை"],["fail","❌ Fail"],["warn","⚠️ Warn"],["pass","✅ Pass"],["all","எல்லாம்"]].map(([k,l])=>`<button data-qaflt="${k}" class="${qaFlt===k?"on":""}">${l} (${cnt(k)})</button>`).join("")}</div>
+    <div class="box">${shown.length?shown.map(x=>`<div class="qa-r ${x.status}"><div class="r1"><span>${ST[x.status]||""}</span><b>${esc(x.name)}</b>${x.regression?`<span class="tag" style="background:#fde2e2;color:#b42318">REGRESSION</span>`:""}</div>
+        <small>${esc(x.detail)}${x.prev?` · முந்தைய build: ${ST[x.prev]||esc(x.prev)}`:""} · <code>${esc(x.code)}</code></small></div>`).join(""):`<p class="sub" style="margin:6px 0">${qaFlt==="bad"?"✅ பிரச்சனை எதுவும் இல்லை":"இல்லை"}</p>`}</div>
+    <h2 class="h2">முந்தைய Runs</h2>
+    <div class="box">${(q.runs||[]).map(x=>`<button class="qa-run${R&&R.id===x.id?" on":""}" data-qarun="${x.id}"><b>#${x.id} · ${esc(x.build)}</b><span>${x.status==="running"?"⏳":x.failed?`❌ ${x.failed}`:"✅"} ${x.passed}/${x.total}</span><small>${esc(fmtDate(x.at))} · ${esc(x.trigger)}</small></button>`).join("")}</div>`;
 }
 function renderAdmin(){
   if(!adminData) return `<div class="none"><b>⏳</b>ஏற்றுகிறது…</div>`;
   const cs=adminData.companies, us=adminData.users;
-  return `${pwWarn()}${adminSalesHtml(adminData.sales)}
+  return `${pwWarn()}${qaBanner(adminData.qa)}${adminSalesHtml(adminData.sales)}
     <button class="admin" id="openInv" style="margin:10px 0"><span class="pl" aria-hidden="true">🧾</span><div><b>Software Invoices — எல்லா கம்பெனிகள்</b><small>மாதம் வாரியாக · பில் × கட்டணம் · Payment received · WhatsApp</small></div></button>
     <div class="adm-head"><h2 class="h2">கம்பெனிகள் · ${cs.length}</h2><button class="gbtn" id="addCompany">➕ புது கம்பெனி</button></div>
     ${cs.length?`<div class="list">${cs.map(c=>`<article class="acard">
@@ -3149,7 +3208,8 @@ function renderMoney(){
       <h3 style="margin-top:12px">விவரம்</h3><table class="rp-tbl"><thead><tr><th>தேதி / முறை</th><th>${pay?"Supplier / PO":"Retailer / Invoice"}</th><th>தொகை</th></tr></thead><tbody>${payRows}</tbody></table>`:`<p class="hint">இன்னும் பதிவு இல்லை</p>`}</div>`;
 }
 /* ================= STOCK REPORT ================= */
-let srData=null, srLoading=false, srBranch="", srFlt="all", srMode="stock";
+let srData=null, srLoading=false, srBranch="", srFlt="all", srMode="stock", srGrp="";
+const srRows=r=>srGrp&&srGrp!=="*"?{...r,rows:r.rows.filter(x=>x.group===srGrp)}:r;   // stock report: only the chosen group
 async function loadStockRep(){
   if(srLoading||!company) return;
   srLoading=true; busy(true);
@@ -3165,7 +3225,7 @@ function renderStockRep(){
   const q=($("#srq")&&$("#srq").value||"").trim().toLowerCase();
   const keep=x=>{ const t=x.total; if(srFlt==="neg"&&!x.qty.some(v=>v<0)) return false; if(srFlt==="zero"&&t!==0) return false; if(srFlt==="low"&&!(t>0&&t<=3)) return false; if(srFlt==="in"&&t<=0) return false;
     return !q||(x.name+" "+x.en+" "+x.group).toLowerCase().includes(q); };
-  const rows=r.rows.filter(keep); let lastG=null;
+  const R=srRows(r), rows=R.rows.filter(keep); let lastG=null;
   const cls=v=>v<0?"neg":v===0?"zero":"";
   const body=rows.map(x=>{ let h=""; if(x.group!==lastG){ lastG=x.group; h=`<tr class="grp"><td colspan="${(multi?bs.length+1:1)+2}">${esc(x.emoji+" "+x.group)}</td></tr>`; }
     return h+`<tr><td>${esc(x.name)}<small>${esc(x.size)} · ${inr0(x.rate)}</small></td>${multi?x.qty.map(v=>`<td class="${cls(v)}">${v}</td>`).join(""):""}<td class="${cls(x.total)}">${x.total}<small>${x.total>0?inr0(x.value):""}${x.total>0&&x.costValue!=null?" · அ "+inr0(x.costValue):""}</small></td><td>${x.sold30}</td></tr>`; }).join("");
@@ -3182,10 +3242,24 @@ function renderStockRep(){
     <div class="rp-seg" style="margin-top:12px;display:flex"><button data-srmode="stock" class="${srMode==="stock"?"on":""}" style="flex:1">📦 ஸ்டாக் பட்டியல்</button><button data-srmode="price" class="${srMode==="price"?"on":""}" style="flex:1">💲 விலை பட்டியல் (அடக்கம் / லாபம்)</button></div>
     <div class="st-tools"><input id="srq" type="search" placeholder="ஐட்டம் / குரூப் தேடு" value="${esc(q)}" autocomplete="off" aria-label="Search"><button id="srPrint" aria-label="Print">🖨</button></div>
     <div class="st-flt">${(srMode==="price"?[["all","எல்லாம்"],["nocost","அடக்கம் இல்லை"],["lowm","லாபம் < 25%"],["in","கையிருப்பு உள்ளவை"]]:[["all","எல்லாம்"],["in","கையிருப்பு உள்ளவை"],["low","குறைவு (1-3)"],["zero","0"],["neg","மைனஸ்"]]).map(f=>`<button data-srflt="${f[0]}" class="${srFlt===f[0]?"on":""}">${f[1]}</button>`).join("")}</div>
-    ${srMode==="price"?priceListHtml(r,q):`<div class="sr-wrap"><table class="sr-tbl"><thead><tr><th>ஐட்டம் / சைஸ்</th>${multi?bs.map(b=>`<th>${b.kind==="warehouse"?"🏭 ":""}${esc(b.name)}</th>`).join(""):""}<th>${multi?"மொத்தம்":"ஸ்டாக்"}</th><th>30 நாள் விற்பனை</th></tr></thead>
+    ${srGroupBar(r)}
+    ${!srGrp&&!q?srGroupTiles(r):srMode==="price"?priceListHtml(R,q):`<div class="sr-wrap"><table class="sr-tbl"><thead><tr><th>ஐட்டம் / சைஸ்</th>${multi?bs.map(b=>`<th>${b.kind==="warehouse"?"🏭 ":""}${esc(b.name)}</th>`).join(""):""}<th>${multi?"மொத்தம்":"ஸ்டாக்"}</th><th>30 நாள் விற்பனை</th></tr></thead>
       <tbody>${body||`<tr><td colspan="${(multi?bs.length+1:1)+2}" style="text-align:center;padding:20px">பொருந்தும் ஐட்டம் இல்லை</td></tr>`}</tbody></table></div>`}
     <div class="rp-share"><button class="wa" id="srShare">📤 WhatsApp</button><button id="srCopy">📋 Copy</button>${r.canEdit?`<button id="toStock">✏️ மாற்று</button>`:`<button id="srPrint2">🖨 Print</button>`}</div>
     <p class="hint">விற்பனை மதிப்பு = கையிருப்பு பீஸ் × விற்பனை ரேட் · அடக்க மதிப்பு = பீஸ் × அடக்க விலை (கொடுத்தவை மட்டும்) · ${esc(fmtDate(r.at))}</p>`;
+}
+/* group picker of the stock report: pick one group instead of the whole list */
+function srGroups(r){ const m=new Map(); r.rows.forEach(x=>{ let g=m.get(x.group); if(!g){ g={name:x.group,emoji:x.emoji,lines:0,pcs:0,value:0,neg:0}; m.set(x.group,g); }
+  g.lines++; g.pcs+=Math.max(0,x.total); g.value+=x.total>0?(x.value||0):0; if(x.total<0) g.neg++; }); return [...m.values()]; }
+function srGroupBar(r){
+  const G=srGroups(r);
+  return `<div class="sr-gbar"><select id="srGrp" aria-label="Group"><option value="">🗂 குரூப் தேர்வு செய்யவும் (${G.length})</option>${G.map(g=>`<option value="${esc(g.name)}"${srGrp===g.name?" selected":""}>${esc(g.emoji+" "+g.name)} · ${g.pcs} பீஸ்</option>`).join("")}<option value="*"${srGrp==="*"?" selected":""}>📋 எல்லா குரூப்களும் (முழு பட்டியல்)</option></select>
+    ${srGrp?`<button class="gbtn" data-srgrp="">🗂 குரூப்கள்</button>`:""}</div>`;
+}
+function srGroupTiles(r){
+  return `<div class="sr-gtiles">${srGroups(r).map(g=>`<button class="sr-gt" data-srgrp="${esc(g.name)}"><span class="e">${esc(g.emoji)}</span><b>${esc(g.name)}</b>
+    <small>${g.pcs} பீஸ் · ${g.lines} ஐட்டம்×சைஸ்</small><small>${inr0(g.value)}</small>${g.neg?`<small class="neg">⚠ ${g.neg} மைனஸ்</small>`:""}</button>`).join("")}</div>
+    <p class="hint" style="text-align:center">ஒரு குரூப்பைத் தொட்டால் அதன் ஸ்டாக் ஐட்டங்கள் மட்டும் வரும் · தேடலில் எழுதினால் எல்லா குரூப்பிலும் தேடும்</p>`;
 }
 function priceListHtml(r,q){
   const keep=x=>{ const m=x.cost==null?null:(x.rate-x.cost)*100/x.rate;
@@ -3682,6 +3756,11 @@ document.addEventListener("click",e=>{
   if(d.ordset){ if(d.ordset==="cancelled"){ const n=prompt("ரத்து காரணம் (வாடிக்கையாளருக்கு தெரியும்)"); if(n===null) return; setOrder({status:"cancelled",note:n}); } else setOrder({status:d.ordset}); return; }
   if(t.id==="ordToBill"){ orderToBill(); return; }
   if(t.id==="phDel"){ deletePhoto(); return; }
+  if(t.id==="openQa"){ qaData=null; qaSel=null; if(location.hash!=="#qa") location.hash="qa"; else loadQa(); return; }
+  if(d.qarun){ qaSel=+d.qarun; qaData=null; loadQa(); return; }
+  if(d.qaflt){ qaFlt=d.qaflt; renderView(); return; }
+  if(t.id==="qaRerun"){ qaRerun(); return; }
+  if(t.id==="qaRollback"){ qaRollback(); return; }
   if(t.id==="mInv"||t.id==="openInv"){ closeSheet(); invData=null; if(location.hash!=="#inv") location.hash="inv"; else loadInv(); return; }
   if(t.id==="toAdmin"){ location.hash="admin"; return; }
   if(d.invopen!==undefined){ openInvDetail(d.invco||"",d.invopen); return; }
@@ -3720,11 +3799,12 @@ document.addEventListener("click",e=>{
   if(t.id==="trRecvSave"){ saveTrReceive(); return; }
   if(t.id==="trCancel"){ cancelTr(); return; }
   if(t.id==="trShare"){ const x=trCur; if(x) window.open("https://wa.me/?text="+encodeURIComponent(trText(x)),"_blank"); return; }
+  if(d.srgrp!==undefined){ srGrp=d.srgrp; renderView(); window.scrollTo({top:Math.max(0,($(".sr-gbar")||{offsetTop:0}).offsetTop-70),behavior:"smooth"}); return; }
   if(d.srflt){ srFlt=d.srflt; renderView(); return; }
   if(d.srmode){ srMode=d.srmode; srFlt="all"; renderView(); return; }
   if(t.id==="srPrint"||t.id==="srPrint2"){ window.print(); return; }
-  if(t.id==="srShare"){ if(srData&&!srData.error) window.open(waUrl("",stockRepText(srData)),"_blank","noopener"); return; }
-  if(t.id==="srCopy"){ if(srData&&!srData.error) copyText(stockRepText(srData)); return; }
+  if(t.id==="srShare"){ if(srData&&!srData.error) window.open(waUrl("",stockRepText(srRows(srData))),"_blank","noopener"); return; }
+  if(t.id==="srCopy"){ if(srData&&!srData.error) copyText(stockRepText(srRows(srData))); return; }
   if(d.paymodes) return openPayModes(d.paymodes);
   if(t.id==="pmAdd"){ const n=$("#pmNew").value.trim(); if(!n){ toast("பெயர் தேவை"); return; } return payModeApi({name:n,kind:$("#pmNewK").value},"சேர்க்கப்பட்டது: "+n); }
   if(d.pmsave){ const id=d.pmsave; return payModeApi({id,name:$("#pmn_"+CSS.escape(id)).value.trim(),kind:$("#pmk_"+CSS.escape(id)).value,active:$("#pma_"+CSS.escape(id)).checked},"சேமிக்கப்பட்டது"); }
@@ -3969,6 +4049,7 @@ document.addEventListener("change",e=>{
   if(id==="poBranch"){ poBr=e.target.value; poData=null; loadPoList(); }
   if(id==="uFilterCo"){ uFilterCo=e.target.value; try{ localStorage.setItem("bmb_ufilter",uFilterCo); }catch(x){} renderUserList(); }
   if(id==="srBranch"){ srBranch=e.target.value; srData=null; loadStockRep(); }
+  if(id==="srGrp"){ srGrp=e.target.value; renderView(); }
   if(id==="stBranch"){ stockBr=e.target.value; stockData=null; loadStock(); }
   if(id==="uComp" && e.target.value!=="__new") fillUBranches();
   if(id==="uComp" && e.target.value==="__new"){ const d=userDraft(); d.companyId=""; openCompanyForm(null,{type:"user",draft:d}); }

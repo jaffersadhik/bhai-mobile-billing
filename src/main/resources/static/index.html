@@ -612,6 +612,9 @@ footer .pw-by b{color:var(--leaf)}
 .qa-r{padding:8px 0;border-bottom:1px solid #eef2ef}.qa-r .r1{display:flex;gap:6px;align-items:flex-start}.qa-r b{font-size:13px;flex:1}.qa-r small{display:block;color:#5c6b63;font-size:11.5px;margin-top:2px;word-break:break-word}.qa-r.fail b{color:#b42318}
 .qa-run{display:grid;grid-template-columns:1fr auto;gap:2px 8px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid #eef2ef;padding:8px 4px;font:inherit;cursor:pointer}.qa-run.on{background:#eef7f1}.qa-run small{grid-column:1/-1;color:#5c6b63}
 .chk{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:8px 0}
+.sr-gbar{display:flex;gap:8px;margin:12px 0 4px}.sr-gbar select{flex:1;min-width:0;padding:10px;border-radius:12px;border:1.5px solid #cfe0d6;font:inherit;font-weight:700;background:#fff}
+.sr-gtiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}.sr-gt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:#fff;border:1.5px solid #e1ebe5;border-radius:14px;padding:12px;font:inherit;cursor:pointer}
+.sr-gt .e{font-size:26px}.sr-gt b{font-size:14px}.sr-gt small{color:#5c6b63;font-size:12px}.sr-gt small.neg{color:var(--bad);font-weight:700}
 </style>
 </head>
 <body>
@@ -3205,7 +3208,8 @@ function renderMoney(){
       <h3 style="margin-top:12px">விவரம்</h3><table class="rp-tbl"><thead><tr><th>தேதி / முறை</th><th>${pay?"Supplier / PO":"Retailer / Invoice"}</th><th>தொகை</th></tr></thead><tbody>${payRows}</tbody></table>`:`<p class="hint">இன்னும் பதிவு இல்லை</p>`}</div>`;
 }
 /* ================= STOCK REPORT ================= */
-let srData=null, srLoading=false, srBranch="", srFlt="all", srMode="stock";
+let srData=null, srLoading=false, srBranch="", srFlt="all", srMode="stock", srGrp="";
+const srRows=r=>srGrp&&srGrp!=="*"?{...r,rows:r.rows.filter(x=>x.group===srGrp)}:r;   // stock report: only the chosen group
 async function loadStockRep(){
   if(srLoading||!company) return;
   srLoading=true; busy(true);
@@ -3221,7 +3225,7 @@ function renderStockRep(){
   const q=($("#srq")&&$("#srq").value||"").trim().toLowerCase();
   const keep=x=>{ const t=x.total; if(srFlt==="neg"&&!x.qty.some(v=>v<0)) return false; if(srFlt==="zero"&&t!==0) return false; if(srFlt==="low"&&!(t>0&&t<=3)) return false; if(srFlt==="in"&&t<=0) return false;
     return !q||(x.name+" "+x.en+" "+x.group).toLowerCase().includes(q); };
-  const rows=r.rows.filter(keep); let lastG=null;
+  const R=srRows(r), rows=R.rows.filter(keep); let lastG=null;
   const cls=v=>v<0?"neg":v===0?"zero":"";
   const body=rows.map(x=>{ let h=""; if(x.group!==lastG){ lastG=x.group; h=`<tr class="grp"><td colspan="${(multi?bs.length+1:1)+2}">${esc(x.emoji+" "+x.group)}</td></tr>`; }
     return h+`<tr><td>${esc(x.name)}<small>${esc(x.size)} · ${inr0(x.rate)}</small></td>${multi?x.qty.map(v=>`<td class="${cls(v)}">${v}</td>`).join(""):""}<td class="${cls(x.total)}">${x.total}<small>${x.total>0?inr0(x.value):""}${x.total>0&&x.costValue!=null?" · அ "+inr0(x.costValue):""}</small></td><td>${x.sold30}</td></tr>`; }).join("");
@@ -3238,10 +3242,24 @@ function renderStockRep(){
     <div class="rp-seg" style="margin-top:12px;display:flex"><button data-srmode="stock" class="${srMode==="stock"?"on":""}" style="flex:1">📦 ஸ்டாக் பட்டியல்</button><button data-srmode="price" class="${srMode==="price"?"on":""}" style="flex:1">💲 விலை பட்டியல் (அடக்கம் / லாபம்)</button></div>
     <div class="st-tools"><input id="srq" type="search" placeholder="ஐட்டம் / குரூப் தேடு" value="${esc(q)}" autocomplete="off" aria-label="Search"><button id="srPrint" aria-label="Print">🖨</button></div>
     <div class="st-flt">${(srMode==="price"?[["all","எல்லாம்"],["nocost","அடக்கம் இல்லை"],["lowm","லாபம் < 25%"],["in","கையிருப்பு உள்ளவை"]]:[["all","எல்லாம்"],["in","கையிருப்பு உள்ளவை"],["low","குறைவு (1-3)"],["zero","0"],["neg","மைனஸ்"]]).map(f=>`<button data-srflt="${f[0]}" class="${srFlt===f[0]?"on":""}">${f[1]}</button>`).join("")}</div>
-    ${srMode==="price"?priceListHtml(r,q):`<div class="sr-wrap"><table class="sr-tbl"><thead><tr><th>ஐட்டம் / சைஸ்</th>${multi?bs.map(b=>`<th>${b.kind==="warehouse"?"🏭 ":""}${esc(b.name)}</th>`).join(""):""}<th>${multi?"மொத்தம்":"ஸ்டாக்"}</th><th>30 நாள் விற்பனை</th></tr></thead>
+    ${srGroupBar(r)}
+    ${!srGrp&&!q?srGroupTiles(r):srMode==="price"?priceListHtml(R,q):`<div class="sr-wrap"><table class="sr-tbl"><thead><tr><th>ஐட்டம் / சைஸ்</th>${multi?bs.map(b=>`<th>${b.kind==="warehouse"?"🏭 ":""}${esc(b.name)}</th>`).join(""):""}<th>${multi?"மொத்தம்":"ஸ்டாக்"}</th><th>30 நாள் விற்பனை</th></tr></thead>
       <tbody>${body||`<tr><td colspan="${(multi?bs.length+1:1)+2}" style="text-align:center;padding:20px">பொருந்தும் ஐட்டம் இல்லை</td></tr>`}</tbody></table></div>`}
     <div class="rp-share"><button class="wa" id="srShare">📤 WhatsApp</button><button id="srCopy">📋 Copy</button>${r.canEdit?`<button id="toStock">✏️ மாற்று</button>`:`<button id="srPrint2">🖨 Print</button>`}</div>
     <p class="hint">விற்பனை மதிப்பு = கையிருப்பு பீஸ் × விற்பனை ரேட் · அடக்க மதிப்பு = பீஸ் × அடக்க விலை (கொடுத்தவை மட்டும்) · ${esc(fmtDate(r.at))}</p>`;
+}
+/* group picker of the stock report: pick one group instead of the whole list */
+function srGroups(r){ const m=new Map(); r.rows.forEach(x=>{ let g=m.get(x.group); if(!g){ g={name:x.group,emoji:x.emoji,lines:0,pcs:0,value:0,neg:0}; m.set(x.group,g); }
+  g.lines++; g.pcs+=Math.max(0,x.total); g.value+=x.total>0?(x.value||0):0; if(x.total<0) g.neg++; }); return [...m.values()]; }
+function srGroupBar(r){
+  const G=srGroups(r);
+  return `<div class="sr-gbar"><select id="srGrp" aria-label="Group"><option value="">🗂 குரூப் தேர்வு செய்யவும் (${G.length})</option>${G.map(g=>`<option value="${esc(g.name)}"${srGrp===g.name?" selected":""}>${esc(g.emoji+" "+g.name)} · ${g.pcs} பீஸ்</option>`).join("")}<option value="*"${srGrp==="*"?" selected":""}>📋 எல்லா குரூப்களும் (முழு பட்டியல்)</option></select>
+    ${srGrp?`<button class="gbtn" data-srgrp="">🗂 குரூப்கள்</button>`:""}</div>`;
+}
+function srGroupTiles(r){
+  return `<div class="sr-gtiles">${srGroups(r).map(g=>`<button class="sr-gt" data-srgrp="${esc(g.name)}"><span class="e">${esc(g.emoji)}</span><b>${esc(g.name)}</b>
+    <small>${g.pcs} பீஸ் · ${g.lines} ஐட்டம்×சைஸ்</small><small>${inr0(g.value)}</small>${g.neg?`<small class="neg">⚠ ${g.neg} மைனஸ்</small>`:""}</button>`).join("")}</div>
+    <p class="hint" style="text-align:center">ஒரு குரூப்பைத் தொட்டால் அதன் ஸ்டாக் ஐட்டங்கள் மட்டும் வரும் · தேடலில் எழுதினால் எல்லா குரூப்பிலும் தேடும்</p>`;
 }
 function priceListHtml(r,q){
   const keep=x=>{ const m=x.cost==null?null:(x.rate-x.cost)*100/x.rate;
@@ -3781,11 +3799,12 @@ document.addEventListener("click",e=>{
   if(t.id==="trRecvSave"){ saveTrReceive(); return; }
   if(t.id==="trCancel"){ cancelTr(); return; }
   if(t.id==="trShare"){ const x=trCur; if(x) window.open("https://wa.me/?text="+encodeURIComponent(trText(x)),"_blank"); return; }
+  if(d.srgrp!==undefined){ srGrp=d.srgrp; renderView(); window.scrollTo({top:Math.max(0,($(".sr-gbar")||{offsetTop:0}).offsetTop-70),behavior:"smooth"}); return; }
   if(d.srflt){ srFlt=d.srflt; renderView(); return; }
   if(d.srmode){ srMode=d.srmode; srFlt="all"; renderView(); return; }
   if(t.id==="srPrint"||t.id==="srPrint2"){ window.print(); return; }
-  if(t.id==="srShare"){ if(srData&&!srData.error) window.open(waUrl("",stockRepText(srData)),"_blank","noopener"); return; }
-  if(t.id==="srCopy"){ if(srData&&!srData.error) copyText(stockRepText(srData)); return; }
+  if(t.id==="srShare"){ if(srData&&!srData.error) window.open(waUrl("",stockRepText(srRows(srData))),"_blank","noopener"); return; }
+  if(t.id==="srCopy"){ if(srData&&!srData.error) copyText(stockRepText(srRows(srData))); return; }
   if(d.paymodes) return openPayModes(d.paymodes);
   if(t.id==="pmAdd"){ const n=$("#pmNew").value.trim(); if(!n){ toast("பெயர் தேவை"); return; } return payModeApi({name:n,kind:$("#pmNewK").value},"சேர்க்கப்பட்டது: "+n); }
   if(d.pmsave){ const id=d.pmsave; return payModeApi({id,name:$("#pmn_"+CSS.escape(id)).value.trim(),kind:$("#pmk_"+CSS.escape(id)).value,active:$("#pma_"+CSS.escape(id)).checked},"சேமிக்கப்பட்டது"); }
@@ -4030,6 +4049,7 @@ document.addEventListener("change",e=>{
   if(id==="poBranch"){ poBr=e.target.value; poData=null; loadPoList(); }
   if(id==="uFilterCo"){ uFilterCo=e.target.value; try{ localStorage.setItem("bmb_ufilter",uFilterCo); }catch(x){} renderUserList(); }
   if(id==="srBranch"){ srBranch=e.target.value; srData=null; loadStockRep(); }
+  if(id==="srGrp"){ srGrp=e.target.value; renderView(); }
   if(id==="stBranch"){ stockBr=e.target.value; stockData=null; loadStock(); }
   if(id==="uComp" && e.target.value!=="__new") fillUBranches();
   if(id==="uComp" && e.target.value==="__new"){ const d=userDraft(); d.companyId=""; openCompanyForm(null,{type:"user",draft:d}); }

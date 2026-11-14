@@ -5,4 +5,5 @@ D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing\src\main\java\com\bh
 D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing\src\main\java\com\bhai\billing\core\Db.java
 D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing\src\main\java\com\bhai\billing\core\DbException.java
 D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing\src\main\java\com\bhai\billing\core\JdbcDb.java
+D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing\src\main\java\com\bhai\billing\core\PostDeployTests.java
 D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing\src\main\java\com\bhai\billing\web\ApiController.java
