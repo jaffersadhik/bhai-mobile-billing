@@ -386,6 +386,38 @@ footer .pw-by b{color:var(--leaf)}
   body.plabels #printArea{display:block!important}
   body.plabels{background:#fff!important;margin:0;padding:0}
 }
+/* ---- bill print (thermal 58 / 80 mm roll, or A4) ---- */
+@media print{
+  body.pbill > *:not(#printArea){display:none!important}
+  body.pbill #printArea{display:block!important}
+  body.pbill{background:#fff!important;margin:0;padding:0}
+}
+#printArea .rcpt{font-family:"Noto Sans Tamil",Arial,sans-serif;color:#000;background:#fff;box-sizing:border-box;line-height:1.35;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+#printArea .rcpt.t58{width:58mm;padding:2mm 5mm 4mm;font-size:10.5px}
+#printArea .rcpt.t80{width:80mm;padding:2mm 4mm 5mm;font-size:12px}
+#printArea .rcpt .c{text-align:center}
+#printArea .rcpt h1{font-size:1.45em;margin:0;text-align:center;line-height:1.2}
+#printArea .rcpt .m{font-size:.92em}
+#printArea .rcpt hr{border:0;border-top:1px dashed #000;margin:1.5mm 0}
+#printArea .rcpt table{width:100%;border-collapse:collapse}
+#printArea .rcpt td{padding:.8mm 0;vertical-align:top}
+#printArea .rcpt td.r{text-align:right;white-space:nowrap;padding-left:2mm}
+#printArea .rcpt .sub{font-size:.9em}
+#printArea .rcpt .tt td{font-weight:800;font-size:1.2em;border-top:1px solid #000;padding-top:1.4mm}
+#printArea .rcpt.a4{width:186mm;padding:0;font-size:13px}
+#printArea .rcpt.a4 h1{font-size:24px;text-align:left}
+#printArea .rcpt.a4 table.ln{margin-top:4mm}
+#printArea .rcpt.a4 table.ln th,#printArea .rcpt.a4 table.ln td{border:1px solid #888;padding:6px 8px}
+#printArea .rcpt.a4 table.ln th{background:#eee;text-align:left}
+#printArea .rcpt.a4 table.ln td.r,#printArea .rcpt.a4 table.ln th.r{text-align:right}
+#printArea .rcpt.a4 .hd{display:flex;justify-content:space-between;gap:20px;border-bottom:2px solid #000;padding-bottom:3mm}
+#printArea .rcpt.a4 .tot{margin-left:auto;width:70mm;margin-top:3mm}
+#printArea .rcpt.a4 .tot td{padding:3px 0}
+.pfm{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 2px}
+.pfm button{height:36px;padding:0 12px;border-radius:10px;border:1.5px solid var(--line);background:#fff;font-weight:700;font-size:12.5px}
+.pfm button.on{background:var(--leaf);color:#fff;border-color:var(--leaf)}
+.bv-meta{font-size:12.5px;color:var(--muted);font-weight:600;line-height:1.5}
+.bv-note{background:#fff7e6;border:1.5px solid #f3d9a4;color:#8a5a00;border-radius:12px;padding:8px 10px;font-size:12.5px;font-weight:700;margin:8px 0}
 #printArea .lsheet{display:grid;justify-content:start;align-content:start;page-break-after:always;break-after:page}
 #printArea .lsheet:last-child{page-break-after:auto;break-after:auto}
 #printArea .lab,.lb-prev .lab{box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:Arial,"Noto Sans Tamil",sans-serif;color:#000;padding:1mm 1.5mm;line-height:1.1}
@@ -1445,10 +1477,77 @@ async function openBills(){
       <div class="sum"><div><span>இன்று பில்கள்</span><span>${r.today.count}</span></div><div class="gt"><span>இன்றைய விற்பனை</span><span>${inr(r.today.total)}</span></div></div>
       <div class="box">${billCache.length ? billCache.map((b,i)=>`<div class="bh"><div class="r1"><b>${esc(b.no)}${b.offline?" ⏳":""}</b><b class="amt">${inr(b.total)}</b></div>
           <div class="meta">${esc(fmtDate(b.at))} · ${b.pieces} pcs${b.customer?" · "+esc(b.customer):""}${b.phone?" · "+esc(b.phone):""}${b.by?" · 👤 "+esc(b.by):""}${b.pay?` <span class="paytag k-${esc(b.payKind)}">${esc(b.pay)}</span>`:""}${b.exchange>0?` <span class="paytag k-exchange">🔁 −${inr(b.exchange)} · மீதி ${inr(b.paid)}</span>`:""}</div>
-          <div class="acts"><button class="mini" data-bpdf="${i}">📎 PDF</button><button class="mini" data-bwa="${i}">WhatsApp</button><button class="mini" data-bcopy="${i}">Copy</button></div></div>`).join("")
+          <div class="acts"><button class="mini" data-bview="${i}">👁 பில் பார்</button><button class="mini" data-bprint="${i}">🖨 Print</button><button class="mini" data-bpdf="${i}">📎 PDF</button><button class="mini" data-bwa="${i}">WhatsApp</button><button class="mini" data-bcopy="${i}">Copy</button></div></div>`).join("")
         : `<p class="sub" style="margin:6px 0">இன்னும் பில் இல்லை</p>`}</div>
       <button class="cta ghost" id="mCancels">✖ ரத்து பில் வரலாறு (Cancel bills)</button>`;
   }catch(e){ apiErr(e); }
+}
+
+/* ================= VIEW BILL + PRINT (Bill history) ================= */
+const PRINT_FMT={"58":{t:"58 mm Thermal",w:58},"80":{t:"80 mm Thermal (3 inch)",w:80},"a4":{t:"A4 / Laser / Inkjet"}};
+function pfmt(){ try{ const v=localStorage.getItem("mb.pfmt"); return PRINT_FMT[v]?v:"80"; }catch(e){ return "80"; } }
+function setPfmt(v){ if(!PRINT_FMT[v]) return; try{ localStorage.setItem("mb.pfmt",v); }catch(e){} }
+const noEmoji = t => String(t||"").replace(/[\u{1F000}-\u{1FFFF}☀-➿️]/gu,"").replace(/\s{2,}/g," ").trim();
+const lineWt = l => (l.wt>0 ? fmtG(l.wt*(l.qty||1)) : "");
+function billView(i,from){
+  const b=billCache[+i]; if(!b) return;
+  const c=company||{};
+  $("#sheetBody").innerHTML=`<h2>👁 ${esc(b.no)}${b.offline?" ⏳":""}</h2>
+    <p class="bv-meta">${esc(c.name||"")}<br>${esc(fmtDate(b.at))}${b.customer?" · "+esc(b.customer):""}${b.phone?" · +"+COUNTRY_CODE+" "+esc(b.phone):""}${b.by?" · 👤 "+esc(b.by):""}${b.branch?" · 🏬 "+esc(b.branch):""}</p>
+    ${b.offline?`<div class="bv-note">📴 இந்த பில் இன்னும் server-க்கு அனுப்பப்படவில்லை — இணையம் வந்ததும் தானாக sync ஆகும். Print / Share இப்போதும் வேலை செய்யும்.</div>`:""}
+    <div class="box">${(b.lines||[]).map(l=>`<div class="bl"><div class="r1"><div class="nm">${esc(l.name)}<small>${esc(l.en||"")}</small></div><div class="amt">${inr(l.amt)}</div></div>
+      <div class="r2"><span>${l.size?`Size: <b>${esc(l.size)}</b> | `:""}${lineWt(l)?"⚖️ "+esc(lineWt(l))+" | ":""}${l.qty} × ${inr(l.rate)}</span></div></div>`).join("")||`<p class="sub" style="margin:6px 0">ஐட்டம் விவரம் இல்லை</p>`}</div>
+    <div class="sum"><div><span>மொத்த எண்ணிக்கை</span><span>${b.pieces} pcs</span></div>
+      <div class="gt"><span>மொத்த தொகை</span><span>${inr(b.total)}</span></div>
+      ${b.exchange>0?`<div><span>🔁 Exchange${b.exchangeRef?" ("+esc(b.exchangeRef)+")":""}</span><span>− ${inr(b.exchange)}</span></div><div style="font-weight:800"><span>செலுத்திய மீதி</span><span>${inr(b.paid)}</span></div>`:""}
+      ${b.pay?`<div><span>பணம் செலுத்தும் முறை</span><span><span class="paytag k-${esc(b.payKind)}">${esc(b.pay)}</span></span></div>`:""}</div>
+    <div class="fld" style="margin:10px 2px 0"><span style="font-size:12.5px;font-weight:700">🖨 Printer / தாள் அளவு</span>
+      <div class="pfm" id="pfm">${Object.keys(PRINT_FMT).map(k=>`<button type="button" data-pfmt="${k}" class="${pfmt()===k?"on":""}">${esc(PRINT_FMT[k].t)}</button>`).join("")}</div></div>
+    <button class="cta" data-bprint="${+i}">🖨 Print (அச்சிடு)</button>
+    <button class="cta leaf" data-bpdf="${+i}">📎 PDF + Text — WhatsApp</button>
+    <button class="cta ghost" data-bwa="${+i}">💬 Text மட்டும் WhatsApp</button>
+    <button class="cta ghost" data-bcopy="${+i}">📋 Copy</button>
+    ${from==="rep"?`<button class="cta ghost" data-close>மூடு</button>`:`<button class="cta ghost" id="mBills">← பில் வரலாறு</button>`}`;
+  showSheet();
+}
+/* receipt HTML for #printArea — thermal roll (58 / 80 mm) or A4 */
+function billPrintHtml(b,f){
+  const c=company||{}, addr=[c.address,c.city].filter(Boolean).join(", "), foot=noEmoji(String(c.footer||"நன்றி! மீண்டும் வருக"));
+  const L=b.lines||[];
+  if(f==="a4"){
+    return `<div class="rcpt a4" data-noi18n><div class="hd"><div><h1>${esc(c.name||APP_NAME)}</h1><div>${esc(addr)}</div><div>${c.phone?"Ph: "+esc(c.phone):""}${c.gstin?" · GSTIN: "+esc(c.gstin):""}</div></div>
+      <div style="text-align:right"><b>பில் எண்: ${esc(b.no)}</b><br>${esc(fmtDate(b.at))}${b.customer?"<br>"+esc(b.customer):""}${b.phone?"<br>+"+COUNTRY_CODE+" "+esc(b.phone):""}${b.by?"<br>பில் போட்டவர்: "+esc(b.by):""}</div></div>
+      <table class="ln"><tr><th>#</th><th>ஐட்டம்</th><th>Size</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr>
+      ${L.map((l,k)=>`<tr><td>${k+1}</td><td>${esc(l.name)}${l.en?` <span class="m">(${esc(l.en)})</span>`:""}</td><td>${esc(l.size||"")}${lineWt(l)?" "+esc(lineWt(l)):""}</td><td class="r">${l.qty}</td><td class="r">${Number(l.rate).toFixed(2)}</td><td class="r">${Number(l.amt).toFixed(2)}</td></tr>`).join("")}</table>
+      <table class="tot"><tr><td>மொத்த எண்ணிக்கை</td><td class="r">${b.pieces} pcs</td></tr><tr class="tt"><td>மொத்த தொகை</td><td class="r">${inr(b.total)}</td></tr>
+      ${b.exchange>0?`<tr><td>Exchange${b.exchangeRef?" ("+esc(b.exchangeRef)+")":""}</td><td class="r">− ${inr(b.exchange)}</td></tr><tr class="tt"><td>செலுத்திய மீதி</td><td class="r">${inr(b.paid)}</td></tr>`:""}
+      ${b.pay?`<tr><td>பணம்</td><td class="r">${esc(b.pay)}</td></tr>`:""}</table>
+      <p style="margin-top:10mm;text-align:center">${esc(foot)}</p></div>`;
+  }
+  return `<div class="rcpt t${f}" data-noi18n>${c.bismillah!==false?`<div class="c m">${esc(BISMILLAH)}</div>`:""}<h1>${esc(c.name||APP_NAME)}</h1>
+    <div class="c m">${esc(addr)}${c.phone?"<br>Ph: "+esc(c.phone):""}${c.gstin?"<br>GSTIN: "+esc(c.gstin):""}</div><hr>
+    <div><b>பில் எண்: ${esc(b.no)}</b><br><span class="m">${esc(fmtDate(b.at))}${b.customer?"<br>"+esc(b.customer):""}${b.by?"<br>பில் போட்டவர்: "+esc(b.by):""}</span></div><hr>
+    <table>${L.map((l,k)=>`<tr><td>${k+1}. ${esc(l.name)}<br><span class="sub">${l.size?"Size "+esc(l.size)+" · ":""}${lineWt(l)?esc(lineWt(l))+" · ":""}${l.qty} × ${inr(l.rate)}</span></td><td class="r">${inr(l.amt)}</td></tr>`).join("")}
+    <tr class="tt"><td>மொத்தம் (${b.pieces} pcs)</td><td class="r">${inr(b.total)}</td></tr>
+    ${b.exchange>0?`<tr><td>Exchange${b.exchangeRef?" ("+esc(b.exchangeRef)+")":""}</td><td class="r">− ${inr(b.exchange)}</td></tr><tr class="tt"><td>செலுத்திய மீதி</td><td class="r">${inr(b.paid)}</td></tr>`:""}</table>
+    ${b.pay?`<div class="m">பணம்: <b>${esc(b.pay)}</b></div>`:""}<hr><div class="c">${esc(foot)}</div><div class="c m" style="margin-top:1mm">${esc(APP_NAME)}</div></div>`;
+}
+function printBill(b){
+  if(!b) return;
+  const f=pfmt(), F=PRINT_FMT[f];
+  let st=document.getElementById("bpPageCss"); if(!st){ st=document.createElement("style"); st.id="bpPageCss"; document.head.appendChild(st); }
+  const pa=$("#printArea"); pa.innerHTML=I18N.html(billPrintHtml(b,f));
+  let css=`@page{size:A4;margin:12mm}`;
+  if(f!=="a4"){   // roll paper: Chrome ignores "auto" page height, so measure the receipt and give the exact length
+    pa.style.cssText="display:block;position:fixed;left:-9999px;top:0";
+    const hmm=Math.min(1500,Math.max(40,Math.ceil(pa.firstElementChild.getBoundingClientRect().height*25.4/96)+4));
+    pa.style.cssText=""; css=`@page{size:${F.w}mm ${hmm}mm;margin:0}`;
+  }
+  st.textContent=`@media print{${css}}`;
+  document.body.classList.add("pbill");
+  const done=()=>{ document.body.classList.remove("pbill"); st.textContent=""; $("#printArea").innerHTML=""; window.removeEventListener("afterprint",done); };
+  window.addEventListener("afterprint",done);
+  setTimeout(()=>{ window.print(); setTimeout(done,3000); },80);
 }
 const todayIso=()=>new Date(Date.now()+330*60000).toISOString().slice(0,10);
 /* ================= CANCEL BILL (ரத்து பில்) — made like a bill, saved as its own document ================= */
@@ -3951,7 +4050,7 @@ function renderReport(){
       <div class="r1"><b>${esc(b.no)}</b><b class="amt">${inr(b.total)}</b></div>
       <div class="meta">${esc(fmtDate(b.at))} · ${b.pieces} pcs${b.customer?" · "+esc(b.customer):""}${b.phone?" · "+esc(b.phone):""}${b.by?" · 👤 "+esc(b.by):""}${b.pay?` <span class="paytag k-${esc(b.payKind)}">${esc(b.pay)}</span>`:""}</div>
       <div class="lines">${(b.lines||[]).map(l=>`<div><span>${esc(l.name)}${l.size?" ("+esc(l.size)+")":""} × ${l.qty}</span><b>${inr(l.amt)}</b></div>`).join("")}</div>
-      <div class="acts"><button class="mini" data-rbill="${i}">விவரம்</button><button class="mini" data-bwa="${i}">WhatsApp</button><button class="mini" data-bcopy="${i}">Copy</button></div></div>`).join("")
+      <div class="acts"><button class="mini" data-rbill="${i}">விவரம்</button><button class="mini" data-bview="${i}" data-bfrom="rep">👁 பில் பார்</button><button class="mini" data-bprint="${i}">🖨 Print</button><button class="mini" data-bwa="${i}">WhatsApp</button><button class="mini" data-bcopy="${i}">Copy</button></div></div>`).join("")
     :`<p class="sub" style="margin:6px 0">இந்த தேதியில் பில்கள் இல்லை</p>`}
     ${r.billsTruncated?`<p class="hint">முதல் ${r.bills.length} பில்கள் மட்டும் காட்டப்படுகிறது</p>`:""}</div>`;
 }
@@ -4296,6 +4395,9 @@ document.addEventListener("click",e=>{
   if(d.bpdf!==undefined){ const b=billCache[+d.bpdf]; if(!b) return; shareText=billText(b); prepPdf("bill",b);
     $("#sheetBody").innerHTML=`<h2>📎 ${esc(b.no)} — PDF</h2><p class="sub">${esc(fmtDate(b.at))} · ${inr(b.total)}${b.phone?" · +"+COUNTRY_CODE+" "+esc(b.phone):""}</p>
       <button class="cta" id="sharePdf" data-ph="${esc(b.phone||"")}">📎 PDF + Text — WhatsApp</button>${PDF_HINT}<button class="cta ghost" id="mBills">← பில் வரலாறு</button>`; showSheet(); return; }
+  if(d.bview!==undefined){ billView(+d.bview,d.bfrom||"hist"); return; }
+  if(d.bprint!==undefined){ printBill(billCache[+d.bprint]); return; }
+  if(d.pfmt){ setPfmt(d.pfmt); document.querySelectorAll("[data-pfmt]").forEach(x=>x.classList.toggle("on",x.dataset.pfmt===d.pfmt)); return; }
   if(d.bwa!==undefined){ const b=billCache[+d.bwa]; if(b) window.open(waUrl(b.phone||"",billText(b)),"_blank","noopener"); return; }
   if(d.expick){ const id=+d.expick; exPick.has(id)?exPick.delete(id):exPick.add(id); renderExBox(); return; }
   if(d.exnew){ const [ph,id]=d.exnew.split("|"); exNext={phone:ph,ids:[+id]}; closeSheet(); toast("🔁 Exchange: புதிய ஐட்டங்களை சேர்த்து View bill அழுத்தவும்"); return; }

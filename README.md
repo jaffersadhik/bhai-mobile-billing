@@ -112,3 +112,12 @@ Patches on Windows: extracting the full zip over the folder is simpler than `git
 - **Known limits**: lost response + retry can give a different final number (the phone updates its copy and toasts it); iOS Safari may evict storage if the app is unused for weeks (use Add to Home Screen); camera scan needs HTTPS; Google Fonts are not available offline (system Tamil font).
 - **Company flag `companies.order_no_stock`** (Admin → company form → "ஸ்டாக் இல்லாவிட்டாலும் ஆர்டர் எடுக்க அனுமதி"): off = `shopOrder` and `takeOrder` refuse stock-less lines (409); on = accepted, lines flagged `short`. `shop()` exposes `company.orderNoStock`; shop.html then shows "முன்பதிவு" and does not cap quantity.
 - **Tests**: `/home/claude/w4/test/t_backend.py` (26 API checks) and `t_offline_ui.py` (Playwright: offline reload, offline bill / cancel x2, sync, server-down, lost-response) — kept in the delivery zip under `test/`.
+
+## View bill + Print (Bill history)
+- **Bill history** (and the daily report's bill list) rows now have **👁 பில் பார்** (full bill: lines, size / weight, totals, exchange, payment mode) and **🖨 Print**.
+- The view sheet has a paper-size picker: **58 mm thermal**, **80 mm thermal** (default) or **A4**; the choice is remembered on that device (`localStorage mb.pfmt`).
+- Printing uses `window.print()` on a hidden `#printArea` (`body.pbill`), so it works with any printer the phone / PC can see (USB, Wi-Fi, Bluetooth print service, RawBT, PDF).
+  Roll paper: the receipt is measured and `@page` gets the exact length (Chrome ignores `height:auto`), so the roll cuts right after the footer. In the print dialog set **Margins = None, Scale = 100 %**.
+- Receipt text is Tamil only (same as the WhatsApp / PDF bill, not the bilingual on-screen text); emoji are stripped for thermal printers.
+- Works offline too — waiting (⏳) bills can be viewed and printed before they sync.
+- Code: `billView`, `billPrintHtml`, `printBill`, `PRINT_FMT` in `index.html`; test: `test/t_billview_ui.py`.
