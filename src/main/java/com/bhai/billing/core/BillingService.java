@@ -177,6 +177,7 @@ public class BillingService {
         if (!hasColumn("companies", "po_seq")) db.update("ALTER TABLE companies ADD COLUMN po_seq BIGINT NOT NULL DEFAULT 0 AFTER bill_seq");
         if (!hasColumn("items", "sold_by")) db.update("ALTER TABLE items ADD COLUMN sold_by VARCHAR(6) NOT NULL DEFAULT 'count'");   // count | weight
         if (!hasColumn("items", "wt_unit")) db.update("ALTER TABLE items ADD COLUMN wt_unit VARCHAR(2) NOT NULL DEFAULT 'kg'");      // weight items: kg | g
+        if (!hasColumn("po_lines", "wt_unit")) db.update("ALTER TABLE po_lines ADD COLUMN wt_unit VARCHAR(2) NULL");                 // PO weight lines: qty in grams, price per kg | g
         if (!hasColumn("bill_lines", "wt_g")) db.update("ALTER TABLE bill_lines ADD COLUMN wt_g INT NULL");                           // grams of one portion (weight lines)
         if (!hasColumn("companies", "rate_change")) db.update("ALTER TABLE companies ADD COLUMN rate_change TINYINT(1) NOT NULL DEFAULT 0");
         if (!hasColumn("bill_lines", "cost")) db.update("ALTER TABLE bill_lines ADD COLUMN cost DECIMAL(10,2) NULL AFTER rate");   // unit cost at billing time
@@ -2253,6 +2254,11 @@ public class BillingService {
 
     private List<Object> supplierList(String cid) {
         List<Object> out = new ArrayList<>();
+        Map<String, Map<String, Object>> st = new HashMap<>();      // per supplier: PO count / value / paid / last order (cancelled POs left out)
+        for (Map<String, Object> s : db.query("SELECT supplier_id, COUNT(*) AS n, COALESCE(SUM(total),0) AS t, COALESCE(SUM(paid),0) AS p, MAX(order_date) AS last FROM purchase_orders "
+                + "WHERE company_id = ? AND status <> 'cancelled' AND supplier_id IS NOT NULL GROUP BY supplier_id", cid)) st.put(str(s.get("supplier_id")), s);
+        Map<String, Long> allPo = new HashMap<>();
+        for (Map<String, Object> s : db.query("SELECT supplier_id, COUNT(*) AS n FROM purchase_orders WHERE company_id = ? AND supplier_id IS NOT NULL GROUP BY supplier_id", cid)) allPo.put(str(s.get("supplier_id")), lng(s.get("n")));
         for (Map<String, Object> r : db.query("SELECT * FROM suppliers WHERE company_id = ? ORDER BY name", cid)) {
             Map<String, Object> n = new LinkedHashMap<>();
             n.put("id", str(r.get("id")));
@@ -2260,9 +2266,42 @@ public class BillingService {
             n.put("phone", str(r.get("phone")));
             n.put("gstin", str(r.get("gstin")));
             n.put("address", str(r.get("address")));
+            Map<String, Object> s = st.get(str(r.get("id")));
+            n.put("poCount", s == null ? 0 : lng(s.get("n")));
+            n.put("total", s == null ? 0.0 : round2(dbl(s.get("t"))));
+            n.put("paid", s == null ? 0.0 : round2(dbl(s.get("p"))));
+            n.put("balance", s == null ? 0.0 : round2(dbl(s.get("t")) - dbl(s.get("p"))));
+            n.put("lastOrder", s == null || s.get("last") == null ? "" : str(s.get("last")).substring(0, 10));
+            n.put("canDelete", !allPo.containsKey(str(r.get("id"))));
             out.add(n);
         }
         return out;
+    }
+
+    /** add / edit one supplier from the Suppliers screen (stock / admin users; owner is view-only) */
+    public Map<String, Object> saveSupplier(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        poBranch(c, cid, null, true);
+        String id = str(in.get("id")), name = clip(in.get("name"), 60);
+        if (name.isEmpty()) throw new ApiException(400, "Supplier பெயர் தேவை");
+        Map<String, Object> dup = db.one("SELECT id FROM suppliers WHERE company_id = ? AND LOWER(name) = LOWER(?)", cid, name);
+        if (dup != null && !str(dup.get("id")).equals(id)) throw new ApiException(400, "இந்த பெயரில் Supplier ஏற்கனவே உள்ளார்: " + name);
+        String sid = db.tx(t -> upsertSupplier(t, cid, in));
+        Map<String, Object> res = obj("suppliers", supplierList(cid));
+        res.put("id", sid);
+        return res;
+    }
+
+    public Map<String, Object> deleteSupplier(String auth, String id) {
+        Ctx c = ctx(auth);
+        String cid = requireCompany(c);
+        poBranch(c, cid, null, true);
+        if (db.one("SELECT id FROM suppliers WHERE company_id = ? AND id = ?", cid, id) == null) throw new ApiException(404, "Supplier இல்லை");
+        if (db.one("SELECT id FROM purchase_orders WHERE company_id = ? AND supplier_id = ? LIMIT 1", cid, id) != null)
+            throw new ApiException(400, "இந்த Supplier-க்கு Purchase Order உள்ளது — நீக்க முடியாது");
+        db.update("DELETE FROM suppliers WHERE company_id = ? AND id = ?", cid, id);
+        return obj("suppliers", supplierList(cid));
     }
 
     /** create or update a supplier inside a PO save; returns its id */
@@ -2305,8 +2344,10 @@ public class BillingService {
         List<Object> args = new ArrayList<>();
         args.add(cid);
         if (br != null) args.add(br);
-        for (Map<String, Object> r : db.query("SELECT p.*, br.name AS branch_name, br.kind AS branch_kind, (SELECT COALESCE(SUM(qty),0) FROM po_lines l WHERE l.po_id = p.id) AS q, "
-                + "(SELECT COALESCE(SUM(received_qty),0) FROM po_lines l WHERE l.po_id = p.id) AS rq FROM purchase_orders p "
+        for (Map<String, Object> r : db.query("SELECT p.*, br.name AS branch_name, br.kind AS branch_kind, (SELECT COALESCE(SUM(qty),0) FROM po_lines l WHERE l.po_id = p.id AND l.wt_unit IS NULL) AS q, "
+                + "(SELECT COALESCE(SUM(received_qty),0) FROM po_lines l WHERE l.po_id = p.id AND l.wt_unit IS NULL) AS rq, "
+                + "(SELECT COALESCE(SUM(qty),0) FROM po_lines l WHERE l.po_id = p.id AND l.wt_unit IS NOT NULL) AS wq, "
+                + "(SELECT COALESCE(SUM(received_qty),0) FROM po_lines l WHERE l.po_id = p.id AND l.wt_unit IS NOT NULL) AS rwq FROM purchase_orders p "
                 + "LEFT JOIN branches br ON br.company_id = p.company_id AND br.id = p.branch_id WHERE p.company_id = ?" + (br == null ? "" : " AND p.branch_id = ?")
                 + sf + " ORDER BY p.id DESC LIMIT 300", args.toArray()))
             out.add(poHead(r));
@@ -2343,6 +2384,7 @@ public class BillingService {
         n.put("at", iso(ldt(r.get("created_at"))));
         if (r.get("received_at") != null) { n.put("receivedAt", iso(ldt(r.get("received_at")))); n.put("receivedBy", str(r.get("received_by"))); }
         if (r.containsKey("q")) { n.put("qty", lng(r.get("q"))); n.put("receivedQty", lng(r.get("rq"))); }
+        if (r.containsKey("wq")) { n.put("wtG", lng(r.get("wq"))); n.put("receivedWtG", lng(r.get("rwq"))); }   // weight lines: grams
         return n;
     }
 
@@ -2382,25 +2424,34 @@ public class BillingService {
             o.put("supplierAddress", str(sup.get("address")));
         }
         List<Object> ls = new ArrayList<>();
-        long q = 0, rq = 0;
+        long q = 0, rq = 0, wq = 0, rwq = 0;
         for (Map<String, Object> l : db.query("SELECT * FROM po_lines WHERE po_id = ? ORDER BY line_no", lng(p.get("id")))) {
             Map<String, Object> n = new LinkedHashMap<>();
             n.put("line", lng(l.get("line_no")));
             n.put("itemId", l.get("item_id") == null ? null : str(l.get("item_id")));
             n.put("name", str(l.get("item_name")));
             n.put("size", str(l.get("size_label")));
-            n.put("qty", lng(l.get("qty")));
+            n.put("qty", lng(l.get("qty")));                 // weight lines: grams
             n.put("received", lng(l.get("received_qty")));
             n.put("unitCost", round2(dbl(l.get("unit_cost"))));
             n.put("gstPct", round2(dbl(l.get("gst_pct"))));
             n.put("amount", round2(dbl(l.get("amount"))));
-            q += lng(l.get("qty"));
-            rq += lng(l.get("received_qty"));
+            if (l.get("wt_unit") != null) {
+                n.put("by", "weight");
+                n.put("unit", "g".equals(str(l.get("wt_unit"))) ? "g" : "kg");       // the unit unitCost is quoted in
+                wq += lng(l.get("qty"));
+                rwq += lng(l.get("received_qty"));
+            } else {
+                q += lng(l.get("qty"));
+                rq += lng(l.get("received_qty"));
+            }
             ls.add(n);
         }
         o.put("lines", ls);
         o.put("qty", q);
         o.put("receivedQty", rq);
+        o.put("wtG", wq);
+        o.put("receivedWtG", rwq);
         return o;
     }
 
@@ -2423,6 +2474,9 @@ public class BillingService {
         Set<String> known = new HashSet<>();
         for (Map<String, Object> z : db.query("SELECT item_id, size_label FROM item_sizes WHERE company_id = ?", cid))
             known.add(str(z.get("item_id")) + "|" + str(z.get("size_label")));
+        Map<String, String> wtItems = new HashMap<>();          // weight items of this company: item id -> 'kg' | 'g' (their price / stock unit)
+        for (Map<String, Object> i : db.query("SELECT id, wt_unit FROM items WHERE company_id = ? AND sold_by = 'weight'", cid))
+            wtItems.put(str(i.get("id")), "g".equals(str(i.get("wt_unit"))) ? "g" : "kg");
         List<Object[]> lines = new ArrayList<>();
         double sub = 0, gst = 0;
         int ln = 1;
@@ -2430,17 +2484,28 @@ public class BillingService {
             Map<String, Object> l = map(o);
             String name = clip(l.get("name"), 60), size = clip(l.get("size"), 12), iid = str(l.get("itemId"));
             if (iid.isEmpty() || !known.contains(iid + "|" + size)) iid = null;
-            double q = dbl(l.get("qty"));
+            boolean wantW = "weight".equals(str(l.get("by")));
+            String wu = null;                                    // null = counted in pieces
+            if (iid != null && wtItems.containsKey(iid)) {
+                if (!wantW) throw new ApiException(400, "எடை ஐட்டம் — எடையில் (kg / g) உள்ளிடவும்: " + name);
+                wu = wtItems.get(iid);
+            } else if (wantW) {
+                if (iid != null) throw new ApiException(400, "இது எண்ணிக்கை ஐட்டம்: " + name);
+                wu = "g".equals(str(l.get("unit"))) ? "g" : "kg";
+                size = "";
+            }
+            double q = dbl(l.get("qty"));                         // pieces, or GRAMS for a weight line
             if (name.isEmpty()) throw new ApiException(400, "ஐட்டம் பெயர் தேவை (வரி " + ln + ")");
-            if (!(q >= 1 && q <= 99999) || q != Math.floor(q)) throw new ApiException(400, "அளவு தவறு: " + name);
+            if ((wu == null ? !(q >= 1 && q <= 99999) : !(q >= 1 && q <= 9999999)) || q != Math.floor(q))
+                throw new ApiException(400, (wu == null ? "அளவு தவறு: " : "எடை தவறு: ") + name);
             double uc = money(l.get("unitCost"), "அடக்க விலை (" + name + ")", 999999);
             String g = str(l.get("gstPct")).replaceAll("\\.0+$", "").trim();
             if (g.isEmpty()) g = "0";
             if (!PO_GST.contains(g)) throw new ApiException(400, "GST %: 0 / 3 / 5 / 12 / 18 / 28");
-            double amt = round2(uc * q), gp = Double.parseDouble(g);
+            double amt = round2(wu == null ? uc * q : uc * q / ("kg".equals(wu) ? 1000.0 : 1.0)), gp = Double.parseDouble(g);
             sub += amt;
             gst += amt * gp / 100;
-            lines.add(new Object[]{ln++, iid, name, size, (long) q, BigDecimal.valueOf(uc), BigDecimal.valueOf(gp), BigDecimal.valueOf(amt)});
+            lines.add(new Object[]{ln++, iid, name, size, (long) q, BigDecimal.valueOf(uc), BigDecimal.valueOf(gp), BigDecimal.valueOf(amt), wu});
         }
         double subtotal = round2(sub), gstTotal = round2(gst), total = round2(subtotal + gstTotal + other - disc);
         if (total < 0) throw new ApiException(400, "தள்ளுபடி மொத்தத்தை விட அதிகம்");
@@ -2474,7 +2539,7 @@ public class BillingService {
             }
             List<Object[]> rows = new ArrayList<>();
             for (Object[] l : lines) rows.add(concat(new Object[]{pid, cid}, l));
-            t.batch("INSERT INTO po_lines (po_id, company_id, line_no, item_id, item_name, size_label, qty, unit_cost, gst_pct, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
+            t.batch("INSERT INTO po_lines (po_id, company_id, line_no, item_id, item_name, size_label, qty, unit_cost, gst_pct, amount, wt_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows);
             return pid;
         });
         syncPoLedger(cid, poId, str(c.user.get("full_name")));

@@ -203,6 +203,13 @@ public class ApiController {
     @GetMapping("/suppliers")
     public ResponseEntity<Object> suppliers(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.suppliers(auth)); }
 
+    @PostMapping("/suppliers")
+    public ResponseEntity<Object> saveSupplier(@RequestHeader(value = AUTH, required = false) String auth,
+                                               @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.saveSupplier(auth, nn(body))); }
+
+    @PostMapping("/suppliers/{id}/delete")
+    public ResponseEntity<Object> deleteSupplier(@RequestHeader(value = AUTH, required = false) String auth, @PathVariable("id") String id) { return run(() -> svc.deleteSupplier(auth, id)); }
+
     @GetMapping("/po")
     public ResponseEntity<Object> poList(@RequestHeader(value = AUTH, required = false) String auth,
                                          @RequestParam(value = "status", required = false) String status,

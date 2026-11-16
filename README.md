@@ -121,3 +121,14 @@ Patches on Windows: extracting the full zip over the folder is simpler than `git
 - Receipt text is Tamil only (same as the WhatsApp / PDF bill, not the bilingual on-screen text); emoji are stripped for thermal printers.
 - Works offline too — waiting (⏳) bills can be viewed and printed before they sync.
 - Code: `billView`, `billPrintHtml`, `printBill`, `PRINT_FMT` in `index.html`; test: `test/t_billview_ui.py`.
+
+## Purchase Order — Count / Weight lines
+- Each PO line is either **Count** (pieces) or **Weight** (kg or g). Catalog weight items are added "by weight"; items not in the catalog get a 🔢 Count / ⚖️ Weight switch.
+- Weight lines are stored in **grams** (`po_lines.qty`, `received_qty`); `po_lines.wt_unit` (NULL = count) is the unit the cost price is quoted in (₹ per kg / per g). Amount = cost × grams ÷ 1000 (kg) or × grams (g).
+- Receiving accepts kg or g per line; stock for weight items increases in grams (same as billing). Count lines are unchanged.
+- Existing databases migrate automatically (`po_lines.wt_unit`). Tests: `test/t_po_weight_api.py`, `test/t_po_weight_ui.py`.
+
+## Suppliers screen
+- Menu → **🏭 Supplier விவரம்** (also a button on the Purchase Orders page): list of suppliers with PO count / total / due, search, details, **add / edit / delete** (delete only when the supplier has no POs). Owner = view only.
+- Detail has **📥 New Purchase Order for this supplier**. The PO form already lets you pick an existing supplier or **➕ புது Supplier**.
+- API: `GET /suppliers` (with stats), `POST /suppliers` (add / edit by `id`), `POST /suppliers/{id}/delete`. Test: `test/t_suppliers.py`.

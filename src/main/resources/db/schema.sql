@@ -308,11 +308,12 @@ CREATE TABLE IF NOT EXISTS po_lines (
   item_id        VARCHAR(40)    COLLATE utf8mb4_bin NULL,
   item_name      VARCHAR(60)    NOT NULL,
   size_label     VARCHAR(12)    COLLATE utf8mb4_bin NOT NULL DEFAULT '',
-  qty            INT            NOT NULL,
+  qty            INT            NOT NULL,          -- count lines: pieces; weight lines (wt_unit set): GRAMS
   received_qty   INT            NOT NULL DEFAULT 0,
-  unit_cost      DECIMAL(10,2)  NOT NULL DEFAULT 0,
+  unit_cost      DECIMAL(10,2)  NOT NULL DEFAULT 0, -- per piece, or per kg / per g (wt_unit) for weight lines
   gst_pct        DECIMAL(5,2)   NOT NULL DEFAULT 0,
   amount         DECIMAL(14,2)  NOT NULL DEFAULT 0,
+  wt_unit        VARCHAR(2)     NULL,               -- NULL = counted in pieces; 'kg' | 'g' = bought by weight, price per that unit
   PRIMARY KEY (po_id, line_no),
   CONSTRAINT fk_po_lines FOREIGN KEY (po_id) REFERENCES purchase_orders (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -618,6 +618,9 @@ footer .pw-by b{color:var(--leaf)}
 .pol .g{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px}
 .pol .g label{font-size:10.5px;font-weight:700;color:var(--muted)}
 .pol .g input,.pol .g select{width:100%;min-width:0;height:40px;border-radius:10px;border:1.5px solid var(--line);padding:0 8px;font-size:15px;font-weight:700;background:#fff}
+.pol .g.w{grid-template-columns:1fr 1fr}
+.pol .by{height:30px!important;width:auto!important;font-size:12.5px!important;padding:0 6px!important;margin-left:6px}
+.pol .wt{font-size:11px;font-weight:700;color:#7a5600;margin-top:4px}
 .pol .am{text-align:right;font-size:12.5px;font-weight:800;color:var(--leaf-d);margin-top:4px}
 .posug{margin-top:6px;display:flex;flex-direction:column;gap:6px}
 .posug .it{border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:#fff}
@@ -632,6 +635,7 @@ footer .pw-by b{color:var(--leaf)}
 .po-tbl td{border-top:1px solid var(--line);padding:6px 3px;text-align:right;font-weight:700;vertical-align:top}
 .po-tbl td small{display:block;color:var(--muted);font-weight:600;font-size:10.5px}
 .rcv{display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.rcv:has(.rcvw){grid-template-columns:1fr 150px}.rcvw{display:flex;gap:4px}.rcvw select{height:42px;border-radius:10px;border:1.5px solid var(--line);font-weight:800;background:#fff}
 .rcv input{height:42px;border-radius:10px;border:1.5px solid var(--line);text-align:center;font-size:17px;font-weight:800;width:100%}
 .owntabs.t3{grid-template-columns:1fr 1fr 1fr}
 .owntabs.t3 button{font-size:12.5px}
@@ -2296,7 +2300,7 @@ function openMenu(){
     ${canEdit()&&catalog.setup?`<button class="mrow" id="mLabels">🏷 Barcode Labels Print</button>`:""}
     ${company&&(isAdmin()||isStock())?`<button class="mrow" id="mImport">📥 ஐட்டம் Import (CSV / Excel)</button>`:""}
     ${canStock()&&catalog.setup?`<button class="mrow" id="mStock">${isWh()?"🏭 Warehouse ஸ்டாக்":"📦 ஸ்டாக் (Stock)"}</button>`:""}
-    ${company&&(isOwner()||isAdmin()||isStock()||isWh())?`<button class="mrow" id="mStockRep">📋 ஸ்டாக் அறிக்கை (Stock report)</button><button class="mrow" id="mPo">📥 Purchase Orders</button><button class="mrow" id="mTr">🚚 Stock Transfers (Warehouse → கிளை)</button>`:""}
+    ${company&&(isOwner()||isAdmin()||isStock()||isWh())?`<button class="mrow" id="mStockRep">📋 ஸ்டாக் அறிக்கை (Stock report)</button><button class="mrow" id="mPo">📥 Purchase Orders</button><button class="mrow" id="mSup">🏭 Supplier விவரம் (Suppliers)</button><button class="mrow" id="mTr">🚚 Stock Transfers (Warehouse → கிளை)</button>`:""}
     ${company?`<button class="mrow" id="mCompany">🏬 கம்பெனி விவரம் (Company)</button>`:""}
     ${isAdmin()||isOwner()?`<button class="mrow" id="mInv">🧾 Software Invoice (${esc(APP_NAME)})</button>`:""}
     ${isAdmin()?`<button class="mrow" id="mAdmin">⚙ Admin Panel — Users / Companies</button>`:""}
@@ -3768,21 +3772,80 @@ function renderPoList(){
   return `${tabs}
     ${poData.branches&&poData.branches.length>1?`<div class="rp-br"><select id="poBranch" aria-label="Branch"><option value="">🏬 எல்லா கிளைகளும்</option>${poData.branches.map(b=>`<option value="${esc(b.id)}"${b.id===poBr?" selected":""}>${brIco(b)} ${esc(b.name)}</option>`).join("")}</select></div>`:myBranch?`<span class="brchip">🏬 கிளை: ${esc(myBranch)}</span>`:""}
     ${poData.canEdit&&catalog.setup?`<button class="cta leaf" id="poNew">➕ புதிய Purchase Order</button>`:""}
+    <button class="cta ghost" id="openSup">🏭 Supplier விவரம் (Suppliers)</button>
     <button class="cta ghost" id="openMoney">💳 Supplier பாக்கி + செலுத்திய தொகை (தேதி வாரியாக)</button>
     <div class="st-flt" style="margin-top:12px">${[["open","நிலுவையில் (வர வேண்டியவை)"],["received","வந்தவை"],["cancelled","ரத்து"],["all","எல்லாம்"]].map(f=>`<button data-poflt="${f[0]}" class="${poFlt===f[0]?"on":""}">${f[1]}</button>`).join("")}</div>
     ${os.length&&due>0?`<p class="hint">இந்த பட்டியலில் supplier-க்கு செலுத்த வேண்டிய பாக்கி: <b style="color:var(--bad)">${inr(due)}</b></p>`:""}
     ${os.length?os.map(o=>`<button class="po-card" data-poopen="${o.id}">
       <div class="r1"><div><b>${esc(o.no)} · ${esc(o.supplier)}</b><small>📅 ${esc(dLabel(o.orderDate))}${o.expectedDate?` → டெலிவரி ${esc(dShort(o.expectedDate))}`:""}${poData.branch?"":" · 🏬 "+esc(o.branch)}</small>
-        <small>📦 ${o.receivedQty}/${o.qty} பீஸ் வந்தது · 👤 ${esc(o.by)}</small></div>
+        <small>📦 ${[o.qty?`${o.receivedQty}/${o.qty} பீஸ்`:"",o.wtG?`⚖️ ${fmtG(o.receivedWtG||0)}/${fmtG(o.wtG)}`:""].filter(Boolean).join(" + ")} வந்தது · 👤 ${esc(o.by)}</small></div>
         <div style="text-align:right"><span class="pst ${o.status}">${PO_ST[o.status]||o.status}</span><div class="amt">${inr0(o.total)}</div>${o.balance>0&&o.status!=="cancelled"?`<small style="color:var(--bad)">பாக்கி ${inr0(o.balance)}</small>`:""}</div></div></button>`).join("")
       :`<div class="none"><b>📥</b>Purchase Order இல்லை</div>`}`;
+}
+/* ---- Suppliers screen (list / details / add / edit) ---- */
+let supData=null, supQ="";
+const supCanEdit = () => !isOwner();
+async function openSuppliers(){
+  busy(true); try{ supData=(await api("suppliers")).suppliers; poSup=supData; }catch(e){ apiErr(e); return; } finally{ busy(false); }
+  supQ=""; renderSuppliers(); showSheet();
+}
+function supListHtml(){
+  const q=supQ.trim().toLowerCase(), ls=supData.filter(x=>!q||(x.name+" "+x.phone+" "+x.gstin+" "+x.address).toLowerCase().includes(q));
+  return ls.length?ls.map(x=>`<button class="po-card" data-supopen="${esc(x.id)}"><div class="r1"><div><b>🏭 ${esc(x.name)}</b>
+      <small>${[x.phone&&"📞 "+x.phone,x.gstin&&"GST "+x.gstin].filter(Boolean).map(esc).join(" · ")||"—"}</small>
+      <small>📥 ${x.poCount} PO${x.lastOrder?" · கடைசி "+esc(dShort(x.lastOrder)):""}</small></div>
+      <div style="text-align:right"><div class="amt">${inr0(x.total)}</div>${x.balance>0?`<small style="color:var(--bad)">பாக்கி ${inr0(x.balance)}</small>`:""}</div></div></button>`).join("")
+    :`<div class="none"><b>🏭</b>${supData.length?"பொருந்தும் Supplier இல்லை":"Supplier இல்லை"}</div>`;
+}
+function renderSuppliers(){
+  const due=supData.reduce((a,x)=>a+x.balance,0);
+  $("#sheetBody").innerHTML=`<h2>🏭 Suppliers (${supData.length})</h2>
+    <p class="sub">சரக்கு வாங்கும் Supplier-கள் · தொட்டால் விவரம்${due>0?` · மொத்த பாக்கி <b style="color:var(--bad)">${inr0(due)}</b>`:""}</p>
+    ${supData.length>4?`<div class="st-tools"><input id="supQ" type="search" placeholder="பெயர் / மொபைல் / GST தேடு" autocomplete="off" value="${esc(supQ)}"></div>`:""}
+    ${supCanEdit()?`<button class="cta leaf" id="supNew">➕ புதிய Supplier சேர்</button>`:""}
+    <div id="supList">${supListHtml()}</div>
+    <button class="cta ghost" data-close>மூடு (Close)</button>`;
+}
+function supDetail(id){
+  const x=supData.find(y=>y.id===id); if(!x){ renderSuppliers(); return; }
+  $("#sheetBody").innerHTML=`<h2>🏭 ${esc(x.name)}</h2>
+    <div class="box"><p class="sub">📞 ${x.phone?`<a href="tel:${esc(x.phone)}">${esc(x.phone)}</a>`:"—"}</p><p class="sub">GST: ${esc(x.gstin||"—")}</p><p class="sub">📍 ${esc(x.address||"—")}</p></div>
+    <div class="box"><div class="potot"><div><span>Purchase Orders (ரத்து தவிர)</span><span>${x.poCount}</span></div>${x.lastOrder?`<div><span>கடைசி ஆர்டர்</span><span>${esc(dLabel(x.lastOrder))}</span></div>`:""}
+      <div><span>மொத்த கொள்முதல்</span><span>${inr(x.total)}</span></div><div><span>செலுத்தியது</span><span>${inr(x.paid)}</span></div>
+      <div class="gt" style="color:${x.balance>0?"var(--bad)":"#137a3f"}"><span>பாக்கி</span><span>${inr(x.balance)}</span></div></div></div>
+    ${supCanEdit()&&catalog.setup?`<button class="cta leaf" data-supnewpo="${esc(x.id)}">📥 இவருக்கு புதிய Purchase Order</button>`:""}
+    ${supCanEdit()?`<button class="cta ghost" data-supedit="${esc(x.id)}">✏️ விவரம் மாற்று</button>`:""}
+    ${supCanEdit()&&x.canDelete?`<button class="cta warn" data-supdel="${esc(x.id)}">🗑 நீக்கு (PO இல்லை)</button>`:""}
+    <button class="cta ghost" id="supBack">← Supplier பட்டியல்</button>`;
+}
+function supForm(id){
+  const x=id?supData.find(y=>y.id===id):null;
+  $("#sheetBody").innerHTML=`<h2>${x?"Supplier மாற்று":"➕ புதிய Supplier"}</h2><p class="sub">* கட்டாயம்</p>
+    <div class="box frm"><label class="fld">Supplier பெயர் *<input id="sfName" maxlength="60" autocomplete="off" value="${esc(x?x.name:"")}" placeholder="எ.கா. திருப்பூர் டெக்ஸ்டைல்ஸ்"></label>
+      <div class="two"><label class="fld">மொபைல்<input id="sfPhone" inputmode="numeric" maxlength="10" autocomplete="off" value="${esc(x?x.phone:"")}"></label><label class="fld">GSTIN<input id="sfGst" maxlength="15" autocomplete="off" style="text-transform:uppercase" value="${esc(x?x.gstin:"")}"></label></div>
+      <label class="fld">முகவரி / ஊர்<input id="sfAddr" maxlength="200" autocomplete="off" value="${esc(x?x.address:"")}"></label></div>
+    <button class="cta leaf" id="supSave" data-supid="${esc(id||"")}">சேமி (Save)</button>
+    <button class="cta ghost" id="${x?"supCancelEdit":"supBack"}" data-supid="${esc(id||"")}">ரத்து (Cancel)</button>`;
+}
+async function supSave(id){
+  const body={id:id||undefined,name:$("#sfName").value.trim(),phone:$("#sfPhone").value.trim(),gstin:$("#sfGst").value.trim().toUpperCase(),address:$("#sfAddr").value.trim()};
+  if(!body.name){ toast("Supplier பெயர் கொடுக்கவும்"); return; }
+  busy(true);
+  try{ const r=await api("suppliers","POST",body); supData=r.suppliers; poSup=supData; toast("Supplier சேமிக்கப்பட்டது"); supDetail(r.id); }
+  catch(e){ apiErr(e); } finally{ busy(false); }
+}
+async function supDelete(id){
+  const x=supData.find(y=>y.id===id); if(!x||!confirm("Supplier நீக்கவா? "+x.name)) return;
+  busy(true);
+  try{ const r=await api("suppliers/"+encodeURIComponent(id)+"/delete","POST",{}); supData=r.suppliers; poSup=supData; toast("நீக்கப்பட்டது"); renderSuppliers(); }
+  catch(e){ apiErr(e); } finally{ busy(false); }
 }
 async function loadSuppliers(){ try{ poSup=(await api("suppliers")).suppliers; }catch(e){ poSup=poSup||[]; } }
 /* ---- create / edit ---- */
 async function openPoForm(po){
   await loadSuppliers();
   poForm=po?{id:po.id, supplierId:po.supplierId, newSup:false, orderDate:po.orderDate, expectedDate:po.expectedDate, supplierRef:po.supplierRef, notes:po.notes,
-      other:po.other||"", discount:po.discount||"", paid:po.paid||"", lines:po.lines.map(l=>({itemId:l.itemId,name:l.name,size:l.size,qty:l.qty,unitCost:l.unitCost,gstPct:l.gstPct}))}
+      other:po.other||"", discount:po.discount||"", paid:po.paid||"", lines:po.lines.map(l=>l.by==='weight'?{itemId:l.itemId,name:l.name,size:l.size,by:'weight',unit:l.unit,pu:l.unit,qty:fromG(l.qty,l.unit),unitCost:l.unitCost,gstPct:l.gstPct}:{itemId:l.itemId,name:l.name,size:l.size,qty:l.qty,unitCost:l.unitCost,gstPct:l.gstPct})}
     :{id:0, supplierId:poSup.length?"":"__new", newSup:!poSup.length, orderDate:todayStr(), expectedDate:"", supplierRef:"", notes:"", other:"", discount:"", paid:"", lines:[]};
   renderPoForm(); showSheet();
 }
@@ -3815,22 +3878,27 @@ function renderPoForm(){
 }
 function supInfo(){ const x=poSup&&poSup.find(s=>s.id===poForm.supplierId), el=$("#poSupInfo"); if(el) el.textContent=x?[x.phone&&"📞 "+x.phone,x.gstin&&"GST "+x.gstin,x.address].filter(Boolean).join(" · "):""; }
 function poNum(v){ const n=numIn(v); return isFinite(n)?n:0; }
+const poW = l => l.by==="weight";
+const poGrams = l => toG(poNum(l.qty), l.unit||"kg");            /* weight line: quantity in grams */
+const poAmt = l => money(poW(l) ? poNum(l.unitCost)*poGrams(l)/((l.pu||l.unit)==="kg"?1000:1) : poNum(l.qty)*poNum(l.unitCost));
+const poQtyTxt = (q,l) => l.by==="weight" ? fmtG(q) : String(q);   /* q from the server: grams for weight lines */
 function renderPoLines(){
   const f=poForm, box=$("#poLines"); if(!box) return;
-  box.innerHTML=f.lines.map((l,i)=>`<div class="pol"><div class="hd"><span>${esc(l.name)}${l.size?` <small style="color:var(--muted)">(${esc(l.size)})</small>`:""}${l.itemId?"":` <span class="tag">புதிது</span>`}</span><button class="mini" data-poldel="${i}" aria-label="Remove">🗑</button></div>
-      <div class="g"><label>அளவு *<input data-pol="${i}" data-f="qty" inputmode="numeric" value="${l.qty}"></label>
-        <label>அடக்க விலை ₹<input data-pol="${i}" data-f="unitCost" inputmode="decimal" value="${l.unitCost??""}"></label>
+  box.innerHTML=f.lines.map((l,i)=>`<div class="pol"><div class="hd"><span>${esc(l.name)}${l.size?` <small style="color:var(--muted)">(${esc(l.size)})</small>`:""}${l.itemId?"":` <span class="tag">புதிது</span><select class="by" data-pol="${i}" data-f="by" aria-label="Count or weight"><option value="count"${poW(l)?"":" selected"}>🔢 எண்ணிக்கை</option><option value="weight"${poW(l)?" selected":""}>⚖️ எடை</option></select>`}</span><button class="mini" data-poldel="${i}" aria-label="Remove">🗑</button></div>
+      <div class="g${poW(l)?" w":""}"><label>${poW(l)?"எடை *":"அளவு (பீஸ்) *"}<input data-pol="${i}" data-f="qty" inputmode="${poW(l)?"decimal":"numeric"}" value="${l.qty}"></label>
+        ${poW(l)?`<label>அலகு<select data-pol="${i}" data-f="unit"><option value="kg"${l.unit==="kg"?" selected":""}>kg</option><option value="g"${l.unit==="g"?" selected":""}>g</option></select></label>`:""}
+        <label>${poW(l)?`அடக்க விலை ₹ / ${l.pu||l.unit}`:"அடக்க விலை ₹"}<input data-pol="${i}" data-f="unitCost" inputmode="decimal" value="${l.unitCost??""}"></label>
         <label>GST %<select data-pol="${i}" data-f="gstPct">${PO_GST.map(g=>`<option value="${g}"${Number(l.gstPct)===g?" selected":""}>${g}%</option>`).join("")}</select></label></div>
       <div class="am" id="pam${i}"></div></div>`).join("");
   poTotals();
 }
 function poTotals(){
-  const f=poForm; let sub=0,gst=0,pcs=0;
-  f.lines.forEach((l,i)=>{ const a=money(poNum(l.qty)*poNum(l.unitCost)); sub+=a; gst+=a*Number(l.gstPct||0)/100; pcs+=poNum(l.qty);
+  const f=poForm; let sub=0,gst=0,pcs=0,wg=0;
+  f.lines.forEach((l,i)=>{ const a=poAmt(l); sub+=a; gst+=a*Number(l.gstPct||0)/100; if(poW(l)) wg+=poGrams(l); else pcs+=poNum(l.qty);
     const el=$("#pam"+i); if(el) el.textContent=`${inr(a)}${Number(l.gstPct)?` + GST ${inr(money(a*l.gstPct/100))}`:""}`; });
   const other=poNum($("#poOther")&&$("#poOther").value), disc=poNum($("#poDisc")&&$("#poDisc").value), paid=poNum($("#poPaid")&&$("#poPaid").value);
   const tot=money(sub+gst+other-disc), el=$("#poTot"); if(!el) return;
-  el.innerHTML=`<div><span>${f.lines.length} ஐட்டம் · ${pcs} பீஸ்</span><span>${inr(money(sub))}</span></div><div><span>GST</span><span>${inr(money(gst))}</span></div>
+  el.innerHTML=`<div><span>${f.lines.length} ஐட்டம் · ${[pcs?pcs+" பீஸ்":"",wg?fmtG(wg):""].filter(Boolean).join(" + ")||"0"}</span><span>${inr(money(sub))}</span></div><div><span>GST</span><span>${inr(money(gst))}</span></div>
     ${other?`<div><span>இதர செலவு</span><span>+ ${inr(other)}</span></div>`:""}${disc?`<div><span>தள்ளுபடி</span><span>− ${inr(disc)}</span></div>`:""}
     <div class="gt"><span>மொத்தம்</span><span>${inr(tot)}</span></div>${paid?`<div><span>செலுத்தியது</span><span>${inr(paid)}</span></div><div style="color:var(--bad)"><span>பாக்கி</span><span>${inr(money(tot-paid))}</span></div>`:""}`;
 }
@@ -3840,7 +3908,7 @@ function poSuggest(){
   const hit=byCode[q]||byCode[q.toUpperCase()];
   const its=hit?[byId[hit.id]]:ITEMS.filter(it=>(it.ta+" "+it.en).toLowerCase().includes(q)).slice(0,6);
   box.innerHTML=its.length?its.map(it=>`<div class="it"><b>${esc(it.ta)}</b>${it.en?` <small style="color:var(--muted)">${esc(it.en)}</small>`:""}
-      <div class="sz">${it.sizes.map(z=>`<button data-poadd="${esc(it.id)}" data-posz="${esc(z.size)}">+ ${esc(z.size)}</button>`).join("")}<button data-poadd="${esc(it.id)}" data-posz="*">+ எல்லா சைஸும்</button></div></div>`).join("")
+      <div class="sz">${isW(it)?`<button data-poadd="${esc(it.id)}" data-posz="${esc(it.sizes[0].size)}">+ ⚖️ எடையில் சேர் (kg / g)</button>`:it.sizes.map(z=>`<button data-poadd="${esc(it.id)}" data-posz="${esc(z.size)}">+ ${esc(z.size)}</button>`).join("")+`<button data-poadd="${esc(it.id)}" data-posz="*">+ எல்லா சைஸும்</button>`}</div></div>`).join("")
     :`<p class="hint">பொருந்தும் ஐட்டம் இல்லை · "பட்டியலில் இல்லாத பொருள்" மூலம் சேர்க்கலாம்</p>`;
 }
 function poAddLine(id,size){
@@ -3848,7 +3916,7 @@ function poAddLine(id,size){
   const last=poForm.lines.length?poForm.lines[poForm.lines.length-1].gstPct:5;
   (size==="*"?it.sizes:it.sizes.filter(z=>z.size===size)).forEach(z=>{
     const ex=poForm.lines.find(l=>l.itemId===id&&l.size===z.size);
-    if(ex) ex.qty=poNum(ex.qty)+1; else poForm.lines.push({itemId:id,name:it.ta,size:z.size,qty:1,unitCost:z.cost??"",gstPct:last});
+    if(ex) ex.qty=poNum(ex.qty)+1; else poForm.lines.push(isW(it)?{itemId:id,name:it.ta,size:z.size,by:"weight",unit:it.unit,pu:it.unit,qty:1,unitCost:z.cost??"",gstPct:last}:{itemId:id,name:it.ta,size:z.size,qty:1,unitCost:z.cost??"",gstPct:last});
   });
   renderPoLines(); toast("சேர்க்கப்பட்டது: "+it.ta+(size==="*"?" (எல்லா சைஸ்)":" ("+size+")"));
 }
@@ -3864,10 +3932,10 @@ async function savePoForm(){
             : f.supplierId ? {id:f.supplierId} : null;
   if(!sup || (f.supplierId==="__new" && !sup.name)){ toast("Supplier-ஐ தேர்வு செய்யவும் / பெயர் கொடுக்கவும்"); return; }
   if(!f.lines.length){ toast("குறைந்தது ஒரு ஐட்டம் சேர்க்கவும்"); return; }
-  const bad=f.lines.find(l=>!(poNum(l.qty)>=1)); if(bad){ toast("அளவை சரி பார்க்கவும்: "+bad.name); return; }
+  const bad=f.lines.find(l=>poW(l)?!(poGrams(l)>=1):!(poNum(l.qty)>=1)); if(bad){ toast("அளவை சரி பார்க்கவும்: "+bad.name); return; }
   const body={id:f.id||undefined, supplier:sup, orderDate:$("#poDate").value, expectedDate:$("#poExp").value, supplierRef:$("#poRef").value.trim(), notes:$("#poNotes").value.trim(),
     otherCharges:$("#poOther").value, discount:$("#poDisc").value, paid:$("#poPaid").value,
-    lines:f.lines.map(l=>({itemId:l.itemId||"",name:l.name,size:l.size||"",qty:poNum(l.qty),unitCost:l.unitCost===""?0:l.unitCost,gstPct:l.gstPct}))};
+    lines:f.lines.map(l=>poW(l)?{itemId:l.itemId||"",name:l.name,size:l.size||"",by:"weight",unit:l.pu||l.unit,qty:poGrams(l),unitCost:l.unitCost===""?0:l.unitCost,gstPct:l.gstPct}:{itemId:l.itemId||"",name:l.name,size:l.size||"",qty:poNum(l.qty),unitCost:l.unitCost===""?0:l.unitCost,gstPct:l.gstPct})};
   busy(true);
   try{ const r=await api("po","POST",body); poForm=null; poData=null; toast((f.id?"PO மாற்றப்பட்டது: ":"PO சேமிக்கப்பட்டது: ")+r.po.no); openPoDetail(r.po); if(view()==="po") loadPoList(); }
   catch(e){ apiErr(e); } finally{ busy(false); }
@@ -3882,9 +3950,9 @@ async function openPoDetail(po){
       <p class="sub">📅 ஆர்டர்: ${esc(dLabel(po.orderDate))}${po.expectedDate?` · டெலிவரி: ${esc(dLabel(po.expectedDate))}`:""}${po.supplierRef?` · Ref: ${esc(po.supplierRef)}`:""}</p>
       ${po.notes?`<p class="sub">📝 ${esc(po.notes)}</p>`:""}${po.receivedAt?`<p class="sub">📦 கடைசி வரவு: ${esc(fmtDate(po.receivedAt))} · ${esc(po.receivedBy)}</p>`:""}</div>
     <div class="box" style="overflow-x:auto"><table class="po-tbl"><thead><tr><th>ஐட்டம்</th><th>ஆர்டர்</th><th>வந்தது</th><th>விலை</th><th>தொகை</th></tr></thead><tbody>
-      ${po.lines.map(l=>`<tr><td>${esc(l.name)}<small>${esc(l.size||"")}${l.itemId?"":" · புதிது"}</small></td><td>${l.qty}</td><td style="color:${l.received>=l.qty?"#137a3f":l.received?"#7a5600":"var(--muted)"}">${l.received}</td><td>${inr0(l.unitCost)}<small>GST ${l.gstPct}%</small></td><td>${inr0(l.amount)}</td></tr>`).join("")}
+      ${po.lines.map(l=>`<tr><td>${esc(l.name)}<small>${esc(l.size||"")}${l.itemId?"":" · புதிது"}</small></td><td>${poQtyTxt(l.qty,l)}</td><td style="color:${l.received>=l.qty?"#137a3f":l.received?"#7a5600":"var(--muted)"}">${poQtyTxt(l.received,l)}</td><td>${inr0(l.unitCost)}${l.by==="weight"?"/"+l.unit:""}<small>GST ${l.gstPct}%</small></td><td>${inr0(l.amount)}</td></tr>`).join("")}
     </tbody></table>
-    <div class="potot" style="margin-top:8px"><div><span>${po.lines.length} ஐட்டம் · ${po.qty} பீஸ் (வந்தது ${rq})</span><span>${inr(po.subtotal)}</span></div><div><span>GST</span><span>${inr(po.gst)}</span></div>
+    <div class="potot" style="margin-top:8px"><div><span>${po.lines.length} ஐட்டம் · ${poSumTxt(po)}</span><span>${inr(po.subtotal)}</span></div><div><span>GST</span><span>${inr(po.gst)}</span></div>
       ${po.other?`<div><span>இதர செலவு</span><span>+ ${inr(po.other)}</span></div>`:""}${po.discount?`<div><span>தள்ளுபடி</span><span>− ${inr(po.discount)}</span></div>`:""}
       <div class="gt"><span>மொத்தம்</span><span>${inr(po.total)}</span></div><div><span>செலுத்தியது</span><span>${inr(po.paid)}</span></div>
       <div style="color:${po.balance>0?"var(--bad)":"#137a3f"}"><span>பாக்கி</span><span>${inr(po.balance)}</span></div></div></div>
@@ -3897,18 +3965,21 @@ async function openPoDetail(po){
     <button class="cta ghost" data-close>மூடு (Close)</button>`;
   showSheet();
 }
+function poSumTxt(o){   /* "10 பீஸ் (வந்தது 4) + 25.5 kg (வந்தது 10 kg)" */
+  const a=[]; if(o.qty) a.push(`${o.qty} பீஸ் (வந்தது ${o.receivedQty})`); if(o.wtG) a.push(`${fmtG(o.wtG)} (வந்தது ${fmtG(o.receivedWtG||0)})`); return a.join(" + ")||"0"; }
 function poText(po){
   const L=[`*${company.name}*`,`📥 Purchase Order: *${po.no}*`,`தேதி: ${dLabel(po.orderDate)}${po.expectedDate?` · டெலிவரி: ${dLabel(po.expectedDate)}`:""}`,`🏬 ${po.branch}`,""];
-  po.lines.forEach((l,i)=>L.push(`${i+1}. ${l.name}${l.size?" ("+l.size+")":""} — ${l.qty} pcs${l.unitCost?` × ${inr(l.unitCost)}`:""}`));
-  L.push("",`மொத்தம்: ${po.qty} pcs · ${inr(po.total)}`); if(po.notes) L.push(`குறிப்பு: ${po.notes}`);
+  po.lines.forEach((l,i)=>L.push(l.by==="weight"?`${i+1}. ${l.name} — ${fmtG(l.qty)}${l.unitCost?` × ${inr(l.unitCost)}/${l.unit}`:""}`:`${i+1}. ${l.name}${l.size?" ("+l.size+")":""} — ${l.qty} pcs${l.unitCost?` × ${inr(l.unitCost)}`:""}`));
+  L.push("",`மொத்தம்: ${[po.qty?po.qty+" pcs":"",po.wtG?fmtG(po.wtG):""].filter(Boolean).join(" + ")} · ${inr(po.total)}`); if(po.notes) L.push(`குறிப்பு: ${po.notes}`);
   L.push("","தயவுசெய்து சரக்கை உறுதி செய்யவும் 🙏"); return L.join("\n");
 }
 function openPoReceive(){
   const po=poCur; if(!po) return;
   const ls=po.lines.filter(l=>l.received<l.qty);
   $("#sheetBody").innerHTML=`<h2>📥 சரக்கு வரவு · ${esc(po.no)}</h2><p class="sub">${esc(po.supplier)} · வந்த அளவை உள்ளிடவும் (பகுதியாகவும் பெறலாம்) · 🏬 ${esc(po.branch)} ஸ்டாக்கில் சேரும்</p>
-    <div class="box">${ls.map(l=>`<div class="rcv"><div><b style="font-size:14px">${esc(l.name)}</b> <small style="color:var(--muted)">${esc(l.size||"")}</small><br><small style="color:var(--muted)">ஆர்டர் ${l.qty} · வந்தது ${l.received} · மீதம் ${l.qty-l.received}${l.itemId?"":" · புதிய பொருள் (ஸ்டாக்கில் சேராது)"}</small></div>
-      <input data-rcv="${l.line}" data-max="${l.qty-l.received}" inputmode="numeric" value="${l.qty-l.received}" aria-label="Received quantity"></div>`).join("")}</div>
+    <div class="box">${ls.map(l=>`<div class="rcv"><div><b style="font-size:14px">${esc(l.name)}</b> <small style="color:var(--muted)">${esc(l.size||"")}</small><br><small style="color:var(--muted)">ஆர்டர் ${poQtyTxt(l.qty,l)} · வந்தது ${poQtyTxt(l.received,l)} · மீதம் ${poQtyTxt(l.qty-l.received,l)}${l.itemId?"":" · புதிய பொருள் (ஸ்டாக்கில் சேராது)"}</small></div>
+      ${l.by==="weight"?`<div class="rcvw"><input data-rcv="${l.line}" data-max="${l.qty-l.received}" data-w="1" inputmode="decimal" value="${fromG(l.qty-l.received,l.unit)}" aria-label="Received weight"><select data-rcvu="${l.line}" aria-label="Measure"><option value="kg"${l.unit==="kg"?" selected":""}>kg</option><option value="g"${l.unit==="g"?" selected":""}>g</option></select></div>`
+      :`<input data-rcv="${l.line}" data-max="${l.qty-l.received}" inputmode="numeric" value="${l.qty-l.received}" aria-label="Received quantity">`}</div>`).join("")}</div>
     ${canSeeCost()?`<label class="rem" style="margin-top:10px"><input type="checkbox" id="rcvCost" checked>ஐட்டங்களின் அடக்க விலையை இந்த PO விலைக்கு மாற்று</label>`:""}
     <p class="hint">"புதிய பொருள்" வரிகள் catalog-ல் இல்லாததால் ஸ்டாக்கில் சேராது — முதலில் ஐட்டமாக உருவாக்கவும்</p>
     <button class="cta leaf" id="rcvSave">✅ வரவை சேமி — ஸ்டாக்கில் சேர்</button>
@@ -3916,13 +3987,14 @@ function openPoReceive(){
 }
 async function savePoReceive(){
   const lines=[]; let bad=false;
-  document.querySelectorAll("[data-rcv]").forEach(i=>{ const q=parseInt(i.value||"0",10), mx=Number(i.dataset.max); if(!(q>=0&&q<=mx)){ bad=true; i.style.borderColor="var(--bad)"; } else if(q>0) lines.push({line:Number(i.dataset.rcv),qty:q}); });
+  document.querySelectorAll("[data-rcv]").forEach(i=>{ const w=!!i.dataset.w, u=w?document.querySelector(`[data-rcvu="${i.dataset.rcv}"]`).value:"", q=w?toG(numIn(i.value||"0")||0,u):parseInt(i.value||"0",10), mx=Number(i.dataset.max); if(!(q>=0&&q<=mx)){ bad=true; i.style.borderColor="var(--bad)"; } else if(q>0) lines.push({line:Number(i.dataset.rcv),qty:q}); });
   if(bad){ toast("வந்த அளவு மீதத்தை விட அதிகம் / தவறு"); return; }
   if(!lines.length){ toast("வந்த அளவை உள்ளிடவும்"); return; }
   busy(true);
   try{ const r=await api("po/"+poCur.id+"/receive","POST",{lines,updateCost:$("#rcvCost")?$("#rcvCost").checked:false});
     stockData=null; srData=null; poData=null; try{ await loadData(); }catch(x){}
-    toast(`ஸ்டாக்கில் சேர்க்கப்பட்டது: ${lines.reduce((a,l)=>a+l.qty,0)} பீஸ்`); openPoDetail(r.po); if(view()==="po") loadPoList(); }
+    const wl=new Set(poCur.lines.filter(l=>l.by==="weight").map(l=>l.line)), pc=lines.filter(l=>!wl.has(l.line)).reduce((a,l)=>a+l.qty,0), wg=lines.filter(l=>wl.has(l.line)).reduce((a,l)=>a+l.qty,0);
+    toast("ஸ்டாக்கில் சேர்க்கப்பட்டது: "+[pc?pc+" பீஸ்":"",wg?fmtG(wg):""].filter(Boolean).join(" + ")); openPoDetail(r.po); if(view()==="po") loadPoList(); }
   catch(e){ apiErr(e); } finally{ busy(false); }
 }
 
@@ -4210,7 +4282,7 @@ document.addEventListener("click",e=>{
   if(t.id==="invGen"){ genInv(); return; }
   if(t.id==="invPrint"){ closeSheet(); setTimeout(()=>window.print(),300); return; }
   if(t.id==="mLabels"||t.id==="openLabels"){ closeSheet(); lbOpen(null,""); return; }
-  if(t.id==="poLabels"&&poCur){ const m={}; poCur.lines.forEach(l=>{ if(l.itemId&&l.received>0) m[l.itemId+"|"+l.size]=(m[l.itemId+"|"+l.size]||0)+l.received; }); closeSheet(); lbOpen(m,poCur.no||"PO"); return; }
+  if(t.id==="poLabels"&&poCur){ const m={}; poCur.lines.forEach(l=>{ if(l.itemId&&l.by!=="weight"&&l.received>0) m[l.itemId+"|"+l.size]=(m[l.itemId+"|"+l.size]||0)+l.received; }); closeSheet(); lbOpen(m,poCur.no||"PO"); return; }
   if(t.id==="trLabels"&&trCur){ const m={}, rc=trCur.status==="received"; trCur.lines.forEach(l=>{ const n=rc?l.received:l.qty; if(n>0) m[l.itemId+"|"+l.size]=(m[l.itemId+"|"+l.size]||0)+n; }); closeSheet(); lbOpen(m,trCur.no); return; }
   if(d.lbinc!==undefined){ lbSet(d.lbinc,(lb.q[d.lbinc]||0)+(+d.n)); return; }
   if(d.lbcat){ lb.cat=d.lbcat; renderView(); window.scrollTo(0,0); return; }
@@ -4359,6 +4431,15 @@ document.addEventListener("click",e=>{
   /* purchase orders */
   if(t.id==="openPo"||t.id==="mPo"){ closeSheet(); poData=null; if(location.hash!=="#po") location.hash="po"; else loadPoList(); return; }
   if(d.poflt){ poFlt=d.poflt; poData=null; loadPoList(); return; }
+  if(t.id==="mSup"||t.id==="openSup"){ closeSheet(); return openSuppliers(); }
+  if(d.supopen) return supDetail(d.supopen);
+  if(t.id==="supBack") return renderSuppliers();
+  if(t.id==="supNew") return supForm(null);
+  if(d.supedit) return supForm(d.supedit);
+  if(t.id==="supCancelEdit") return supDetail(t.dataset.supid);
+  if(t.id==="supSave") return supSave(t.dataset.supid);
+  if(d.supdel) return supDelete(d.supdel);
+  if(d.supnewpo){ const sid=d.supnewpo; return openPoForm(null).then(()=>{ if(poForm){ poForm.supplierId=sid; renderPoForm(); } }); }
   if(t.id==="poNew") return openPoForm(null);
   if(d.poopen) return openPoDetail(Number(d.poopen));
   if(d.poadd){ return poAddLine(d.poadd,d.posz); }
@@ -4466,7 +4547,8 @@ document.addEventListener("input",e=>{
   if(id==="cQty"){ const n=Math.floor(Number(e.target.value)); if(n>0){ customQty=Math.min(n,999); updateCustomTotal(); } }
   if(id==="pendQ") renderPendGroups();
   if(id==="poQ") poSuggest();
-  if(e.target.dataset && e.target.dataset.pol!==undefined && poForm){ poForm.lines[Number(e.target.dataset.pol)][e.target.dataset.f]=e.target.value; poTotals(); }
+  if(id==="supQ"){ supQ=e.target.value; const el=$("#supList"); if(el) el.innerHTML=supListHtml(); }
+  if(e.target.dataset && e.target.dataset.pol!==undefined && poForm && e.target.tagName!=="SELECT"){ poForm.lines[Number(e.target.dataset.pol)][e.target.dataset.f]=e.target.value; poTotals(); }
   if((id==="poOther"||id==="poDisc"||id==="poPaid") && poForm) poTotals();
   if(id==="uFilterQ") renderUserList();
   if(id==="iPhone") checkPending();
@@ -4513,7 +4595,10 @@ document.addEventListener("change",e=>{
   if(id==="rDate" && e.target.value) loadReport(e.target.value);
   if(id==="rBranch"){ repBranch=e.target.value; loadReport(repDate); }
   if(id==="poSupSel"){ poForm.supplierId=e.target.value; $("#poSupNew").hidden=e.target.value!=="__new"; supInfo(); }
-  if(e.target.dataset && e.target.dataset.pol!==undefined && poForm && e.target.tagName==="SELECT"){ poForm.lines[Number(e.target.dataset.pol)].gstPct=Number(e.target.value); poTotals(); }
+  if(e.target.dataset && e.target.dataset.pol!==undefined && poForm && e.target.tagName==="SELECT"){ const l=poForm.lines[Number(e.target.dataset.pol)], f=e.target.dataset.f, v=e.target.value;
+    if(f==="by"){ if(v==="weight"){ l.by="weight"; l.unit=l.pu="kg"; } else { delete l.by; delete l.unit; delete l.pu; } l.qty=1; renderPoLines(); }
+    else if(f==="unit"){ const g=poGrams(l); l.unit=v; if(!l.itemId) l.pu=v; l.qty=fromG(g,v); renderPoLines(); }
+    else { l.gstPct=Number(v); poTotals(); } }
   if(id==="poBranch"){ poBr=e.target.value; poData=null; loadPoList(); }
   if(id==="uFilterCo"){ uFilterCo=e.target.value; try{ localStorage.setItem("bmb_ufilter",uFilterCo); }catch(x){} renderUserList(); }
   if(id==="srBranch"){ srBranch=e.target.value; srData=null; loadStockRep(); }
