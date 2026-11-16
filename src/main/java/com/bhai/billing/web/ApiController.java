@@ -4,6 +4,7 @@ import com.bhai.billing.core.ApiException;
 import com.bhai.billing.core.BillingService;
 import com.bhai.billing.core.DbException;
 import com.bhai.billing.core.PostDeployTests;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -41,7 +42,21 @@ public class ApiController {
     public ResponseEntity<Object> ping() { return run(() -> Collections.singletonMap("ok", true)); }
 
     @PostMapping("/login")
-    public ResponseEntity<Object> login(@RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.login(nn(body))); }
+    public ResponseEntity<Object> login(@RequestBody(required = false) Map<String, Object> body, HttpServletRequest req) {
+        String xf = req.getHeader("X-Forwarded-For");
+        String ip = xf != null && !xf.isBlank() ? xf.split(",")[0].trim() : req.getRemoteAddr();
+        return run(() -> svc.login(nn(body), ip, req.getHeader("User-Agent")));
+    }
+
+    @PostMapping("/ping")
+    public ResponseEntity<Object> ping(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.ping(auth)); }
+
+    @GetMapping("/admin/sessions")
+    public ResponseEntity<Object> adminSessions(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.adminSessions(auth)); }
+
+    @PostMapping("/admin/sessions/kill")
+    public ResponseEntity<Object> adminKillSession(@RequestHeader(value = AUTH, required = false) String auth,
+                                                   @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.adminKillSession(auth, nn(body))); }
 
     @GetMapping("/me")
     public ResponseEntity<Object> me(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.me(auth)); }
@@ -381,6 +396,8 @@ public class ApiController {
     }
 
     private static ResponseEntity<Object> error(int status, String msg) {
-        return ResponseEntity.status(status).header("Cache-Control", "no-store").body(Collections.singletonMap("error", msg));
+        ResponseEntity.BodyBuilder b = ResponseEntity.status(status).header("Cache-Control", "no-store");
+        if (status == 401) b.header("WWW-Authenticate", "Bearer");
+        return b.body(Collections.singletonMap("error", msg));
     }
 }

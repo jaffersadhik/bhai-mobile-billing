@@ -135,3 +135,11 @@ Patches on Windows: extracting the full zip over the folder is simpler than `git
 
 ## Clear browser data
 Menu → **🧹 Browser டேட்டா அழி**: unregisters the service worker, deletes caches, IndexedDB (offline copy + queue), localStorage / sessionStorage, then reloads to the login screen. Server data is untouched. If bills / cancellations are still unsynced it warns that they will be lost. Test: `test/t_clear_data.py`.
+
+## Authentication — access token (Bearer), sessions, idle logout
+- **Method:** login (`POST /api/login`) returns an **access token** `{access_token, token_type:"Bearer", expires_in}`. Every call sends `Authorization: Bearer <access_token>` (RFC 6750; the old `X-Auth` header is still accepted). A 401 carries `WWW-Authenticate: Bearer`.
+- The token is an opaque random 256-bit value; only its SHA-256 is stored (`auth_tokens`). It is *stateful* on purpose (not a JWT), so an admin can end a session instantly and the idle timeout works. 30 days max with "remember me", 12 h without.
+- **Sessions per username:** `users.max_sessions` (default **2**, 0 = unlimited). A new login beyond the limit is refused (HTTP 409) until another session ends, idles out or an admin ends it. Set when creating / editing a user.
+- **Idle logout:** `users.idle_minutes` (default **10**, 0 = never). The server rejects a token unused for longer (`auth_tokens.last_seen`, refreshed by every request, at most every 15 s). The app also logs out locally after that idle time and sends a keep-alive `POST /api/ping` (every 30 s at most) while the user taps / types / scrolls. Unsynced offline bills stay on the phone.
+- **Admin:** Admin Panel → **🟢 இப்போது login ஆனவர்கள்** lists every live session (user, company, device, IP, login time, last activity) with ❌ end one / "End all" for a user. `GET /api/admin/sessions`, `POST /api/admin/sessions/kill {sid | userId}`. Lowering a user's session limit drops their oldest-used sessions.
+- Existing users are migrated with the defaults (2 sessions, 10 min). Tests: `test/t_sessions.py`, `test/t_sessions_ui.py`.

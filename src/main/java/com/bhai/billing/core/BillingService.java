@@ -93,6 +93,8 @@ public class BillingService {
     // ================================================================ startup
     /** default password for the first admin and for new users created without one (demo phase) */
     static final String DEFAULT_PASSWORD = "admin1234";
+    static final int DEFAULT_MAX_SESSIONS = 2;      // simultaneous logins per username
+    static final int DEFAULT_IDLE_MINUTES = 10;     // auto-logout when unused
 
     /** First start: create admin / admin1234. */
     /**
@@ -177,6 +179,11 @@ public class BillingService {
         if (!hasColumn("companies", "po_seq")) db.update("ALTER TABLE companies ADD COLUMN po_seq BIGINT NOT NULL DEFAULT 0 AFTER bill_seq");
         if (!hasColumn("items", "sold_by")) db.update("ALTER TABLE items ADD COLUMN sold_by VARCHAR(6) NOT NULL DEFAULT 'count'");   // count | weight
         if (!hasColumn("items", "wt_unit")) db.update("ALTER TABLE items ADD COLUMN wt_unit VARCHAR(2) NOT NULL DEFAULT 'kg'");      // weight items: kg | g
+        if (!hasColumn("users", "max_sessions")) db.update("ALTER TABLE users ADD COLUMN max_sessions TINYINT NOT NULL DEFAULT 2 AFTER must_change");
+        if (!hasColumn("users", "idle_minutes")) db.update("ALTER TABLE users ADD COLUMN idle_minutes INT NOT NULL DEFAULT 10 AFTER max_sessions");
+        if (!hasColumn("auth_tokens", "last_seen")) db.update("ALTER TABLE auth_tokens ADD COLUMN last_seen DATETIME NULL");
+        if (!hasColumn("auth_tokens", "ip")) db.update("ALTER TABLE auth_tokens ADD COLUMN ip VARCHAR(45) NULL");
+        if (!hasColumn("auth_tokens", "device")) db.update("ALTER TABLE auth_tokens ADD COLUMN device VARCHAR(120) NULL");
         if (!hasColumn("po_lines", "wt_unit")) db.update("ALTER TABLE po_lines ADD COLUMN wt_unit VARCHAR(2) NULL");                 // PO weight lines: qty in grams, price per kg | g
         if (!hasColumn("bill_lines", "wt_g")) db.update("ALTER TABLE bill_lines ADD COLUMN wt_g INT NULL");                           // grams of one portion (weight lines)
         if (!hasColumn("companies", "rate_change")) db.update("ALTER TABLE companies ADD COLUMN rate_change TINYINT(1) NOT NULL DEFAULT 0");
@@ -318,7 +325,10 @@ public class BillingService {
     }
 
     // ================================================================ auth
-    public Map<String, Object> login(Map<String, Object> in) {
+    public Map<String, Object> login(Map<String, Object> in) { return login(in, "", ""); }
+
+    /** Access-token login: returns {access_token, token_type: "Bearer", expires_in}. One token = one session. */
+    public Map<String, Object> login(Map<String, Object> in, String ip, String userAgent) {
         String u = clip(in.get("user"), 40).toLowerCase(Locale.ROOT);
         String p = rawStr(in.get("pass"));
         if (u.isEmpty() || p.isEmpty()) throw new ApiException(400, "பயனர் பெயர், கடவுச்சொல் தேவை");
@@ -343,23 +353,115 @@ public class BillingService {
         String raw = hex(bytes(32));
         LocalDateTime now = now();
         db.update("DELETE FROM auth_tokens WHERE expires_at < ?", now);
-        db.update("INSERT INTO auth_tokens (token_hash, user_id, company_id, expires_at, created_at) VALUES (?, ?, NULL, ?, ?)",
-                sha(raw), user.get("id"), remember ? now.plusDays(30) : now.plusHours(12), now);
+        purgeIdleTokens(now);
+        long max = lng(user.get("max_sessions"));
+        if (max > 0) {
+            long live = lng(db.one("SELECT COUNT(*) AS n FROM auth_tokens WHERE user_id = ?", user.get("id")).get("n"));
+            if (live >= max)
+                throw new ApiException(409, "இந்த பயனருக்கு அதிகபட்சம் " + max + " session மட்டுமே அனுமதி — ஏற்கனவே " + live
+                        + " இடங்களில் login உள்ளது. வேறு device-ல் logout செய்யவும் அல்லது Admin-ஐ தொடர்பு கொள்ளவும்");
+        }
+        LocalDateTime exp = remember ? now.plusDays(30) : now.plusHours(12);
+        db.update("INSERT INTO auth_tokens (token_hash, user_id, company_id, expires_at, created_at, last_seen, ip, device) VALUES (?, ?, NULL, ?, ?, ?, ?, ?)",
+                sha(raw), user.get("id"), exp, now, now, clip(ip, 45), clip(deviceName(userAgent), 120));
         Map<String, Object> out = session(new Ctx(sha(raw), user, null));
-        out.put("token", raw);
+        out.put("token", raw);                                   // old clients
+        out.put("access_token", raw);
+        out.put("token_type", "Bearer");
+        out.put("expires_in", java.time.Duration.between(now, exp).getSeconds());
         return out;
+    }
+
+    /** sessions of users with an idle limit that have been silent for longer than that limit */
+    private void purgeIdleTokens(LocalDateTime now) {
+        db.update("DELETE t FROM auth_tokens t JOIN users u ON u.id = t.user_id WHERE u.idle_minutes > 0 "
+                + "AND COALESCE(t.last_seen, t.created_at) < DATE_SUB(?, INTERVAL u.idle_minutes MINUTE)", now);
+    }
+
+    static String deviceName(String ua) {
+        String a = ua == null ? "" : ua;
+        String os = a.contains("Android") ? "Android" : a.contains("iPhone") ? "iPhone" : a.contains("iPad") ? "iPad" : a.contains("Windows") ? "Windows"
+                : a.contains("Mac OS") ? "Mac" : a.contains("Linux") ? "Linux" : "";
+        String br = a.contains("Edg/") ? "Edge" : a.contains("OPR/") ? "Opera" : a.contains("Firefox/") ? "Firefox" : a.contains("Chrome/") || a.contains("CriOS") ? "Chrome"
+                : a.contains("Safari/") ? "Safari" : a.isEmpty() ? "" : "Browser";
+        return (br + (os.isEmpty() || br.isEmpty() ? "" : " · ") + os).trim();
     }
 
     Ctx ctx(String raw) {
         if (blank(raw)) throw new ApiException(401, "Login தேவை");
         String key = sha(raw.trim());
-        Map<String, Object> r = db.one("SELECT t.company_id AS active_company, t.expires_at AS token_expires, u.* "
+        Map<String, Object> r = db.one("SELECT t.company_id AS active_company, t.expires_at AS token_expires, t.created_at AS tok_created, t.last_seen AS tok_seen, u.* "
                 + "FROM auth_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?", key);
-        if (r == null || ldt(r.get("token_expires")).isBefore(now()) || !bool(r.get("active"))) {
+        LocalDateTime now = now();
+        if (r == null || ldt(r.get("token_expires")).isBefore(now) || !bool(r.get("active"))) {
             if (r != null) db.update("DELETE FROM auth_tokens WHERE token_hash = ?", key);
             throw new ApiException(401, "Session முடிந்தது. மீண்டும் login செய்யவும்");
         }
+        LocalDateTime seen = r.get("tok_seen") != null ? ldt(r.get("tok_seen")) : ldt(r.get("tok_created"));
+        long idle = lng(r.get("idle_minutes"));
+        if (idle > 0 && seen.plusMinutes(idle).isBefore(now)) {
+            db.update("DELETE FROM auth_tokens WHERE token_hash = ?", key);
+            throw new ApiException(401, "நீண்ட நேரம் பயன்படுத்தாததால் (" + idle + " நிமிடம்) தானாக logout ஆனது. மீண்டும் login செய்யவும்");
+        }
+        if (seen.plusSeconds(15).isBefore(now)) db.update("UPDATE auth_tokens SET last_seen = ? WHERE token_hash = ?", now, key);   // keep-alive (at most every 15 s)
         return new Ctx(key, r, nz(r.get("active_company")));
+    }
+
+    /** keep-alive from the app while the user is working (touches last_seen through ctx) */
+    public Map<String, Object> ping(String auth) {
+        Ctx c = ctx(auth);
+        return obj("idleMinutes", lng(c.user.get("idle_minutes")));
+    }
+
+    // ---------------------------------------------------------------- admin: who is logged in
+    public Map<String, Object> adminSessions(String auth) {
+        Ctx c = admin(auth);
+        LocalDateTime now = now();
+        purgeIdleTokens(now);
+        db.update("DELETE FROM auth_tokens WHERE expires_at < ?", now);
+        List<Object> out = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT t.token_hash, t.created_at, t.last_seen, t.expires_at, t.ip, t.device, u.id AS uid, u.username, u.full_name, u.user_type, u.max_sessions, u.idle_minutes, "
+                + "co.name AS company_name FROM auth_tokens t JOIN users u ON u.id = t.user_id LEFT JOIN companies co ON co.id = u.company_id "
+                + "ORDER BY COALESCE(t.last_seen, t.created_at) DESC")) {
+            Map<String, Object> n = new LinkedHashMap<>();
+            String h = str(r.get("token_hash"));
+            LocalDateTime seen = r.get("last_seen") != null ? ldt(r.get("last_seen")) : ldt(r.get("created_at"));
+            n.put("sid", h.substring(0, 16));
+            n.put("current", h.equals(c.key));
+            n.put("userId", str(r.get("uid")));
+            n.put("user", str(r.get("username")));
+            n.put("name", str(r.get("full_name")));
+            n.put("type", str(r.get("user_type")));
+            n.put("company", str(r.get("company_name")));
+            n.put("loginAt", iso(ldt(r.get("created_at"))));
+            n.put("lastSeen", iso(seen));
+            n.put("idleSec", Math.max(0, java.time.Duration.between(seen, now).getSeconds()));
+            n.put("idleMinutes", lng(r.get("idle_minutes")));
+            n.put("maxSessions", lng(r.get("max_sessions")));
+            n.put("ip", str(r.get("ip")));
+            n.put("device", str(r.get("device")));
+            out.add(n);
+        }
+        return obj("sessions", out);
+    }
+
+    /** admin ends one session (sid) or every session of a user (userId); the admin's own current session stays */
+    public Map<String, Object> adminKillSession(String auth, Map<String, Object> in) {
+        Ctx c = admin(auth);
+        String sid = str(in.get("sid")), uid = str(in.get("userId"));
+        int n;
+        if (!sid.isEmpty()) {
+            if (sid.length() != 16) throw new ApiException(400, "Session அடையாளம் தவறு");
+            Map<String, Object> t = db.one("SELECT token_hash FROM auth_tokens WHERE LEFT(token_hash, 16) = ?", sid);
+            if (t == null) throw new ApiException(404, "Session ஏற்கனவே முடிந்துவிட்டது");
+            if (str(t.get("token_hash")).equals(c.key)) throw new ApiException(400, "இது உங்கள் சொந்த session — Logout பயன்படுத்தவும்");
+            n = db.update("DELETE FROM auth_tokens WHERE token_hash = ?", t.get("token_hash"));
+        } else if (!uid.isEmpty()) {
+            n = db.update("DELETE FROM auth_tokens WHERE user_id = ? AND token_hash <> ?", uid, c.key);
+        } else throw new ApiException(400, "Session / User தேர்வு செய்யவும்");
+        Map<String, Object> o = adminSessions(auth);
+        o.put("killed", n);
+        return o;
     }
 
     public Map<String, Object> me(String auth) { return session(ctx(auth)); }
@@ -388,6 +490,7 @@ public class BillingService {
         Map<String, Object> co = companyOf(c);
         o.put("company", co == null ? null : pubCompany(co));
         o.put("defaultPassword", bool(c.user.get("must_change")));
+        o.put("idleMinutes", lng(c.user.get("idle_minutes")));
         if (co != null && !c.admin() && !c.owner()) {
             Map<String, Object> br = branchRow(str(co.get("id")), userBranch(c, str(co.get("id"))));
             o.put("branch", br == null ? null : obj("name", str(br.get("name"))));
@@ -3239,12 +3342,19 @@ public class BillingService {
         if (u != null && "admin".equals(str(u.get("user_type"))) && bool(u.get("active")) && (!type.equals("admin") || !active) && activeAdmins() <= 1)
             throw new ApiException(400, "குறைந்தது ஒரு Admin இருக்க வேண்டும்");
         LocalDateTime now = now();
+        long maxS = in.get("maxSessions") == null || str(in.get("maxSessions")).isBlank() ? (u == null ? DEFAULT_MAX_SESSIONS : lng(u.get("max_sessions"))) : lng(in.get("maxSessions"));
+        long idleM = in.get("idleMinutes") == null || str(in.get("idleMinutes")).isBlank() ? (u == null ? DEFAULT_IDLE_MINUTES : lng(u.get("idle_minutes"))) : lng(in.get("idleMinutes"));
+        if (maxS < 0 || maxS > 20) throw new ApiException(400, "அதிகபட்ச Session: 1-20 (0 = வரம்பில்லை)");
+        if (idleM < 0 || idleM > 1440) throw new ApiException(400, "Idle logout: 1-1440 நிமிடம் (0 = தானாக logout இல்லை)");
         if (u == null) {
             id = newId("u");
             byte[] salt = bytes(16);
-            db.update("INSERT INTO users (id, username, full_name, user_type, company_id, branch_id, pass_salt, pass_hash, active, must_change, created_at, updated_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)", id, un, name, type, cid, bid, b64(salt), hash(pw, salt), active, now, now);
+            db.update("INSERT INTO users (id, username, full_name, user_type, company_id, branch_id, pass_salt, pass_hash, active, must_change, max_sessions, idle_minutes, created_at, updated_at) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)", id, un, name, type, cid, bid, b64(salt), hash(pw, salt), active, maxS, idleM, now, now);
         } else {
+            db.update("UPDATE users SET max_sessions = ?, idle_minutes = ? WHERE id = ?", maxS, idleM, id);
+            if (maxS > 0) db.update("DELETE FROM auth_tokens WHERE user_id = ? AND token_hash NOT IN (SELECT token_hash FROM (SELECT token_hash FROM auth_tokens WHERE user_id = ? "
+                    + "ORDER BY COALESCE(last_seen, created_at) DESC LIMIT " + maxS + ") keep)", id, id);   // lowered limit: keep the most recently used sessions
             boolean roleChanged = !type.equals(str(u.get("user_type"))) || !java.util.Objects.equals(cid, nz(u.get("company_id")))
                     || !java.util.Objects.equals(bid, nz(u.get("branch_id")));
             db.update("UPDATE users SET username = ?, full_name = ?, user_type = ?, company_id = ?, branch_id = ?, active = ?, updated_at = ? WHERE id = ?",
@@ -3297,6 +3407,8 @@ public class BillingService {
         p.put("companyId", u.get("company_id") == null ? null : str(u.get("company_id")));
         p.put("branchId", u.get("branch_id") == null ? null : str(u.get("branch_id")));
         p.put("active", bool(u.get("active")));
+        p.put("maxSessions", u.get("max_sessions") == null ? DEFAULT_MAX_SESSIONS : lng(u.get("max_sessions")));
+        p.put("idleMinutes", u.get("idle_minutes") == null ? DEFAULT_IDLE_MINUTES : lng(u.get("idle_minutes")));
         p.put("created", iso(ldt(u.get("created_at"))));
         return p;
     }

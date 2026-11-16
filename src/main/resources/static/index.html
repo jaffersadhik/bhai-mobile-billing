@@ -800,7 +800,7 @@ async function api(path,method,body,opt){
   const down=()=>{ const er=new Error("இணையம் / server கிடைக்கவில்லை — இந்த வசதிக்கு internet தேவை"); er.status=0; er.offline=true; return er; };
   try{
     r=await fetch(API_BASE+path,{method:method||"GET",cache:"no-store",signal:ac?ac.signal:undefined,
-      headers:Object.assign({"Content-Type":"application/json"},token?{"X-Auth":token}:{}),
+      headers:Object.assign({"Content-Type":"application/json"},token?{"Authorization":"Bearer "+token}:{}),
       body:body===undefined?undefined:JSON.stringify(body)});
   }catch(e){ clearTimeout(to); OFF.net(false); throw down(); }
   clearTimeout(to);
@@ -2338,7 +2338,8 @@ async function savePw(){
 
 /* ================= ADMIN PANEL ================= */
 async function loadAdmin(){
-  try{ const [ov,sl,qa]=await Promise.all([api("admin/overview"),api("admin/sales").catch(()=>null),api("admin/tests/alert").catch(()=>null)]); adminData=ov; adminData.sales=sl; adminData.qa=qa; }
+  try{ const [ov,sl,qa,ss]=await Promise.all([api("admin/overview"),api("admin/sales").catch(()=>null),api("admin/tests/alert").catch(()=>null),api("admin/sessions").catch(()=>null)]); adminData=ov; adminData.sales=sl; adminData.qa=qa;
+    adminData.sess={}; adminData.sessN=0; ((ss&&ss.sessions)||[]).forEach(x=>{ adminData.sess[x.userId]=(adminData.sess[x.userId]||0)+1; adminData.sessN++; }); }
   catch(e){ apiErr(e); if(!adminData) adminData={companies:[],users:[]}; }
   if(view()==="admin") renderView();
 }
@@ -2402,6 +2403,7 @@ function renderAdmin(){
         <div class="acts"><button class="mini" data-opencomp="${esc(c.id)}">🧾 Billing திற</button><button class="mini" data-editcomp="${esc(c.id)}">✏️ விவரம்</button><button class="mini" data-usersof="${esc(c.id)}">👥 Users · ${c.userCount}</button><button class="mini" data-adduserfor="${esc(c.id)}">👤 User சேர்</button><button class="mini" data-loadtpl="${esc(c.id)}">📦 Master data</button><button class="mini" data-openshop="${esc(c.id)}">🌐 Website</button><button class="mini" data-addbranch="${esc(c.id)}">➕ கிளை சேர்</button><button class="mini" data-branches="${esc(c.id)}">🏬 கிளைகள் · ${(c.branches||[]).length}</button><button class="mini" data-paymodes="${esc(c.id)}">💳 Payment · ${(c.payModes||[]).filter(m=>m.active).length}</button></div>
       </article>`).join("")}</div>`:`<div class="none"><b>🏬</b>இன்னும் கம்பெனி இல்லை.<br>➕ புது கம்பெனி அழுத்தவும்</div>`}
     <div class="adm-head" id="usersHead"><h2 class="h2">பயனர்கள் · ${us.length}</h2><button class="gbtn" id="addUser">➕ புது User</button></div>
+    <button class="cta ghost" id="openSess" style="margin:0 0 8px">🟢 இப்போது login ஆனவர்கள் (Active sessions)${adminData.sessN?" · "+adminData.sessN:""}</button>
     <div class="ufl"><select id="uFilterCo" aria-label="Filter users by company"><option value="">🏬 எல்லா கம்பெனிகளும் (${us.length})</option>
         <option value="__admin"${uFilterCo==="__admin"?" selected":""}>⚙ Admin users (${us.filter(u=>u.type==="admin").length})</option>
         ${cs.map(c=>`<option value="${esc(c.id)}"${uFilterCo===c.id?" selected":""}>${esc(c.name)} (${us.filter(u=>u.companyId===c.id).length})</option>`).join("")}</select>
@@ -2419,6 +2421,7 @@ function renderUserList(){
   box.innerHTML = us.length ? us.map(u=>`<article class="acard ${u.active?"":"off"}">
         <div class="r1"><div><b>${esc(u.name)}</b><small>@${esc(u.user)}${u.id===me.id?" (நீங்கள்)":""}</small></div><span class="tag t-${u.type}">${TYPE_LABEL[u.type]||esc(u.type)}</span></div>
         <div class="meta">${u.type!=="admin"?`🏬 ${esc(u.companyName||"— கம்பெனி இல்லை —")}${u.branchName?" · "+esc(u.branchName):u.type==="owner"?" · எல்லா கிளைகள்":""}`:"எல்லா கம்பெனி, user-களையும் நிர்வகிக்கலாம்"}${u.active?"":` · <b style="display:inline;color:var(--bad);font-size:inherit">நிறுத்தப்பட்டது</b>`}</div>
+        <div class="meta">🔐 ${u.maxSessions?u.maxSessions+" session":"session வரம்பில்லை"} · ⏱ ${u.idleMinutes?u.idleMinutes+" நிமிடம் idle → logout":"தானாக logout இல்லை"}${(adminData.sess||{})[u.id]?` · <b style="color:#137a3f">🟢 ${(adminData.sess||{})[u.id]} login</b>`:""}</div>
         <div class="acts"><button class="mini" data-edituser="${esc(u.id)}">✏️ மாற்று</button>${u.id!==me.id?`<button class="mini" data-deluser="${esc(u.id)}">🗑 நீக்கு</button>`:""}</div>
       </article>`).join("") : `<div class="none"><b>👤</b>பொருந்தும் user இல்லை</div>`;
 }
@@ -2520,6 +2523,29 @@ async function loadTpl(id){
     toast("📦 "+r.added+" புதிய, "+r.updated+" புதுப்பிப்பு ஐட்டம் ஏற்றப்பட்டது"+(r.stockRows?" · ஸ்டாக் "+r.stockRows:"")); }
   catch(e){ apiErr(e); } finally{ busy(false); }
 }
+/* ---- admin: active sessions ---- */
+let sessData=null;
+const ago = sec => sec<60 ? "இப்போது" : sec<3600 ? Math.floor(sec/60)+" நிமிடம் முன்" : sec<86400 ? Math.floor(sec/3600)+" மணி முன்" : Math.floor(sec/86400)+" நாள் முன்";
+async function openSessions(){
+  busy(true); try{ sessData=(await api("admin/sessions")).sessions; }catch(e){ apiErr(e); return; } finally{ busy(false); }
+  renderSessions(); showSheet();
+}
+function renderSessions(){
+  const by={}; sessData.forEach(x=>{ (by[x.userId]=by[x.userId]||[]).push(x); });
+  $("#sheetBody").innerHTML=`<h2>🟢 Active sessions · ${sessData.length}</h2><p class="sub">இப்போது login-ல் உள்ள user-கள் · ஒரு session-ஐ முடிக்க ❌ அழுத்தவும்</p>
+    <button class="cta ghost" id="sessRefresh" style="height:42px">🔄 புதுப்பி</button>
+    ${sessData.length?Object.values(by).map(g=>{ const x=g[0]; return `<div class="box"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><div><b>${esc(x.name)}</b> <small style="color:var(--muted)">@${esc(x.user)}</small><br><small style="color:var(--muted)">${TYPE_LABEL[x.type]||esc(x.type)}${x.company?" · "+esc(x.company):""} · ${g.length}/${x.maxSessions||"∞"} session${x.idleMinutes?" · "+x.idleMinutes+" நிமிடம் idle limit":""}</small></div>
+        ${g.some(y=>!y.current)?`<button class="mini" data-sesskuser="${esc(x.userId)}">எல்லாவற்றையும் முடி</button>`:""}</div>
+      ${g.map(y=>`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 0;border-top:1px dashed var(--line)"><div style="font-size:13px">📱 ${esc(y.device||"—")}${y.current?` <span class="tag on">இது நீங்கள்</span>`:""}<br><small style="color:var(--muted)">🌐 ${esc(y.ip||"—")} · login ${esc(fmtDate(y.loginAt))}<br>கடைசி செயல்: ${ago(y.idleSec)}</small></div>
+        ${y.current?"":`<button class="mini" data-sesskill="${esc(y.sid)}" aria-label="End session">❌</button>`}</div>`).join("")}</div>`; }).join(""):`<div class="none"><b>🟢</b>யாரும் login-ல் இல்லை</div>`}
+    <button class="cta ghost" data-close>மூடு (Close)</button>`;
+}
+async function killSession(body){
+  if(!confirm(body.sid?"இந்த session-ஐ முடிக்கவா? அந்த device உடனே logout ஆகும்.":"இந்த user-ன் எல்லா session-களையும் முடிக்கவா?")) return;
+  busy(true);
+  try{ const r=await api("admin/sessions/kill","POST",body); sessData=r.sessions; toast(r.killed+" session முடிக்கப்பட்டது"); renderSessions(); loadAdmin(); }
+  catch(e){ apiErr(e); } finally{ busy(false); }
+}
 let uForm=null;
 function openUserForm(id,draft){
   const u=id?adminData.users.find(x=>x.id===id):null;
@@ -2534,6 +2560,8 @@ function openUserForm(id,draft){
       <label class="fld" id="fuName">பெயர் *<input id="uName" maxlength="60" autocomplete="off" placeholder="எ.கா. அமீன்"><span class="err">பெயர் தேவை</span></label>
       <label class="fld" id="fuUser">Username * (login-க்கு)<input id="uUser" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="எ.கா. ameen"><span class="err">3-30 எழுத்து: a-z 0-9 . _ -</span></label>
       <label class="fld" id="fuPass">${u?"புது கடவுச்சொல் (மாற்ற மட்டும்)":"கடவுச்சொல் *"}<div class="pw"><input id="uPass" maxlength="100" autocomplete="off" placeholder="குறைந்தது 6 எழுத்து"><button type="button" class="eye" id="uGen" aria-label="Generate password">🎲</button></div><span class="err">குறைந்தது 6 எழுத்து</span></label>
+      <div class="two"><label class="fld" id="fuMaxS">அதிகபட்ச Session<input id="uMaxS" inputmode="numeric" maxlength="2" value="${esc(String(draft&&draft.maxSessions!==undefined?draft.maxSessions:u?u.maxSessions:2))}"><small class="hint">ஒரே நேரத்தில் எத்தனை இடங்களில் login (0 = வரம்பில்லை)</small></label>
+        <label class="fld" id="fuIdle">Idle logout (நிமிடம்)<input id="uIdle" inputmode="numeric" maxlength="4" value="${esc(String(draft&&draft.idleMinutes!==undefined?draft.idleMinutes:u?u.idleMinutes:10))}"><small class="hint">பயன்படுத்தாவிட்டால் தானாக logout (0 = இல்லை)</small></label></div>
       ${u?`<label class="rem"><input type="checkbox" id="uActive">கணக்கு செயலில் (Active)</label>`:`<div id="fuTpl">${tplBlock("u")}</div>`}
     </div>
     <button class="cta leaf" id="userSave">${u?"சேமி":"User-ஐ உருவாக்கு"}</button>
@@ -2565,16 +2593,18 @@ function fillUBranches(){
   sel.innerHTML=bs.length?bs.map(b=>`<option value="${esc(b.id)}"${b.id===keep?" selected":""}>${brIco(b)} ${esc(b.name)}</option>`).join("")
     :`<option value="">${c?(wh?"— Warehouse இல்லை: கிளைகள் பகுதியில் 🏭 Warehouse சேர்க்கவும் —":"— கடை கிளை இல்லை —"):"— கம்பெனியை முதலில் தேர்வு செய்யவும் —"}</option>`;
 }
-const userDraft = () => ({id:uForm.id, type:uForm.type, companyId:$("#uComp").value, branchId:$("#uBranch")?$("#uBranch").value:"", name:$("#uName").value, user:$("#uUser").value, password:$("#uPass").value, active:$("#uActive")?$("#uActive").checked:true});
+const userDraft = () => ({id:uForm.id, type:uForm.type, companyId:$("#uComp").value, branchId:$("#uBranch")?$("#uBranch").value:"", name:$("#uName").value, user:$("#uUser").value, password:$("#uPass").value, active:$("#uActive")?$("#uActive").checked:true, maxSessions:$("#uMaxS").value, idleMinutes:$("#uIdle").value});
 async function saveUser(){
   const d=userDraft(); d.user=d.user.trim().toLowerCase(); d.name=d.name.trim();
   const okU=/^[a-z0-9._-]{3,30}$/.test(d.user), okN=!!d.name, okC=d.type==="admin"||(d.companyId&&d.companyId!=="__new"), okP=uForm.id?(!d.password||d.password.length>=6):d.password.length>=6;
   const okB=!(d.type==="sales"||d.type==="stock"||d.type==="warehouse")||!!d.branchId;
   $("#fuUser").classList.toggle("bad",!okU); $("#fuName").classList.toggle("bad",!okN); $("#fuComp").classList.toggle("bad",!okC); $("#fuPass").classList.toggle("bad",!okP); $("#fuBranch").classList.toggle("bad",!okB);
-  if(!okU||!okN||!okC||!okP||!okB){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
+  const okS=/^\d{1,2}$/.test(String(d.maxSessions).trim())&&+d.maxSessions<=20, okI=/^\d{1,4}$/.test(String(d.idleMinutes).trim())&&+d.idleMinutes<=1440;
+  $("#fuMaxS").classList.toggle("bad",!okS); $("#fuIdle").classList.toggle("bad",!okI);
+  if(!okU||!okN||!okC||!okP||!okB||!okS||!okI){ toast(!okS?"அதிகபட்ச Session: 0-20":!okI?"Idle logout: 0-1440 நிமிடம்":"விவரங்களை சரி பார்க்கவும்"); return; }
   busy(true);
   try{
-    const body={id:d.id||"",user:d.user,name:d.name,type:d.type,companyId:d.type!=="admin"?d.companyId:"",branchId:(d.type==="sales"||d.type==="stock"||d.type==="warehouse")?d.branchId:"",password:d.password,active:d.active};
+    const body={id:d.id||"",user:d.user,name:d.name,type:d.type,companyId:d.type!=="admin"?d.companyId:"",branchId:(d.type==="sales"||d.type==="stock"||d.type==="warehouse")?d.branchId:"",password:d.password,active:d.active,maxSessions:+d.maxSessions,idleMinutes:+d.idleMinutes};
     const tb=(!d.id&&d.type!=="admin")?tplBody("u"):null; if(tb){ body.template=tb.template; body.templateStock=tb.stock; }
     const r=await api("admin/user","POST",body);
     uForm=null; await loadAdmin(); renderAll();
@@ -2617,6 +2647,7 @@ function lerr(t){ const el=$("#lErr"); el.textContent=t; el.classList.toggle("on
 async function enter(s,opt){
   opt=opt||{};
   me=s.user; company=s.company||null; defaultPw=!!s.defaultPassword; myBranch=s.branch?s.branch.name:"";
+  lastAct=Date.now(); lastPing=lastAct;
   if(!opt.cached) OFF.saveSess(s);
   if(company) await OFF.openCompany(company.id);
   repData=null; repBranch=""; stockData=null; srData=null; srBranch="";
@@ -2635,7 +2666,7 @@ async function doLogin(e){
   $("#lBtn").disabled=true; lerr(""); busy(true);
   try{
     const r=await api("login","POST",{user:u,pass:p,remember:$("#lRem").checked});
-    setToken(r.token,$("#lRem").checked); $("#lPass").value="";
+    setToken(r.access_token||r.token,$("#lRem").checked); $("#lPass").value="";
     await enter(r);
     toast("அந்த ஏக இறைவனின் சாந்தியும் சமாதானமும் உண்டாவதாக · "+me.name+(company?" · "+company.name:""));
   }catch(err){ lerr(err.message); $("#lPass").value=""; $("#lPass").focus(); }
@@ -2646,6 +2677,23 @@ function showLogin(msg){
   $("#lPass").value=""; lerr(msg||""); window.scrollTo(0,0);
   setTimeout(()=>{ const i=$("#lUser").value?$("#lPass"):$("#lUser"); if(i) i.focus(); },50);
 }
+/* ---- idle auto-logout: the user's idle limit (minutes) comes from the server; any tap / key / scroll counts as use and keeps the server session alive ---- */
+let lastAct=Date.now(), lastPing=0;
+function noteAct(){
+  lastAct=Date.now();
+  if(me && token && lastAct-lastPing>30000){ lastPing=lastAct; api("ping","POST",undefined,{quiet:true,timeout:8000}).catch(()=>{}); }
+}
+["pointerdown","keydown","touchstart","wheel","scroll"].forEach(ev=>addEventListener(ev,noteAct,{passive:true,capture:true}));
+function idleCheck(){
+  const m=me&&me.idleMinutes; if(!me||!token||!m) return;
+  if(Date.now()-lastAct>m*60000) idleLogout(m);
+}
+async function idleLogout(m){
+  try{ await api("logout","POST",undefined,{timeout:4000,quiet:true}); }catch(e){}
+  OFF.dropSess(); setToken(null); history.replaceState(null,"",location.pathname+location.search);
+  showLogin(`${m} நிமிடம் பயன்படுத்தாததால் தானாக logout ஆனது. மீண்டும் login செய்யவும்`);
+}
+setInterval(idleCheck,15000); document.addEventListener("visibilitychange",()=>{ if(!document.hidden) idleCheck(); });
 function sessionExpired(msg){ if(!me) return; setToken(null); showLogin(msg||"Session முடிந்தது. மீண்டும் login செய்யவும்"); }
 async function logout(){
   const np=OFF.pend().length;
@@ -4367,6 +4415,9 @@ document.addEventListener("click",e=>{
   if(t.id==="mPw"||t.id==="chgPw") return openPw();
   if(t.id==="pwSave") return savePw();
   if(t.id==="mClear") return clearAppData();
+  if(t.id==="openSess"||t.id==="sessRefresh") return openSessions();
+  if(d.sesskill) return killSession({sid:d.sesskill});
+  if(d.sesskuser) return killSession({userId:d.sesskuser});
   if(t.id==="mLogout") return logout();
   if(t.id==="toHome"){ location.hash=""; return; }
   /* admin */

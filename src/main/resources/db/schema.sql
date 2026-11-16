@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS users (
   pass_hash    VARCHAR(64)  NOT NULL,
   active       TINYINT(1)   NOT NULL DEFAULT 1,
   must_change  TINYINT(1)   NOT NULL DEFAULT 0,
+  max_sessions TINYINT      NOT NULL DEFAULT 2,    -- simultaneous logins allowed for this username (0 = unlimited)
+  idle_minutes INT          NOT NULL DEFAULT 10,   -- auto-logout after this many idle minutes (0 = never)
   created_at   DATETIME     NOT NULL,
   updated_at   DATETIME     NOT NULL,
   PRIMARY KEY (id),
@@ -88,6 +90,9 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
   company_id   VARCHAR(20)  NULL,
   expires_at   DATETIME     NOT NULL,
   created_at   DATETIME     NOT NULL,
+  last_seen    DATETIME     NULL,                  -- last request with this access token (idle timeout)
+  ip           VARCHAR(45)  NULL,
+  device       VARCHAR(120) NULL,
   PRIMARY KEY (token_hash),
   KEY idx_tokens_user (user_id),
   KEY idx_tokens_expires (expires_at),
