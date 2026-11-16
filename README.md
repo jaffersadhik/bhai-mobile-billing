@@ -160,3 +160,7 @@ Menu → **🧹 Browser டேட்டா அழி**: unregisters the service 
 - Print / PDF documents wait up to 5 s for missing translations (`I18N.settle`) before rendering.
 - Optional pre-built pack (instant first screen, works offline): `python3 i18n-tools/gen_pack.py ar http://localhost:8080`.
 - Tests: `test/t_translate_api.py`, `test/t_lang_online_ui.py` (start `python3 test/fake_translate.py 8191`, run the app with `TRANSLATE_URL=http://127.0.0.1:8191/t`).
+
+## Share a user's login on WhatsApp (admin)
+- Admin → Users → each user card has **📲 WhatsApp**. The sheet asks for the WhatsApp number (pre-filled with the company phone; 10 digits get the country code 91, or type it with country code) and a password (🎲 makes a random one). The message contains the company details (name, owner, address, city, phone, email, GSTIN), the user (name, type, branch), **Username, Password and the login URL**. Buttons: send on WhatsApp / Copy.
+- The server stores only a password hash, so an old password cannot be shown: a password typed here is first **set on the user** (`POST /admin/user`) and then sent; passwords set in this browser session (new user form, this sheet) are remembered in memory and pre-filled. Test: `test/t_share_user_ui.py`.

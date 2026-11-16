@@ -2482,7 +2482,7 @@ function renderUserList(){
         <div class="r1"><div><b>${esc(u.name)}</b><small>@${esc(u.user)}${u.id===me.id?" (நீங்கள்)":""}</small></div><span class="tag t-${u.type}">${TYPE_LABEL[u.type]||esc(u.type)}</span></div>
         <div class="meta">${u.type!=="admin"?`🏬 ${esc(u.companyName||"— கம்பெனி இல்லை —")}${u.branchName?" · "+esc(u.branchName):u.type==="owner"?" · எல்லா கிளைகள்":""}`:"எல்லா கம்பெனி, user-களையும் நிர்வகிக்கலாம்"}${u.active?"":` · <b style="display:inline;color:var(--bad);font-size:inherit">நிறுத்தப்பட்டது</b>`}</div>
         <div class="meta">🔐 ${u.maxSessions?u.maxSessions+" session":"session வரம்பில்லை"} · ⏱ ${u.idleMinutes?u.idleMinutes+" நிமிடம் idle → logout":"தானாக logout இல்லை"}${(adminData.sess||{})[u.id]?` · <b style="color:#137a3f">🟢 ${(adminData.sess||{})[u.id]} login</b>`:""}</div>
-        <div class="acts"><button class="mini" data-edituser="${esc(u.id)}">✏️ மாற்று</button>${u.id!==me.id?`<button class="mini" data-deluser="${esc(u.id)}">🗑 நீக்கு</button>`:""}</div>
+        <div class="acts"><button class="mini" data-edituser="${esc(u.id)}">✏️ மாற்று</button><button class="mini" data-shareuser="${esc(u.id)}">📲 WhatsApp</button>${u.id!==me.id?`<button class="mini" data-deluser="${esc(u.id)}">🗑 நீக்கு</button>`:""}</div>
       </article>`).join("") : `<div class="none"><b>👤</b>பொருந்தும் user இல்லை</div>`;
 }
 let kForm=null;
@@ -2672,7 +2672,61 @@ async function saveUser(){
     if(d.password) openCreds(r.user,d.password); else { closeSheet(); toast("சேமிக்கப்பட்டது: "+r.user.name); }
   }catch(e){ apiErr(e); } finally{ busy(false); }
 }
+/* ---- share one user's login (username, password, login link + company details) on WhatsApp to any number ---- */
+const knownPw={};                       // user id -> password the admin set / typed in this browser session (the server only stores a hash)
+function userShareText(u,pw){
+  const c=adminData.companies.find(x=>x.id===u.companyId), link=location.href.split("#")[0], L=[`*${APP_NAME}* — Login விவரம்`,""];
+  if(c){
+    L.push(`🏬 *${c.name}*`);
+    if(c.tagline) L.push(c.tagline);
+    if(c.owner) L.push(`உரிமையாளர்: ${c.owner}`);
+    const ad=[c.address,c.city].filter(Boolean).join(", "); if(ad) L.push(`📍 ${ad}`);
+    if(c.phone) L.push(`📞 ${c.phone}`);
+    if(c.email) L.push(`✉️ ${c.email}`);
+    if(c.gstin) L.push(`GSTIN: ${c.gstin}`);
+    L.push("");
+  } else L.push("⚙ Admin","");
+  L.push(`👤 ${u.name} (${TYPE_LABEL[u.type]||u.type})`);
+  if(c&&u.branchName) L.push(`🏪 கிளை: ${u.branchName}`);
+  L.push(`Username: ${u.user}`,`Password: ${pw||"________"}`,"",`🔗 Login: ${link}`,"","முதல் login-க்கு பிறகு password-ஐ மாற்றவும்.");
+  return L.join("\n");
+}
+const rndPw = () => { const a="abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s=""; const r=crypto.getRandomValues(new Uint8Array(8)); r.forEach(x=>s+=a[x%a.length]); return s; };
+function openShareUser(id){
+  const u=adminData.users.find(x=>x.id===id); if(!u) return;
+  const c=adminData.companies.find(x=>x.id===u.companyId), pw=knownPw[id]||"";
+  $("#sheetBody").innerHTML=`<h2>📲 WhatsApp-ல் அனுப்பு</h2><p class="sub">@${esc(u.user)} · ${esc(u.name)}${c?" · "+esc(c.name):""}</p>
+    <div class="box frm">
+      <label class="fld" id="shPhFld">WhatsApp எண் *<input id="shPh" inputmode="tel" maxlength="16" autocomplete="off" placeholder="10 இலக்க மொபைல் / country code உடன்" value="${esc((c&&c.phone)||"")}"><span class="err">சரியான எண்ணை உள்ளிடவும்</span></label>
+      <label class="fld" id="shPwFld">Password *<div class="pw"><input id="shPw" maxlength="100" autocomplete="off" placeholder="${pw?"":"புதிய password (குறைந்தது 6)"}" value="${esc(pw)}"><button type="button" class="mini" id="shGen">🎲</button></div>
+        <small class="hint">${pw?"இந்த password-ஐ நீங்கள் இந்த session-ல் அமைத்தீர்கள்.":"பாதுகாப்புக்காக பழைய password சேமிக்கப்படுவதில்லை — புதிய password கொடுத்தால் அது இந்த user-க்கு அமைக்கப்பட்டு அனுப்பப்படும்."}</small><span class="err">குறைந்தது 6 எழுத்து</span></label>
+    </div>
+    <pre id="shTxt" style="white-space:pre-wrap"></pre>
+    <button class="cta leaf" id="shSend">📲 WhatsApp-ல் அனுப்பு</button>
+    <button class="cta ghost" id="shCopy">Copy</button><button class="cta ghost" data-close>மூடு (Close)</button>`;
+  $("#sheetBody").dataset.shareUser=id; shareRefresh(); showSheet();
+}
+function shareRefresh(){ const id=$("#sheetBody").dataset.shareUser, u=adminData.users.find(x=>x.id===id); if(u&&$("#shTxt")) $("#shTxt").textContent=userShareText(u,$("#shPw").value.trim()); }
+const shareNum = v => { const d=String(v||"").replace(/\D/g,""); return d.length===10?COUNTRY_CODE+d:d; };
+async function shareUserSend(copyOnly){
+  const id=$("#sheetBody").dataset.shareUser, u=adminData.users.find(x=>x.id===id); if(!u) return;
+  const pw=$("#shPw").value.trim(), ph=shareNum($("#shPh").value);
+  const okP=/^\d{10,15}$/.test(ph), okW=pw.length>=6;
+  $("#shPhFld").classList.toggle("bad",!copyOnly&&!okP); $("#shPwFld").classList.toggle("bad",!okW);
+  if(!okW||(!copyOnly&&!okP)){ toast("விவரங்களை சரி பார்க்கவும்"); return; }
+  if(pw!==knownPw[id]){                                   // a new password typed: set it on the user first
+    busy(true);
+    try{
+      await api("admin/user","POST",{id:u.id,user:u.user,name:u.name,type:u.type,companyId:u.companyId||"",branchId:u.branchId||"",password:pw,active:u.active,maxSessions:u.maxSessions,idleMinutes:u.idleMinutes});
+      knownPw[id]=pw; toast("Password அமைக்கப்பட்டது");
+    }catch(e){ apiErr(e); return; } finally{ busy(false); }
+  }
+  const text=userShareText(u,pw);
+  if(copyOnly) return copyText(text);
+  window.open("https://wa.me/"+ph+"?text="+encodeURIComponent(text),"_blank","noopener");
+}
 function openCreds(u,pw){
+  knownPw[u.id]=pw;
   const c=adminData.companies.find(x=>x.id===u.companyId);
   const link=location.href.split("#")[0];
   const text=[`*${APP_NAME}* — Login விவரம்`, c?`கம்பெனி: ${c.name}`:"⚙ Admin", `பெயர்: ${u.name}`, `Username: ${u.user}`, `Password: ${pw}`, "", `Link: ${link}`, "", "முதல் login-க்கு பிறகு ☰ menu → கடவுச்சொல் மாற்று"].join("\n");
@@ -4501,6 +4555,10 @@ document.addEventListener("click",e=>{
   if(d.adduserfor){ openUserForm(null,{type:"sales",companyId:d.adduserfor}); return; }
   if(t.id==="addUser") return openUserForm(null);
   if(d.edituser) return openUserForm(d.edituser);
+  if(d.shareuser) return openShareUser(d.shareuser);
+  if(t.id==="shGen"){ $("#shPw").value=rndPw(); shareRefresh(); return; }
+  if(t.id==="shSend") return shareUserSend(false);
+  if(t.id==="shCopy") return shareUserSend(true);
   if(d.deluser) return deleteUser(d.deluser);
   if(d.utype){ uForm.type=d.utype; syncUType(); return; }
   if(t.id==="uGen"){ const a="abcdefghjkmnpqrstuvwxyz23456789"; let p=""; const r=new Uint32Array(8); crypto.getRandomValues(r); r.forEach(x=>p+=a[x%a.length]); $("#uPass").value=p; $("#fuPass").classList.remove("bad"); return; }
@@ -4681,6 +4739,7 @@ document.addEventListener("keydown",e=>{
 });
 $("#q").addEventListener("input",renderView);
 document.addEventListener("input",e=>{
+  if(e.target.id==="shPw"||e.target.id==="shPh"){ shareRefresh(); return; }
   const f=e.target.closest&&e.target.closest(".fld"); if(f) f.classList.remove("bad");
   if(e.target.classList && (e.target.classList.contains("bci")||e.target.id==="cCode")){ const c=cleanCode(e.target.value); if(c!==e.target.value) e.target.value=c; }
   const id=e.target.id;
