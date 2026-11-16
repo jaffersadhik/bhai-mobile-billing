@@ -554,3 +554,21 @@ CREATE TABLE IF NOT EXISTS test_results (
   KEY ix_test_results_run (run_id, code),
   CONSTRAINT fk_test_results_run FOREIGN KEY (run_id) REFERENCES test_runs (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- bill_no_blocks : bill / cancel bill numbers reserved for a device that works offline (taken out of the company counter,
+--   printed on the bills made without internet; the bill keeps this number when it is sent later)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS bill_no_blocks (
+  id          BIGINT        NOT NULL AUTO_INCREMENT,
+  company_id  VARCHAR(20)   NOT NULL,
+  device_id   VARCHAR(40)   NOT NULL,
+  kind        VARCHAR(6)    NOT NULL,                 -- bill | cancel
+  from_seq    BIGINT        NOT NULL,
+  to_seq      BIGINT        NOT NULL,
+  user_name   VARCHAR(30)   NOT NULL DEFAULT '',
+  created_at  DATETIME      NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_blocks_dev (company_id, device_id, kind, from_seq),
+  CONSTRAINT fk_blocks_company FOREIGN KEY (company_id) REFERENCES companies (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

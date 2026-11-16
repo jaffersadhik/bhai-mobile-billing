@@ -17,7 +17,7 @@ import json, os, re, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAIN = os.path.join(ROOT, "src/main/")
 I18N = os.path.join(MAIN, "resources/static/i18n/")
-FILES = ["resources/static/index.html", "resources/static/shop.html",
+FILES = ["resources/static/index.html", "resources/static/shop.html", "resources/static/offline.js",
          "java/com/bhai/billing/core/BillingService.java", "java/com/bhai/billing/web/ApiController.java",
          "java/com/bhai/billing/core/PostDeployTests.java", "java/com/bhai/billing/core/CatalogImport.java"]
 TA = re.compile(r"[஀-௿]")

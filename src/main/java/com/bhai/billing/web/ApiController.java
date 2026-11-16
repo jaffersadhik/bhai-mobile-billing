@@ -68,6 +68,16 @@ public class ApiController {
     public ResponseEntity<Object> addBill(@RequestHeader(value = AUTH, required = false) String auth,
                                           @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.addBill(auth, nn(body))); }
 
+    // ---- offline: numbers reserved for a device + everything it needs to work without internet
+    @PostMapping("/offline/reserve")
+    public ResponseEntity<Object> reserve(@RequestHeader(value = AUTH, required = false) String auth,
+                                          @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.reserveNumbers(auth, nn(body))); }
+
+    @GetMapping("/sync")
+    public ResponseEntity<Object> sync(@RequestHeader(value = AUTH, required = false) String auth,
+                                       @RequestParam(value = "cv", required = false) String cv,
+                                       @RequestParam(value = "days", required = false) String days) { return run(() -> svc.syncPull(auth, cv, days)); }
+
     // ---- software invoices (owner: own company; admin: ?company=)
     @GetMapping("/invoices")
     public ResponseEntity<Object> invoices(@RequestHeader(value = AUTH, required = false) String auth,

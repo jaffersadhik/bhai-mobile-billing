@@ -184,6 +184,15 @@ public class BillingService {
             db.update("ALTER TABLE bills ADD COLUMN pay_mode_id VARCHAR(20) NULL AFTER total, ADD COLUMN pay_name VARCHAR(30) NOT NULL DEFAULT '' AFTER pay_mode_id, "
                     + "ADD COLUMN pay_kind VARCHAR(8) NOT NULL DEFAULT '' AFTER pay_name");
         }
+        // offline billing: a bill / cancel bill made on a device without internet is sent later. client_id (made on the device) makes sending it twice harmless.
+        for (String tb : new String[]{"bills", "cancel_bills"}) {
+            if (!hasColumn(tb, "client_id"))
+                db.update("ALTER TABLE " + tb + " ADD COLUMN client_id VARCHAR(40) NULL, ADD COLUMN device_id VARCHAR(40) NULL, "
+                        + "ADD COLUMN offline TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN synced_at DATETIME NULL");
+            if (!hasIndex(tb, "uk_" + tb + "_client")) db.update("ALTER TABLE " + tb + " ADD UNIQUE KEY uk_" + tb + "_client (company_id, client_id)");
+        }
+        // company option: take online / staff orders even when the item has no stock (off = no order without stock)
+        if (!hasColumn("companies", "order_no_stock")) db.update("ALTER TABLE companies ADD COLUMN order_no_stock TINYINT(1) NOT NULL DEFAULT 0");
         ensureBranches(null);
         ensurePayModes(null);
     }
@@ -694,9 +703,77 @@ public class BillingService {
         try { return JSON.writeValueAsString(o); } catch (Exception e) { throw new IllegalStateException(e); }
     }
 
+    // ---------------------------------------------------------------- offline helpers
+    static final Pattern CLIENT_ID = Pattern.compile("[A-Za-z0-9_-]{8,40}");
+
+    /** id made on the device for one bill / cancel bill: the same id sent again returns the document already saved */
+    private static String clientId(Object o) {
+        String s = str(o).trim();
+        if (s.isEmpty()) return "";
+        if (!CLIENT_ID.matcher(s).matches()) throw new ApiException(400, "client id தவறு");
+        return s;
+    }
+
+    /**
+     * Time the document was made on the device (offline billing). Used only when it is clearly earlier than now
+     * (more than 2 minutes) and not older than 45 days; otherwise the server time is used.
+     */
+    LocalDateTime clientTime(Object o, LocalDateTime now) {
+        String s = str(o).trim();
+        if (s.isEmpty()) return now;
+        try {
+            LocalDateTime t = java.time.OffsetDateTime.parse(s).atZoneSameInstant(zone).toLocalDateTime().truncatedTo(ChronoUnit.SECONDS);
+            if (t.isAfter(now.minusMinutes(2))) return now;             // online / clock a little off: server time
+            if (t.isBefore(now.minusDays(45))) return now;
+            return t;
+        } catch (DateTimeParseException e) {
+            return now;
+        }
+    }
+
+    /** is this number inside a block reserved for this device? */
+    private static boolean reserved(Db t, String cid, String device, String kind, long seq) {
+        return seq > 0 && !device.isEmpty() && t.one("SELECT 1 AS x FROM bill_no_blocks WHERE company_id = ? AND device_id = ? AND kind = ? AND from_seq <= ? AND to_seq >= ? LIMIT 1",
+                cid, device, kind, seq, seq) != null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> billByClient(String cid, String clientId) {
+        Map<String, Object> r = db.one("SELECT * FROM bills WHERE company_id = ? AND client_id = ?", cid, clientId);
+        if (r == null) return null;
+        Map<String, Object> b = (Map<String, Object>) billList(cid, new ArrayList<>(List.of(r))).get(0);
+        b.put("mergedPending", 0);
+        b.put("clientId", clientId);
+        b.put("duplicate", true);
+        return obj("bill", b);
+    }
+
+    /**
+     * New bill. {customer, phone, payMode, exchange, lines}. Offline billing adds: clientId (once only), deviceId, clientAt (ISO time on the device),
+     * offline (made without internet), reservedSeq (a bill number reserved for this device before), catalogVersion (the price list the device used).
+     */
     public Map<String, Object> addBill(String auth, Map<String, Object> in) {
         Ctx c = ctx(auth);
         String cid = requireSelling(c);
+        final String clientId = clientId(in.get("clientId"));
+        if (!clientId.isEmpty()) {
+            Map<String, Object> dup = billByClient(cid, clientId);
+            if (dup != null) return dup;
+        }
+        try {
+            return addBillNew(c, cid, clientId, in);
+        } catch (DbException e) {
+            if (!clientId.isEmpty() && e.isConstraintViolation()) {      // two sends of the same bill at the same moment: the other one won
+                Map<String, Object> dup = billByClient(cid, clientId);
+                if (dup != null) return dup;
+            }
+            throw e;
+        }
+    }
+
+    private Map<String, Object> addBillNew(Ctx c, String cid, String clientId, Map<String, Object> in) {
+        final boolean offline = bool(in.get("offline"));
+        final String deviceId = clientId.isEmpty() ? "" : clip(in.get("deviceId"), 40);
         String branch = userBranch(c, cid);
         String payId = str(in.get("payMode"));
         Map<String, Object> pay = blank(payId) ? null : db.one("SELECT id, name, kind FROM pay_modes WHERE company_id = ? AND id = ? AND active = 1", cid, payId);
@@ -707,11 +784,11 @@ public class BillingService {
         String phone = str(in.get("phone")).replaceAll("[^0-9]", "");
         if (!phone.isEmpty() && !MOBILE.matcher(phone).matches()) throw new ApiException(400, "மொபைல் எண் தவறு");
         List<Map<String, Object>> newLines = parseLines(list(in.get("lines")));
-        LocalDateTime at = now();
+        LocalDateTime at = clientTime(in.get("clientAt"), now());
         LocalDateTime dayStart = at.toLocalDate().atStartOfDay();
         return db.tx(t -> {
-            // today's pending bills of this mobile number (any salesman, this branch) join this bill
-            List<Map<String, Object>> pend = phone.isEmpty() ? new ArrayList<>() : t.query(
+            // today's pending bills of this mobile number (any salesman, this branch) join this bill - not a bill made offline (the customer already has its total)
+            List<Map<String, Object>> pend = (phone.isEmpty() || offline) ? new ArrayList<>() : t.query(
                     "SELECT * FROM pending_bills WHERE company_id = ? AND branch_id = ? AND phone = ? AND status = 'open' AND created_at >= ? ORDER BY id FOR UPDATE",
                     cid, branch, phone, dayStart);
             List<Map<String, Object>> all = new ArrayList<>();
@@ -722,7 +799,10 @@ public class BillingService {
             }
             all.addAll(newLines);
             if (all.isEmpty()) throw new ApiException(400, "பில்லில் ஐட்டம் இல்லை");
-            if (!bool(t.one("SELECT rate_change FROM companies WHERE id = ?", cid).get("rate_change"))) {
+            Map<String, Object> rcRow = t.one("SELECT rate_change, catalog_version FROM companies WHERE id = ?", cid);
+            // a bill made offline with an older price list is not refused for a rate that has changed since (the customer already paid it)
+            boolean rateCheck = !bool(rcRow.get("rate_change")) && (!offline || lng(in.get("catalogVersion")) == lng(rcRow.get("catalog_version")));
+            if (rateCheck) {
                 Link rk = link(t, cid);                           // rate change is off for this company: catalog lines are billed at the catalog rate
                 for (Map<String, Object> l : newLines) {
                     String iid = (String) l.get("id");
@@ -741,7 +821,7 @@ public class BillingService {
 
             // exchange: unused cancel bills (ரத்து பில்) of this customer are taken off this bill; the rest is paid
             List<Long> exIds = new ArrayList<>();
-            for (Object o : list(in.get("exchange"))) exIds.add(lng(o));
+            if (!offline) for (Object o : list(in.get("exchange"))) exIds.add(lng(o));
             double exAmt = 0;
             List<String> exNos = new ArrayList<>();
             for (Long xid : exIds) {
@@ -762,15 +842,22 @@ public class BillingService {
             final boolean nilBalance = !exIds.isEmpty() && Math.abs(billTotal - exAmt) < 0.005;
 
             Map<String, Object> co = t.one("SELECT bill_seq, bill_prefix FROM companies WHERE id = ? FOR UPDATE", cid);
-            long seq = lng(co.get("bill_seq")) + 1;
+            long seq;
+            long rs = lng(in.get("reservedSeq"));
+            if (reserved(t, cid, deviceId, "bill", rs) && t.one("SELECT 1 AS x FROM bills WHERE company_id = ? AND bill_seq = ?", cid, rs) == null) {
+                seq = rs;                                          // the number the device already printed on the bill
+            } else {
+                seq = lng(co.get("bill_seq")) + 1;
+                t.update("UPDATE companies SET bill_seq = ? WHERE id = ?", seq, cid);
+            }
             String prefix = str(co.get("bill_prefix"));
             if (prefix.isEmpty()) prefix = "INV";
             String no = prefix + "-" + String.format("%04d", seq);
-            t.update("UPDATE companies SET bill_seq = ? WHERE id = ?", seq, cid);
-            long billId = t.insert("INSERT INTO bills (company_id, branch_id, bill_seq, bill_no, created_at, customer_name, customer_phone, billed_by_user, billed_by_name, pieces, total, pay_mode_id, pay_name, pay_kind, platform_fee, exchange_amount, exchange_ref) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT bill_fee FROM companies WHERE id = ?), ?, ?)",
+            long billId = t.insert("INSERT INTO bills (company_id, branch_id, bill_seq, bill_no, created_at, customer_name, customer_phone, billed_by_user, billed_by_name, pieces, total, pay_mode_id, pay_name, pay_kind, platform_fee, exchange_amount, exchange_ref, client_id, device_id, offline, synced_at) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT bill_fee FROM companies WHERE id = ?), ?, ?, ?, ?, ?, ?)",
                     cid, branch, seq, no, at, cust, phone, str(c.user.get("username")), str(c.user.get("full_name")), pieces, BigDecimal.valueOf(billTotal),
-                    nilBalance ? null : payModeId, nilBalance ? "Exchange" : payName, nilBalance ? "exchange" : payKind, cid, BigDecimal.valueOf(exchange), exRef);
+                    nilBalance ? null : payModeId, nilBalance ? "Exchange" : payName, nilBalance ? "exchange" : payKind, cid, BigDecimal.valueOf(exchange), exRef,
+                    clientId.isEmpty() ? null : clientId, clientId.isEmpty() || deviceId.isEmpty() ? null : deviceId, offline ? 1 : 0, clientId.isEmpty() ? null : now());
             for (Long xid : exIds) t.update("UPDATE cancel_bills SET used_bill_no = ?, used_at = ? WHERE company_id = ? AND id = ?", no, at, cid, xid);
             // only real catalog item + size pairs are linked (and reduce stock); anything else is a custom line
             Link lk = link(t, cid);                                // cost price now = the bill keeps it (later changes don't alter old profit)
@@ -809,8 +896,76 @@ public class BillingService {
             b.put("pay", nilBalance ? "Exchange" : payName);
             b.put("payKind", nilBalance ? "exchange" : payKind);
             b.put("mergedPending", pend.size());
+            if (!clientId.isEmpty()) b.put("clientId", clientId);
             return obj("bill", b);
         });
+    }
+
+    // ================================================================ offline: reserved numbers + data pull
+    /**
+     * Bill / cancel bill numbers for a device that may work without internet: {deviceId, bills: n, cancels: m}. The numbers are taken
+     * out of the company's running counters (so no other device gets them) and printed on the bills the device makes offline.
+     */
+    public Map<String, Object> reserveNumbers(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String cid = requireSelling(c);
+        String dev = clientId(in.get("deviceId"));
+        if (dev.isEmpty()) throw new ApiException(400, "device id தேவை");
+        int nb = (int) Math.max(0, Math.min(100, lng(in.get("bills")))), nc = (int) Math.max(0, Math.min(40, lng(in.get("cancels"))));
+        LocalDateTime now = now();
+        Map<String, Object> day = db.one("SELECT COALESCE(SUM(to_seq - from_seq + 1), 0) AS n FROM bill_no_blocks WHERE company_id = ? AND device_id = ? AND created_at >= ?", cid, dev, now.minusDays(1));
+        if (lng(day.get("n")) + nb + nc > 600) throw new ApiException(429, "இன்று அதிக எண்கள் ஒதுக்கப்பட்டுவிட்டன");
+        String by = str(c.user.get("username"));
+        return db.tx(t -> {
+            Map<String, Object> co = t.one("SELECT bill_seq, cn_seq, bill_prefix FROM companies WHERE id = ? FOR UPDATE", cid);
+            Map<String, Object> out = new LinkedHashMap<>();
+            String prefix = str(co.get("bill_prefix"));
+            out.put("prefix", prefix.isEmpty() ? "INV" : prefix);
+            if (nb > 0) {
+                long from = lng(co.get("bill_seq")) + 1, to = from + nb - 1;
+                t.update("UPDATE companies SET bill_seq = ? WHERE id = ?", to, cid);
+                t.update("INSERT INTO bill_no_blocks (company_id, device_id, kind, from_seq, to_seq, user_name, created_at) VALUES (?, ?, 'bill', ?, ?, ?, ?)", cid, dev, from, to, by, now);
+                out.put("bills", new long[]{from, to});
+            }
+            if (nc > 0) {
+                long from = lng(co.get("cn_seq")) + 1, to = from + nc - 1;
+                t.update("UPDATE companies SET cn_seq = ? WHERE id = ?", to, cid);
+                t.update("INSERT INTO bill_no_blocks (company_id, device_id, kind, from_seq, to_seq, user_name, created_at) VALUES (?, ?, 'cancel', ?, ?, ?, ?)", cid, dev, from, to, by, now);
+                out.put("cancels", new long[]{from, to});
+            }
+            return out;
+        });
+    }
+
+    /**
+     * Everything a device needs to keep working without internet: company + payment modes, the catalog (only when its version is not ?cv=),
+     * and the retail bills + cancel bills of its branch for the last ?days (default 62) - used for bill history and "cancel from a bill" offline.
+     */
+    public Map<String, Object> syncPull(String auth, String cvIn, String daysIn) {
+        Ctx c = ctx(auth);
+        String cid = requireBilling(c);
+        long cv = -1;
+        try { if (!blank(cvIn)) cv = Long.parseLong(cvIn.trim()); } catch (NumberFormatException e) { /* send the catalog */ }
+        int days = 62;
+        try { if (!blank(daysIn)) days = Math.max(1, Math.min(90, Integer.parseInt(daysIn.trim()))); } catch (NumberFormatException e) { /* default */ }
+        Map<String, Object> co = db.one("SELECT * FROM companies WHERE id = ?", cid);
+        Map<String, Object> o = new LinkedHashMap<>();
+        o.put("serverTime", iso(now()));
+        o.put("company", pubCompany(co));
+        o.put("payModes", payModeList(cid, true));
+        if (lng(co.get("catalog_version")) != cv) o.put("catalog", loadCatalog(db, cid, c.seesCost()));
+        else o.put("catalogSame", true);
+        String br = c.admin() ? null : userBranch(c, cid);
+        LocalDateTime from = LocalDate.now(zone).minusDays(days - 1).atStartOfDay();
+        String bf = br == null ? "" : " AND branch_id = ?";
+        o.put("bills", billList(cid, db.query("SELECT * FROM bills WHERE company_id = ? AND created_at >= ? AND bill_kind <> 'invoice'" + bf + " ORDER BY id DESC LIMIT 1500",
+                br == null ? new Object[]{cid, from} : new Object[]{cid, from, br})));
+        List<Object> cn = new ArrayList<>();
+        for (Map<String, Object> r : db.query("SELECT * FROM cancel_bills WHERE company_id = ? AND created_at >= ?" + bf + " ORDER BY id DESC LIMIT 1500",
+                br == null ? new Object[]{cid, from} : new Object[]{cid, from, br}))
+            cn.add(cancelRow(r));
+        o.put("cancels", cn);
+        return o;
     }
 
     // ================================================================ pending bills (saved, not yet billed)
@@ -1207,6 +1362,25 @@ public class BillingService {
     public Map<String, Object> addCancelBill(String auth, Map<String, Object> in) {
         Ctx c = ctx(auth);
         String cid = requireBilling(c);
+        final String clientId = clientId(in.get("clientId"));
+        if (!clientId.isEmpty()) {
+            Map<String, Object> dup = db.one("SELECT * FROM cancel_bills WHERE company_id = ? AND client_id = ?", cid, clientId);
+            if (dup != null) { Map<String, Object> o = cancelRow(dup); o.put("duplicate", true); o.put("clientId", clientId); return obj("cancel", o); }
+        }
+        try {
+            return addCancelBillNew(c, cid, clientId, in);
+        } catch (DbException e) {
+            if (!clientId.isEmpty() && e.isConstraintViolation()) {
+                Map<String, Object> dup = db.one("SELECT * FROM cancel_bills WHERE company_id = ? AND client_id = ?", cid, clientId);
+                if (dup != null) { Map<String, Object> o = cancelRow(dup); o.put("duplicate", true); o.put("clientId", clientId); return obj("cancel", o); }
+            }
+            throw e;
+        }
+    }
+
+    private Map<String, Object> addCancelBillNew(Ctx c, String cid, String clientId, Map<String, Object> in) {
+        final boolean offline = bool(in.get("offline"));
+        final String deviceId = clientId.isEmpty() ? "" : clip(in.get("deviceId"), 40);
         String reason = clip(in.get("reason"), 120);
         if (reason.isEmpty()) throw new ApiException(400, "ரத்து செய்யும் காரணம் தேவை");
         String phone = str(in.get("phone")).replaceAll("[^0-9]", "");
@@ -1231,7 +1405,8 @@ public class BillingService {
             }
         }
         if (lines.isEmpty()) throw new ApiException(400, "ரத்து செய்ய ஐட்டம் இல்லை");
-        if (c.sales() && !inv) {                           // sales staff: catalog items at the catalog rate only
+        boolean staleList = offline && lng(in.get("catalogVersion")) != lng(db.one("SELECT catalog_version FROM companies WHERE id = ?", cid).get("catalog_version"));
+        if (c.sales() && !inv && !staleList) {             // sales staff: catalog items at the catalog rate only (not for an offline bill made with an older price list)
             Map<String, Double> rates = new HashMap<>();
             for (Map<String, Object> z : db.query("SELECT item_id, size_label, rate FROM item_sizes WHERE company_id = ?", cid))
                 rates.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), dbl(z.get("rate")));
@@ -1248,10 +1423,16 @@ public class BillingService {
         String by = str(c.user.get("full_name"));
         Map<String, Object> out = db.tx(t -> {
             Map<String, Object> co = t.one("SELECT cn_seq, bill_prefix, bill_fee FROM companies WHERE id = ? FOR UPDATE", cid);
-            long seq = lng(co.get("cn_seq")) + 1;
-            t.update("UPDATE companies SET cn_seq = ? WHERE id = ?", seq, cid);
+            long seq;
+            long rs = lng(in.get("reservedSeq"));
+            if (reserved(t, cid, deviceId, "cancel", rs) && t.one("SELECT 1 AS x FROM cancel_bills WHERE company_id = ? AND cn_seq = ?", cid, rs) == null) {
+                seq = rs;
+            } else {
+                seq = lng(co.get("cn_seq")) + 1;
+                t.update("UPDATE companies SET cn_seq = ? WHERE id = ?", seq, cid);
+            }
             String no = str(co.get("bill_prefix")) + "-C" + String.format("%04d", seq);
-            LocalDateTime at = now();
+            LocalDateTime at = clientTime(in.get("clientAt"), now());
             Link lk = link(t, cid);                                // cost price now: the cancel bill keeps it, so profit is reduced by the right margin
             for (Map<String, Object> l : lines) {
                 String iid = (String) l.get("id");
@@ -1266,9 +1447,10 @@ public class BillingService {
                             cid, branch, iid, lk.stockSize(iid, l), dq, at, "ரத்து " + no, dq, at, "ரத்து " + no + " · " + by);
                 }
             }
-            t.update("INSERT INTO cancel_bills (company_id, branch_id, cn_seq, cn_no, ref_bill_no, created_at, customer_name, customer_phone, by_user, by_name, pieces, total, reason, lines_json, platform_fee) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", cid, branch, seq, no, ref, at, clip(in.get("customer"), 60), phone,
-                    str(c.user.get("username")), by, pieces, BigDecimal.valueOf(tot), reason, toJson(lines), co.get("bill_fee"));
+            t.update("INSERT INTO cancel_bills (company_id, branch_id, cn_seq, cn_no, ref_bill_no, created_at, customer_name, customer_phone, by_user, by_name, pieces, total, reason, lines_json, platform_fee, client_id, device_id, offline, synced_at) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", cid, branch, seq, no, ref, at, clip(in.get("customer"), 60), phone,
+                    str(c.user.get("username")), by, pieces, BigDecimal.valueOf(tot), reason, toJson(lines), co.get("bill_fee"),
+                    clientId.isEmpty() ? null : clientId, clientId.isEmpty() || deviceId.isEmpty() ? null : deviceId, offline ? 1 : 0, clientId.isEmpty() ? null : now());
             if (inv && refRow.get("party_id") != null) {
                 // credit note: reduces what the retailer owes — first this invoice, then other open invoices (oldest first)
                 String pid = str(refRow.get("party_id"));
@@ -1321,7 +1503,7 @@ public class BillingService {
         Map<String, long[]> left = billLeft(cid, id, no);
         List<Object> ls = new ArrayList<>();
         long leftPcs = 0;
-        for (Map<String, Object> l : db.query("SELECT item_id, item_name, item_name_en, size_label, qty, rate, amount FROM bill_lines WHERE company_id = ? AND bill_id = ? ORDER BY line_no", cid, id)) {
+        for (Map<String, Object> l : db.query("SELECT item_id, item_name, item_name_en, size_label, qty, rate, amount, wt_g FROM bill_lines WHERE company_id = ? AND bill_id = ? ORDER BY line_no", cid, id)) {
             String k = lineKey(l.get("item_id"), l.get("item_name"), l.get("size_label"));
             long[] v = left.get(k);
             Map<String, Object> n = new LinkedHashMap<>();
@@ -1331,6 +1513,7 @@ public class BillingService {
             n.put("size", str(l.get("size_label")));
             n.put("qty", lng(l.get("qty")));
             n.put("rate", dbl(l.get("rate")));
+            if (l.get("wt_g") != null) n.put("wt", lng(l.get("wt_g")));       // weight line: grams of one portion (stock goes back in grams)
             long lf = v == null ? 0 : Math.min(v[0], lng(l.get("qty")));
             if (v != null) v[0] -= lf;                     // same item twice on a bill: share what is left
             n.put("left", lf);
@@ -1465,12 +1648,14 @@ public class BillingService {
             }
             for (Map<String, Object> l : db.query("SELECT * FROM bill_lines WHERE company_id = ? AND bill_id IN (" + in + ") ORDER BY bill_id, line_no", args.toArray())) {
                 Map<String, Object> n = new LinkedHashMap<>();
+                if (l.get("item_id") != null) n.put("id", str(l.get("item_id")));
                 n.put("name", str(l.get("item_name")));
                 n.put("en", str(l.get("item_name_en")));
                 n.put("size", str(l.get("size_label")));
                 n.put("qty", lng(l.get("qty")));
                 n.put("rate", dbl(l.get("rate")));
                 n.put("amt", dbl(l.get("amount")));
+                if (l.get("wt_g") != null) n.put("wt", lng(l.get("wt_g")));
                 lines.computeIfAbsent(lng(l.get("bill_id")), k -> new ArrayList<>()).add(n);
             }
         }
@@ -2928,6 +3113,7 @@ public class BillingService {
             db.update("UPDATE companies SET shop_slug = ? WHERE id = ?", newSlug(name, id), id);
         if (in.containsKey("shopWa")) setShopWa(id, in.get("shopWa"));
         if (in.containsKey("rateChange")) db.update("UPDATE companies SET rate_change = ? WHERE id = ?", bool(in.get("rateChange")) ? 1 : 0, id);
+        if (in.containsKey("orderNoStock")) db.update("UPDATE companies SET order_no_stock = ? WHERE id = ?", bool(in.get("orderNoStock")) ? 1 : 0, id);
         ensureBranches(id);
         ensurePayModes(id);
         Map<String, Object> out = obj("company", pubCompany(db.one("SELECT * FROM companies WHERE id = ?", id)));
@@ -3071,6 +3257,7 @@ public class BillingService {
         p.put("shopSlug", str(c.get("shop_slug")));
         p.put("shopWa", str(c.get("shop_wa")));
         p.put("rateChange", bool(c.get("rate_change")));
+        p.put("orderNoStock", bool(c.get("order_no_stock")));
         p.put("shopEnabled", c.get("shop_enabled") == null || bool(c.get("shop_enabled")));
         return p;
     }
@@ -3372,6 +3559,7 @@ public class BillingService {
         c.put("city", str(co.get("city")));
         c.put("wa", shopWa(co));
         c.put("slug", str(co.get("shop_slug")));
+        c.put("orderNoStock", bool(co.get("order_no_stock")));      // true: an item with no stock can still be ordered
         Map<String, Object> stock = new LinkedHashMap<>();
         for (Map<String, Object> r : db.query("SELECT branch_id, item_id, size_label, qty FROM stock WHERE company_id = ? AND qty > 0", cid)) {
             @SuppressWarnings("unchecked")
@@ -3419,12 +3607,13 @@ public class BillingService {
         }
         if (seen.isEmpty()) throw new ApiException(400, "Cart காலியாக உள்ளது");
         if (seen.size() > 50) throw new ApiException(400, "ஒரு ஆர்டரில் 50 ஐட்டம் வரை");
+        final boolean noStockOk = bool(db.one("SELECT order_no_stock FROM companies WHERE id = ?", cid).get("order_no_stock"));
         double total = 0;
         long pcs = 0;
         for (Map.Entry<String, Long> e : seen.entrySet()) {
             Object[] z = cat.get(e.getKey());
             long h = have.getOrDefault(e.getKey(), 0L);
-            if (e.getValue() > h) throw new ApiException(409, z[1] + " (" + e.getKey().split("\\|", 2)[1] + "): இந்த கடையில் " + Math.max(0, h) + " மட்டுமே உள்ளது");
+            if (!noStockOk && e.getValue() > h) throw new ApiException(409, z[1] + " (" + e.getKey().split("\\|", 2)[1] + "): இந்த கடையில் " + Math.max(0, h) + " மட்டுமே உள்ளது");
             Map<String, Object> n = new LinkedHashMap<>();
             n.put("id", e.getKey().split("\\|", 2)[0]);
             n.put("name", z[1]);
@@ -3433,6 +3622,7 @@ public class BillingService {
             n.put("qty", e.getValue());
             n.put("rate", z[0]);
             n.put("amt", round2((Double) z[0] * e.getValue()));
+            if (e.getValue() > h) n.put("short", e.getValue() - Math.max(0, h));          // ordered more than the stock in hand (company allows it)
             total += (Double) z[0] * e.getValue();
             pcs += e.getValue();
             lines.add(n);
@@ -3490,6 +3680,33 @@ public class BillingService {
             for (Map<String, Object> l : lines) {
                 Double r = l.get("id") == null ? null : rates.get(l.get("id") + "|" + l.get("size"));
                 if (r != null && Math.abs(r - (Double) l.get("rate")) > 0.001) throw new ApiException(400, "ரேட் மாற்ற அனுமதி இல்லை: " + l.get("name"));
+            }
+        }
+        // stock in hand at this branch: refuse an item without stock unless the company allows it (it is then marked "short" on the order)
+        final boolean noStockOk = bool(db.one("SELECT order_no_stock FROM companies WHERE id = ?", cid).get("order_no_stock"));
+        if (branch != null) {
+            Link lk = link(db, cid);
+            Map<String, Long> have = new HashMap<>();
+            for (Map<String, Object> r : db.query("SELECT item_id, size_label, qty FROM stock WHERE company_id = ? AND branch_id = ?", cid, branch))
+                have.put(str(r.get("item_id")) + "|" + str(r.get("size_label")), lng(r.get("qty")));
+            Map<String, Long> need = new LinkedHashMap<>();
+            Map<String, String> label = new HashMap<>();
+            for (Map<String, Object> l : lines) {
+                String iid = (String) l.get("id");
+                if (iid == null || !lk.linked(iid, l)) continue;
+                String k = iid + "|" + lk.stockSize(iid, l);
+                need.merge(k, lk.stockQty(iid, l), Long::sum);
+                label.putIfAbsent(k, l.get("name") + (lk.weight(iid) ? "" : " (" + l.get("size") + ")"));
+            }
+            for (Map.Entry<String, Long> e : need.entrySet()) {
+                long h = have.getOrDefault(e.getKey(), 0L);
+                if (e.getValue() <= h) continue;
+                if (!noStockOk)
+                    throw new ApiException(409, label.get(e.getKey()) + ": இந்த கிளையில் ஸ்டாக் " + Math.max(0, h) + " மட்டுமே — ஸ்டாக் இல்லாத ஐட்டத்துக்கு ஆர்டர் எடுக்க முடியாது");
+                for (Map<String, Object> l : lines) {
+                    String iid = (String) l.get("id");
+                    if (iid != null && lk.linked(iid, l) && e.getKey().equals(iid + "|" + lk.stockSize(iid, l))) l.put("short", e.getValue() - Math.max(0, h));
+                }
             }
         }
         double total = 0;

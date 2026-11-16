@@ -4,9 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0e6b4a">
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MBill">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>MBill | Mobile Bill</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%2064%2064%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2216%22%20fill%3D%22%230e6b4a%22/%3E%3Cpath%20d%3D%22M18%2012h28a3%203%200%200%201%203%203v37l-5-3-5%203-5-3-5%203-5-3-5%203V15a3%203%200%200%201%203-3z%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M23%2038V22l9%2010%209-10v16%22%20fill%3D%22none%22%20stroke%3D%22%23e9b431%22%20stroke-width%3D%224.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%2064%2064%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2216%22%20fill%3D%22%230e6b4a%22/%3E%3Cpath%20d%3D%22M18%2012h28a3%203%200%200%201%203%203v37l-5-3-5%203-5-3-5%203-5-3-5%203V15a3%203%200%200%201%203-3z%22%20fill%3D%22%23fff%22/%3E%3Cpath%20d%3D%22M23%2038V22l9%2010%209-10v16%22%20fill%3D%22none%22%20stroke%3D%22%23e9b431%22%20stroke-width%3D%224.5%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E">
 <meta name="description" content="MBill (Mobile Bill): நைட்டி, சுடிதார், குர்தா, பட்டியாலா, இன்னர் மற்றும் லேடீஸ் ஐட்டங்கள். சைஸ் தேர்வு செய்து பில் WhatsApp-ல் பெறுங்கள்.">
 <meta property="og:title" content="MBill · Mobile Bill">
 <meta property="og:description" content="கடைகளுக்கான மொபைல் பில்லிங் · சைஸ், ரேட், WhatsApp பில்.">
@@ -198,6 +202,10 @@ body.authed .login{display:none}
 .bar > div{flex:1;min-width:0}
 .bar .out{flex:none;height:42px;border-radius:13px;background:rgba(255,255,255,.16);color:#fff;padding:0 10px;font-size:11.5px;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;max-width:96px}
 .bar .out span{font-size:16px}
+.bar .net{flex:none;height:42px;min-width:42px;border-radius:13px;background:rgba(255,255,255,.16);color:#fff;padding:0 9px;font-size:16px;display:flex;align-items:center;justify-content:center;gap:4px}
+.bar .net b{font-size:12px}.bar .net.off{background:#b45309}.bar .net.warn{background:#b91c1c}.bar .net.sync b{opacity:.9}
+.bar .left-sp{margin-left:auto}
+.offbar{display:none;background:#fef3c7;color:#78350f;font-size:12.5px;line-height:1.35;padding:7px 14px;border-bottom:1px solid #fcd34d;font-weight:600}.offbar.on{display:block}
 .bar .out em{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:80px}
 /* ---- rate change ---- */
 .item .nm{flex:1;min-width:0}
@@ -656,6 +664,7 @@ footer .pw-by b{color:var(--leaf)}
 </section>
 <div class="app">
   <header class="bar" id="bar"></header>
+  <div class="offbar" id="offBar" role="status"></div>
   <div class="find" id="findBox"><span aria-hidden="true">🔍</span><input id="q" type="search" autocomplete="off" aria-label="Search items"><button class="scbtn" id="scanFind" aria-label="Scan barcode">📷</button></div>
   <main class="pad" id="view"></main>
   <footer>
@@ -685,6 +694,7 @@ footer .pw-by b{color:var(--leaf)}
 <div class="busy" id="busy" aria-hidden="true"><span></span></div>
 
 <script src="i18n.js"></script>
+<script src="offline.js"></script>
 <script>
 /* ================= EDIT HERE ================= */
 const APP_NAME     = "MBill";
@@ -747,15 +757,21 @@ function setToken(t,remember){
   token=t||null;
   try{ localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY); if(t) (remember?localStorage:sessionStorage).setItem(TOKEN_KEY,t); }catch(e){}
 }
-async function api(path,method,body){
+async function api(path,method,body,opt){
+  opt=opt||{};
+  const ac=typeof AbortController!=="undefined"?new AbortController():null, to=ac?setTimeout(()=>ac.abort(),opt.timeout||45000):0;
   let r;
+  const down=()=>{ const er=new Error("இணையம் / server கிடைக்கவில்லை — இந்த வசதிக்கு internet தேவை"); er.status=0; er.offline=true; return er; };
   try{
-    r=await fetch(API_BASE+path,{method:method||"GET",cache:"no-store",
+    r=await fetch(API_BASE+path,{method:method||"GET",cache:"no-store",signal:ac?ac.signal:undefined,
       headers:Object.assign({"Content-Type":"application/json"},token?{"X-Auth":token}:{}),
       body:body===undefined?undefined:JSON.stringify(body)});
-  }catch(e){ const er=new Error("Server-ஐ அணுக முடியவில்லை. Internet / server-ஐ சரி பார்க்கவும்"); er.status=0; throw er; }
-  let data=null; try{ data=await r.json(); }catch(e){}
-  if(r.status===401 && path!=="login") sessionExpired((data&&data.error)||"");
+  }catch(e){ clearTimeout(to); OFF.net(false); throw down(); }
+  clearTimeout(to);
+  if(r.status===502||r.status===503||r.status===504){ OFF.net(false); throw down(); }
+  let data=null; try{ data=await r.json(); }catch(e){ if(r.ok&&/text\/html/i.test(r.headers.get("content-type")||"")){ OFF.net(false); throw down(); } }
+  OFF.net(true);
+  if(r.status===401 && path!=="login" && !opt.quiet) sessionExpired((data&&data.error)||"");
   if(!r.ok){ const er=new Error((data&&data.error)||("Server error "+r.status)); er.status=r.status; throw er; }
   return data||{};
 }
@@ -800,7 +816,11 @@ function sampleCatalog(){
 }
 let payModes=[], payPick="";
 const PAY_ICON={cash:"💵",card:"💳",upi:"📱",other:"🧾"};
-async function loadData(){ const r=await api("data"); company=r.company; catalog=r.catalog; payModes=r.payModes||[]; buildCatalog();
+async function loadData(){
+  let r;
+  try{ r=await api("data","GET",undefined,{timeout:10000}); OFF.saveData(r); }
+  catch(e){ const c=OFF.getData(); if(e.offline&&c) r={company:c.company,catalog:c.catalog,payModes:c.payModes}; else throw e; }
+  company=r.company; catalog=r.catalog; payModes=r.payModes||[]; buildCatalog();
   try{ payPick=localStorage.getItem(ck("pay"))||""; }catch(e){ payPick=""; } if(!payModes.some(m=>m.id===payPick)) payPick=""; }
 
 /* cart is kept on this phone, separately for every company */
@@ -957,7 +977,7 @@ function renderBar(){
   else if(v==="po") left=`${isOwner()?`<div class="mark" aria-hidden="true">📥</div>`:`<button class="back" id="${isStock()?"toStock":"toHome"}" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">Purchase Orders</h1></div>`;
   else if(v==="stockrep") left=`${isOwner()?`<div class="mark" aria-hidden="true">📦</div>`:`<button class="back" id="${isStock()?"toStock":"toHome"}" aria-label="Back">←</button>`}<div><span class="appline">${esc(company.name)}${myBranch?" · "+esc(myBranch):""}</span><h1 class="co">ஸ்டாக் அறிக்கை</h1></div>`;
   else left=`<div class="mark" aria-hidden="true">${esc(coMark())}</div><div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">${esc(company?company.name:APP_NAME)}</h1></div>`;
-  $("#bar").innerHTML = left + (me?`<button class="out" id="menuBtn" aria-label="Menu"><span aria-hidden="true">☰</span><em>${esc(me.user)}</em></button>`:"");
+  $("#bar").innerHTML = left + (me?`<span class="left-sp"></span>${OFF.chipHtml()}<button class="out" id="menuBtn" aria-label="Menu"><span aria-hidden="true">☰</span><em>${esc(me.user)}</em></button>`:"");
   $("#findBox").hidden = !(v==="home"||v==="cat");
   $("#q").placeholder = c ? `${c[1]} பகுதியில் தேடு` : "எல்லா ஐட்டங்களிலும் தேடு (Search)";
 }
@@ -1356,6 +1376,21 @@ async function sharePdf(phone,text){
 }
 const PDF_HINT=`<p class="hint" style="text-align:center">📎 PDF + Text: போனில் Share திரை வரும் → <b>WhatsApp</b> → வாடிக்கையாளரைத் தேர்வு செய்யவும் (PDF-உடன் பில் text-உம் போகும்)</p>`;
 const waUrl = (ph,text) => (ph?"https://wa.me/"+COUNTRY_CODE+ph:"https://wa.me/")+"?text="+encodeURIComponent(text);
+/* queue-first: try the server (12 s); if the network is down, keep the document in the outbox with a reserved / temporary number */
+async function sendDoc(kind,path,body,noQueue,mkView){
+  body.clientId=OFF.newCid(kind==="bill"?"b":"x"); body.deviceId=OFF.device(); body.clientAt=new Date().toISOString(); body.catalogVersion=catalog.version;
+  try{
+    if(!OFF.online&&OFF.ok&&!noQueue) throw Object.assign(new Error("offline"),{offline:true,status:0});
+    const r=await api(path,"POST",body,{timeout:12000});
+    return {doc:kind==="bill"?r.bill:r.cancel,queued:false};
+  }catch(e){
+    if(!(e.offline&&OFF.ok)||noQueue) throw e;
+    const n=OFF.takeNo(kind); body.offline=true; if(n.real) body.reservedSeq=n.seq;
+    const view=mkView(n.no,n.seq); view.clientId=body.clientId; view.offline=true;
+    await OFF.enqueue(kind,body,view);
+    return {doc:view,queued:true};
+  }
+}
 async function sendBill(){
   const ph=$("#iPhone").value.trim(), ok=/^[6-9]\d{9}$/.test(ph);
   $("#fPhone").classList.toggle("bad",!ok);
@@ -1366,20 +1401,27 @@ async function sendBill(){
   if(exIds.length && bal<0){ toast("புதிய பில் தொகை exchange தொகையை விட குறைவு — மேலும் ஐட்டம் சேர்க்கவும்"); return; }
   if(!(exIds.length && bal===0) && payModes.length && !payModes.some(m=>m.id===payPick)){ const ps=$("#paySel"); if(ps){ ps.classList.add("bad"); ps.scrollIntoView({block:"center",behavior:"smooth"}); } toast("பணம் செலுத்தும் முறையை தேர்வு செய்யவும் (Cash / Card / UPI)"); return; }
   const btn=$("#send"); btn.disabled=true; busy(true);
-  let bill;
+  if(exIds.length && !OFF.online){ busy(false); btn.disabled=false; toast("Exchange-க்கு internet தேவை — Exchange இல்லாமல் பில் போடவும்"); return; }
+  let bill, queued=false;
   try{
-    bill=(await api("bills","POST",{customer:$("#iName").value.trim(),phone:ph,payMode:payPick||undefined,exchange:exIds,
-      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate,wt:l.wt}))})).bill;
-    stockData=null; srData=null;   // bill reduced the stock
+    const pm=payModes.find(m=>m.id===payPick), body={customer:$("#iName").value.trim(),phone:ph,payMode:payPick||undefined,exchange:exIds,
+      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate,wt:l.wt}))};
+    const total=money(L.reduce((a,l)=>a+l.amt,0)), pcs=L.reduce((a,l)=>a+l.qty,0);
+    const x=await sendDoc("bill","bills",body,exIds.length,(no,seq)=>({id:null,no,seq,at:body.clientAt,customer:body.customer,phone:ph,by:me.name,byUser:me.user,
+      lines:body.lines.map(l=>({id:l.id,name:l.name,en:l.en,size:l.size,qty:l.qty,rate:l.rate,amt:money(l.rate*l.qty),wt:l.wt})),pieces:pcs,total,
+      pay:pm?pm.name:"",payKind:pm?pm.kind:"",exchange:0,exchangeRef:"",paid:total,branchId:""}));
+    bill=x.doc; queued=x.queued;
+    if(!queued){ stockData=null; srData=null; }   // bill reduced the stock
   }catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; }
   finally{ busy(false); }
-  cart={}; customs={}; ovr={}; save(); renderAll(); billPendingOnly=false; pendPrev=null; exOpen=null; exPick=new Set(); loadPendingCount();
+  cart={}; customs={}; ovr={}; save(); renderAll(); billPendingOnly=false; pendPrev=null; exOpen=null; exPick=new Set(); if(!queued) loadPendingCount(); OFF.applyPending();
   if(ordForBill&&ordForBill.phone===ph){ const of=ordForBill; ordForBill=null;
-    api("orders/"+of.id,"POST",{billNo:bill.no}).then(()=>{ ordData=null; loadOrderCount(); setTimeout(()=>toast(`ஆர்டர் ${of.no} → பில் ${bill.no} இணைக்கப்பட்டது`),900); }).catch(apiErr); }
+    if(queued) setTimeout(()=>toast("ஆர்டரை பில்லுடன் இணைக்க online-ல் ஆர்டர் பக்கத்தில் செய்யவும்"),900);
+    else api("orders/"+of.id,"POST",{billNo:bill.no}).then(()=>{ ordData=null; loadOrderCount(); setTimeout(()=>toast(`ஆர்டர் ${of.no} → பில் ${bill.no} இணைக்கப்பட்டது`),900); }).catch(apiErr); }
   if(bill.mergedPending) setTimeout(()=>toast(`${bill.mergedPending} pending பில் இந்த பில்லில் சேர்க்கப்பட்டது`),300);
   const text=billText(bill), url=waUrl(ph,text);
   $("#sheetBody").innerHTML=`<div class="ok"><div class="tick">✓</div>
-    <h2 style="padding:0">பில் ${esc(bill.no)} சேமிக்கப்பட்டது</h2>${bill.mergedPending?`<p class="sub">⏳ ${bill.mergedPending} pending + புதிய ஐட்டங்கள் = ஒரே பில் · ${bill.pieces} pcs · ${inr(bill.total)}</p>`:""}
+    <h2 style="padding:0">பில் ${esc(bill.no)} சேமிக்கப்பட்டது</h2>${queued?`<p class="sub" style="color:#b45309;font-weight:700">📴 Offline — இணையம் வந்ததும் தானாக server-க்கு அனுப்பப்படும்${/-C?T\d/.test(bill.no)?" (தற்காலிக எண் — அனுப்பியதும் இறுதி எண் கிடைக்கும்)":""}</p>`:""}${bill.mergedPending?`<p class="sub">⏳ ${bill.mergedPending} pending + புதிய ஐட்டங்கள் = ஒரே பில் · ${bill.pieces} pcs · ${inr(bill.total)}</p>`:""}
     <p class="sub">+${COUNTRY_CODE} ${esc(ph)} எண்ணுக்கு WhatsApp திறக்கும். அங்கு <b>Send</b> அழுத்தவும்.<br>திறக்கவில்லை என்றால் கீழே உள்ள பச்சை பட்டனை அழுத்தவும்.</p>
     <button class="cta" id="sharePdf" data-ph="${esc(ph)}">📎 PDF + Text — WhatsApp</button>${PDF_HINT}
     <a class="cta ghost" href="${esc(url)}" target="_blank" rel="noopener">💬 Text மட்டும் WhatsApp</a>
@@ -1395,10 +1437,13 @@ let repData=null, repDate=null, repCo=null, repTop="month", repLoading=false, re
 async function openBills(){
   $("#sheetBody").innerHTML=`<h2>பில் வரலாறு</h2><p class="sub">${esc(company.name)}</p><div class="box"><p class="sub">ஏற்றுகிறது…</p></div>`; showSheet();
   try{
-    const r=await api("bills"); billCache=r.bills||[];
-    $("#sheetBody").innerHTML=`<h2>பில் வரலாறு</h2><p class="sub">${esc(company.name)} · சமீபத்திய ${billCache.length} பில்கள்</p>
+    let r, off=false;
+    try{ r=await api("bills","GET",undefined,{timeout:10000}); const q=OFF.queuedViews("bill"); if(q.length) r.bills=q.concat(r.bills||[]); }
+    catch(e){ if(e.offline&&OFF.ok){ r=OFF.billsView(); off=true; } else throw e; }
+    billCache=r.bills||[];
+    $("#sheetBody").innerHTML=`<h2>பில் வரலாறு</h2><p class="sub">${esc(company.name)} · சமீபத்திய ${billCache.length} பில்கள்${off?" · 📴 Offline (கடைசி 60 நாட்கள்)":""}</p>
       <div class="sum"><div><span>இன்று பில்கள்</span><span>${r.today.count}</span></div><div class="gt"><span>இன்றைய விற்பனை</span><span>${inr(r.today.total)}</span></div></div>
-      <div class="box">${billCache.length ? billCache.map((b,i)=>`<div class="bh"><div class="r1"><b>${esc(b.no)}</b><b class="amt">${inr(b.total)}</b></div>
+      <div class="box">${billCache.length ? billCache.map((b,i)=>`<div class="bh"><div class="r1"><b>${esc(b.no)}${b.offline?" ⏳":""}</b><b class="amt">${inr(b.total)}</b></div>
           <div class="meta">${esc(fmtDate(b.at))} · ${b.pieces} pcs${b.customer?" · "+esc(b.customer):""}${b.phone?" · "+esc(b.phone):""}${b.by?" · 👤 "+esc(b.by):""}${b.pay?` <span class="paytag k-${esc(b.payKind)}">${esc(b.pay)}</span>`:""}${b.exchange>0?` <span class="paytag k-exchange">🔁 −${inr(b.exchange)} · மீதி ${inr(b.paid)}</span>`:""}</div>
           <div class="acts"><button class="mini" data-bpdf="${i}">📎 PDF</button><button class="mini" data-bwa="${i}">WhatsApp</button><button class="mini" data-bcopy="${i}">Copy</button></div></div>`).join("")
         : `<p class="sub" style="margin:6px 0">இன்னும் பில் இல்லை</p>`}</div>
@@ -1432,22 +1477,31 @@ async function saveCancelBill(){
   if(ph&&!/^[6-9]\d{9}$/.test(ph)){ toast("மொபைல் எண் தவறு"); return; }
   const L=lines(), btn=$("#saveCancelBill"); btn.disabled=true; busy(true);
   let cx;
-  try{ cx=(await api("cancel-bills","POST",{reason,refBill:$("#cxRef").value.trim(),customer:$("#cxName").value.trim(),phone:ph,
-      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate,wt:l.wt}))})).cancel;
-    stockData=null; srData=null; repData=null; }
+  let queued=false;
+  try{
+    const body={reason,refBill:$("#cxRef").value.trim().toUpperCase(),customer:$("#cxName").value.trim(),phone:ph,
+      lines:L.map(l=>({id:l.it.custom?undefined:l.it.id,name:l.it.ta,en:l.it.en||"",size:l.size||"",qty:l.qty,rate:l.rate,wt:l.wt}))};
+    const x=await sendDoc("cancel","cancel-bills",body,false,cxView(body));
+    cx=x.doc; queued=x.queued;
+    if(!queued){ stockData=null; srData=null; repData=null; } }
   catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; }
   finally{ busy(false); }
   cart={}; customs={}; ovr={}; save(); renderAll();
   const text=cancelText(cx);
   $("#sheetBody").innerHTML=`<div class="ok"><div class="tick" style="background:var(--bad)">✖</div>
-    <h2 style="padding:0">ரத்து பில் ${esc(cx.no)} சேமிக்கப்பட்டது</h2><p class="sub">${cx.refBill?"அசல் பில் "+esc(cx.refBill)+" மாறவில்லை · ":""}ஸ்டாக் திரும்ப சேர்ந்தது · − ${inr(cx.total)}</p>
+    <h2 style="padding:0">ரத்து பில் ${esc(cx.no)} சேமிக்கப்பட்டது</h2>${offNote(queued)}<p class="sub">${cx.refBill?"அசல் பில் "+esc(cx.refBill)+" மாறவில்லை · ":""}ஸ்டாக் திரும்ப சேர்ந்தது · − ${inr(cx.total)}</p>
     ${cx.phone?`<a class="cta" href="${esc(waUrl(cx.phone,text))}" target="_blank" rel="noopener">WhatsApp-ல் அனுப்பு</a>`:""}
     <pre id="sum"></pre><button class="cta ghost" id="copySum">Copy</button>
-    ${cx.phone?`<button class="cta leaf" data-exnew="${esc(cx.phone)}|${cx.id}">🔁 இதற்கு பதில் புதிய பில் (Exchange)</button>`:""}
+    ${cx.phone&&cx.id?`<button class="cta leaf" data-exnew="${esc(cx.phone)}|${cx.id}">🔁 இதற்கு பதில் புதிய பில் (Exchange)</button>`:""}
     <button class="cta ghost" id="mCancels">✖ ரத்து பில் வரலாறு</button>
     <button class="cta ghost" id="newBill">புதிய பில் (New bill)</button></div>`;
   $("#sum").textContent=text;
 }
+/* local copy of a cancel bill made without internet */
+const cxView = body => (no)=>{ const ls=body.lines.map(l=>({id:l.id,name:l.name,en:l.en,size:l.size,qty:l.qty,rate:l.rate,amt:money(l.rate*l.qty),wt:l.wt}));
+  return {id:null,no,refBill:body.refBill||"",at:body.clientAt,customer:body.customer||"",phone:body.phone||"",by:me.name,pieces:ls.reduce((a,l)=>a+l.qty,0),
+    total:money(ls.reduce((a,l)=>a+l.amt,0)),reason:body.reason,branchId:"",lines:ls,usedBill:""}; };
+const offNote = q => q?`<p class="sub" style="color:#b45309;font-weight:700">📴 Offline — இணையம் வந்ததும் தானாக server-க்கு அனுப்பப்படும். ஸ்டாக் அப்போது சேரும்.</p>`:"";
 function cancelText(b){
   const c=company||{}, out=[`*${c.name||APP_NAME}*`];
   const addr=[c.address,c.city].filter(Boolean).join(", "); if(addr) out.push(addr);
@@ -1478,9 +1532,10 @@ async function cfbFind(){
   const ph=($("#cfbPhone").value||"").replace(/\D/g,"");
   $("#fCfbPhone").classList.toggle("bad",!/^[6-9]\d{9}$/.test(ph)); if(!/^[6-9]\d{9}$/.test(ph)){ toast("சரியான மொபைல் எண்ணை உள்ளிடவும்"); return; }
   cfb.phone=ph; busy(true);
-  try{ cfb.data=await api("bills/by-phone?phone="+ph+"&months="+cfb.months); }catch(e){ apiErr(e); return; } finally{ busy(false); }
+  try{ cfb.data=await api("bills/by-phone?phone="+ph+"&months="+cfb.months,"GET",undefined,{timeout:10000}); }
+  catch(e){ if(e.offline&&OFF.ok) cfb.data=OFF.billsByPhone(ph,cfb.months); else { apiErr(e); return; } } finally{ busy(false); }
   const B=cfb.data.bills||[], el=$("#cfbList"); if(!el) return;
-  el.innerHTML=B.length?`<p class="hint">${B.length} பில்கள் · ${esc(fmtDate(cfb.data.from).split(",")[0])} முதல் · ஒரு பில்லை தேர்வு செய்யவும்</p>`+B.map((b,i)=>`<button class="tr-c" data-cfbbill="${i}"${b.leftPieces?"":" disabled style=\"opacity:.55\""}>
+  el.innerHTML=B.length?`<p class="hint">${cfb.data.offline?"📴 Offline (கடைசி 60 நாட்கள் பில்கள்) · ":""}${B.length} பில்கள் · ${esc(fmtDate(cfb.data.from).split(",")[0])} முதல் · ஒரு பில்லை தேர்வு செய்யவும்</p>`+B.map((b,i)=>`<button class="tr-c" data-cfbbill="${i}"${b.leftPieces?"":" disabled style=\"opacity:.55\""}>
       <div class="r1"><b>${esc(b.no)}</b><b>${inr(b.total)}</b></div>
       <small>${esc(fmtDate(b.at))} · ${b.pieces} pcs${b.customer?" · "+esc(b.customer):""}${b.branch?" · 🏬 "+esc(b.branch):""} · 👤 ${esc(b.by)}</small>
       <small>${b.lines.map(l=>`${esc(l.name)}${l.size?" ("+esc(l.size)+")":""} × ${l.qty}${l.cancelled?` <span style="color:var(--bad)">(ரத்து ${l.cancelled})</span>`:""}`).join(" · ")}</small>
@@ -1490,7 +1545,8 @@ async function cfbFind(){
 async function cfbByNo(no){
   no=String(no||"").trim().toUpperCase(); if(!no){ toast("பில் எண் தேவை"); return; }
   busy(true); let r;
-  try{ r=await api("bills/for-cancel?no="+encodeURIComponent(no)); }catch(e){ apiErr(e); return; } finally{ busy(false); }
+  try{ r=await api("bills/for-cancel?no="+encodeURIComponent(no),"GET",undefined,{timeout:10000}); }
+  catch(e){ if(e.offline&&OFF.ok){ const lb=OFF.billByNo(no); if(!lb){ toast("📴 Offline — இந்த எண்ணின் பில் இந்த போனில் இல்லை (கடைசி 60 நாட்கள் மட்டும்)"); return; } r={bill:lb}; } else { apiErr(e); return; } } finally{ busy(false); }
   cfb.bill=r.bill; cfb.q={}; cfb.fromNo=true; renderCfbBill(); showSheet();
 }
 function cfbOpenBill(i){
@@ -1516,18 +1572,23 @@ const cfbTotal=()=>cfb.bill?Math.round(cfb.bill.lines.reduce((a,l,i)=>a+(cfb.q[i
 async function cfbSave(){
   const b=cfb.bill, reason=$("#cfbReason").value.trim();
   $("#fCfbReason").classList.toggle("bad",!reason); if(!reason){ toast("காரணம் தேவை"); return; }
-  const lines=b.lines.map((l,i)=>({l,q:cfb.q[i]||0})).filter(x=>x.q>0).map(({l,q})=>({id:l.id||undefined,name:l.name,en:l.en||"",size:l.size||"",qty:q,rate:l.rate}));
+  const lines=b.lines.map((l,i)=>({l,q:cfb.q[i]||0})).filter(x=>x.q>0).map(({l,q})=>({id:l.id||undefined,name:l.name,en:l.en||"",size:l.size||"",qty:q,rate:l.rate,wt:l.wt}));
   if(!lines.length){ toast("ரத்து செய்ய ஐட்டத்தை தேர்வு செய்யவும்"); return; }
   const btn=$("#cfbSave"); btn.disabled=true; busy(true);
   let cx;
-  try{ cx=(await api("cancel-bills","POST",{reason,refBill:b.no,customer:b.customer||"",phone:b.phone||"",lines})).cancel; stockData=null; srData=null; repData=null; ptData=null; mnData=null; if(b.kind==="invoice"&&b.partyId&&typeof ptCur!=="undefined"&&ptCur&&ptCur.party&&ptCur.party.id===b.partyId){ try{ ptCur=await api("parties/"+b.partyId); }catch(_){} } }
+  let queued=false;
+  try{
+    const cb={reason,refBill:b.no,customer:b.customer||"",phone:b.phone||"",lines};
+    const x=await sendDoc("cancel","cancel-bills",cb,b.kind==="invoice",cxView(cb));
+    cx=x.doc; queued=x.queued;
+    if(!queued){ stockData=null; srData=null; repData=null; ptData=null; mnData=null; if(b.kind==="invoice"&&b.partyId&&typeof ptCur!=="undefined"&&ptCur&&ptCur.party&&ptCur.party.id===b.partyId){ try{ ptCur=await api("parties/"+b.partyId); }catch(_){} } } }
   catch(e){ apiErr(e); if(btn.isConnected) btn.disabled=false; return; } finally{ busy(false); }
   cfb.reason=""; const text=cancelText(cx);
   $("#sheetBody").innerHTML=`<div class="ok"><div class="tick" style="background:var(--bad)">✖</div>
-    <h2 style="padding:0">ரத்து பில் ${esc(cx.no)} சேமிக்கப்பட்டது</h2><p class="sub">அசல் பில் ${esc(cx.refBill)} மாறவில்லை · ஸ்டாக் திரும்ப சேர்ந்தது · − ${inr(cx.total)}</p>
+    <h2 style="padding:0">ரத்து பில் ${esc(cx.no)} சேமிக்கப்பட்டது</h2>${offNote(queued)}<p class="sub">அசல் பில் ${esc(cx.refBill)} மாறவில்லை · ஸ்டாக் திரும்ப சேர்ந்தது · − ${inr(cx.total)}</p>
     ${cx.phone?`<a class="cta" href="${esc(waUrl(cx.phone,text))}" target="_blank" rel="noopener">WhatsApp-ல் அனுப்பு</a>`:""}
     <pre id="sum"></pre><button class="cta ghost" id="copySum">Copy</button>
-    ${cx.phone?`<button class="cta leaf" data-exnew="${esc(cx.phone)}|${cx.id}">🔁 இதற்கு பதில் புதிய பில் (Exchange)</button>`:""}
+    ${cx.phone&&cx.id?`<button class="cta leaf" data-exnew="${esc(cx.phone)}|${cx.id}">🔁 இதற்கு பதில் புதிய பில் (Exchange)</button>`:""}
     <button class="cta ghost" id="cfbAgain">✖ இதே எண்ணுக்கு மேலும் ரத்து</button>
     <button class="cta ghost" id="mCancels">✖ ரத்து பில் வரலாறு</button></div>`;
   $("#sum").textContent=text;
@@ -1760,7 +1821,10 @@ async function saveInvoice(){
 async function openCancels(){
   $("#sheetBody").innerHTML=`<h2>✖ ரத்து பில் வரலாறு</h2><div class="box"><p class="sub">ஏற்றுகிறது…</p></div>`; showSheet();
   try{
-    const r=await api("cancel-bills"); cancelCache=r.cancels||[];
+    let r;
+    try{ r=await api("cancel-bills","GET",undefined,{timeout:10000}); const q=OFF.queuedViews("cancel"); if(q.length) r.cancels=q.concat(r.cancels||[]); }
+    catch(e){ if(e.offline&&OFF.ok) r=OFF.cancelsView(); else throw e; }
+    cancelCache=r.cancels||[];
     $("#sheetBody").innerHTML=`<h2>✖ ரத்து பில் வரலாறு</h2><p class="sub">${esc(company.name)} · சமீபத்திய ${cancelCache.length} ரத்து பில்கள் · அசல் பில்கள் மாறாமல் உள்ளன</p>
       ${isOwner()?"":`<button class="cta" id="openCfb" style="background:var(--bad);margin-top:6px">📱 மொபைல் எண் மூலம் பில்லிலிருந்து ரத்து</button>`}
       <div class="sum"><div><span>இன்று ரத்து</span><span>${r.today.count} · ${inr(r.today.total)}</span></div><div class="gt" style="color:var(--bad)"><span>இந்த மாதம் ரத்து</span><span>${r.month.count} · ${inr(r.month.total)}</span></div></div>
@@ -2122,6 +2186,7 @@ async function setupCompany(mode){
 function openMenu(){
   $("#sheetBody").innerHTML=`<h2>${esc(me.name)}</h2>
     <p class="sub">@${esc(me.user)} · ${TYPE_LABEL[me.type]||esc(me.type)}${company?" · "+esc(company.name):""}${myBranch?" · 🏬 "+esc(myBranch):""}</p>
+    ${company&&!isOwner()&&!isWh()?`<button class="mrow" id="mSync">🔄 Sync / Offline${OFF.pend().length?" ("+OFF.pend().length+" காத்திருக்கிறது)":""}</button>`:""}
     ${company&&!isOwner()&&!isWh()?`<button class="mrow" id="mBills">🧾 பில் வரலாறு (Bills)</button><button class="mrow" id="mPending">⏳ Pending பில்கள் (${pendCount})</button>`:""}
     ${company&&(isAdmin()||isOwner()||isStock()||isWh())?`<button class="mrow" id="mMoney">💳 பணம் அறிக்கை — வர வேண்டியது / செலுத்த வேண்டியது</button>`:""}
     ${company&&!isSales()?`<button class="mrow" id="mParties">📒 Wholesale — Retailers / Invoices / நிலுவை</button>`:""}
@@ -2274,18 +2339,19 @@ function openCompanyForm(id,ret){
       <label class="fld">பில் கடைசி வரி<input id="kFoot" maxlength="120" autocomplete="off" placeholder="நன்றி! மீண்டும் வருக 🙏"></label>
       <label class="rem"><input type="checkbox" id="kBis" checked>பில்லில் "${esc(BISMILLAH)}" காட்டு</label>
       <label class="rem"><input type="checkbox" id="kRc">✏️ பில் போடும்போது ரேட் மாற்ற அனுமதி (Rate change)</label>
+      <label class="rem"><input type="checkbox" id="kOs">📦 ஸ்டாக் இல்லாவிட்டாலும் ஆர்டர் எடுக்க அனுமதி (Order without stock)</label>
     </div>
     <button class="cta leaf" id="compSave">${c?"சேமி":"கம்பெனியை உருவாக்கு"}</button>
     ${c?`<div class="two-b"><button class="cta warn" id="compDel">🗑 நீக்கு</button><button class="cta ghost" id="compCancel">ரத்து</button></div>`:`<button class="cta ghost" id="compCancel">ரத்து (Cancel)</button>`}`;
   if(c){ $("#kName").value=c.name||""; $("#kTag").value=c.tagline||""; $("#kOwner").value=c.owner||""; $("#kPhone").value=c.phone||""; $("#kAddr").value=c.address||"";
-    $("#kCity").value=c.city||""; $("#kPrefix").value=c.billPrefix||""; $("#kGst").value=c.gstin||""; $("#kEmail").value=c.email||""; $("#kFoot").value=c.footer||""; $("#kWa").value=c.shopWa||""; $("#kBis").checked=c.bismillah!==false; $("#kRc").checked=!!c.rateChange; $("#kFee").value=c.billFee!=null?c.billFee:"0.25"; }
+    $("#kCity").value=c.city||""; $("#kPrefix").value=c.billPrefix||""; $("#kGst").value=c.gstin||""; $("#kEmail").value=c.email||""; $("#kFoot").value=c.footer||""; $("#kWa").value=c.shopWa||""; $("#kBis").checked=c.bismillah!==false; $("#kOs").checked=!!c.orderNoStock; $("#kRc").checked=!!c.rateChange; $("#kFee").value=c.billFee!=null?c.billFee:"0.25"; }
   showSheet(); if(!c) setTimeout(()=>{ const i=$("#kName"); if(i) i.focus(); },250);
 }
 async function saveCompany(){
   const b={id:kForm.id||"", name:$("#kName").value.trim(), tagline:$("#kTag").value.trim(), owner:$("#kOwner").value.trim(),
     phone:$("#kPhone").value.replace(/\D/g,""), address:$("#kAddr").value.trim(), city:$("#kCity").value.trim(),
     gstin:$("#kGst").value.trim().toUpperCase(), email:$("#kEmail").value.trim(), billPrefix:$("#kPrefix").value.trim().toUpperCase(),
-    footer:$("#kFoot").value.trim(), bismillah:$("#kBis").checked, rateChange:$("#kRc").checked, shopWa:$("#kWa").value.replace(/\D/g,""), billFee:$("#kFee").value.trim()===""?0.25:Number($("#kFee").value.trim())};
+    footer:$("#kFoot").value.trim(), bismillah:$("#kBis").checked, rateChange:$("#kRc").checked, orderNoStock:$("#kOs").checked, shopWa:$("#kWa").value.replace(/\D/g,""), billFee:$("#kFee").value.trim()===""?0.25:Number($("#kFee").value.trim())};
   const okF=isFinite(b.billFee)&&b.billFee>=0&&b.billFee<=1000; $("#fkFee").classList.toggle("bad",!okF); if(!okF){ toast("ஒரு பில்லுக்கான கட்டணம் தவறு"); return; }
   const okN=!!b.name, okP=/^[6-9]\d{9}$/.test(b.phone), okG=!b.gstin||/^[0-9]{2}[A-Z0-9]{13}$/.test(b.gstin), okX=!b.billPrefix||/^[A-Z0-9]{1,8}$/.test(b.billPrefix);
   $("#fkName").classList.toggle("bad",!okN); $("#fkPhone").classList.toggle("bad",!okP); $("#fkGst").classList.toggle("bad",!okG); $("#fkPrefix").classList.toggle("bad",!okX);
@@ -2444,15 +2510,19 @@ async function openCompanyBilling(id,go){
 
 /* ================= LOGIN / SESSION ================= */
 function lerr(t){ const el=$("#lErr"); el.textContent=t; el.classList.toggle("on",!!t); }
-async function enter(s){
+async function enter(s,opt){
+  opt=opt||{};
   me=s.user; company=s.company||null; defaultPw=!!s.defaultPassword; myBranch=s.branch?s.branch.name:"";
+  if(!opt.cached) OFF.saveSess(s);
+  if(company) await OFF.openCompany(company.id);
   repData=null; repBranch=""; stockData=null; srData=null; srBranch="";
-  if(company && !isOwner()){ await loadData(); loadCart(); pendCount=0; setTimeout(loadPendingCount,0); setTimeout(loadOrderCount,0); }
+  if(company && !isOwner()){ await loadData(); loadCart(); pendCount=0; if(!opt.cached){ setTimeout(loadPendingCount,0); setTimeout(loadOrderCount,0); } }
   else { catalog={version:0,setup:false,cats:[],items:[]}; buildCatalog(); cart={}; customs={}; ovr={}; }
   document.body.classList.add("authed");
   if(isAdmin() && !company && location.hash!=="#admin"){ history.replaceState(null,"","#admin"); }
   renderAll(true);
-  if(isAdmin()) loadAdmin();
+  if(isAdmin()&&!opt.cached) loadAdmin();
+  if(company&&!isOwner()&&!isWh()) OFF.start();
 }
 async function doLogin(e){
   e.preventDefault();
@@ -2474,9 +2544,10 @@ function showLogin(msg){
 }
 function sessionExpired(msg){ if(!me) return; setToken(null); showLogin(msg||"Session முடிந்தது. மீண்டும் login செய்யவும்"); }
 async function logout(){
-  if(!confirm("வெளியேற வேண்டுமா? (Logout)")) return;
-  try{ await api("logout","POST"); }catch(e){}
-  setToken(null); history.replaceState(null,"",location.pathname+location.search); showLogin();
+  const np=OFF.pend().length;
+  if(!confirm(np?`⚠️ ${np} பில்/ரத்து இன்னும் server-க்கு அனுப்பப்படவில்லை. அவை இந்த போனில் பாதுகாப்பாக இருக்கும்; இதே user மீண்டும் login செய்தால் அனுப்பப்படும். வெளியேறவா?`:"வெளியேற வேண்டுமா? (Logout)")) return;
+  try{ await api("logout","POST",undefined,{timeout:5000,quiet:true}); }catch(e){}
+  OFF.dropSess(); setToken(null); history.replaceState(null,"",location.pathname+location.search); showLogin();
 }
 $("#loginForm").addEventListener("submit",doLogin);
 $("#lEye").addEventListener("click",()=>{ const i=$("#lPass"), show=i.type==="password"; i.type=show?"text":"password"; $("#lEye").textContent=show?"🙈":"👁"; });
@@ -4353,6 +4424,7 @@ window.addEventListener("hashchange",()=>{ $("#q").value=""; renderAll(true); if
 document.addEventListener("keydown",e=>{ if(e.key==="Enter" && e.target.id==="stVal"){ e.preventDefault(); saveStockEdit(); } });
 
 /* ================= START ================= */
+if("serviceWorker" in navigator && location.protocol!=="file:") addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
 (async function start(){
   $("#lBis").textContent=BISMILLAH;
   $("#lApp").innerHTML="<span>M</span>Bill";
@@ -4361,8 +4433,10 @@ document.addEventListener("keydown",e=>{ if(e.key==="Enter" && e.target.id==="st
   if(location.protocol==="file:"){ showLogin("இந்த app server-ல் (Tomcat) மட்டுமே இயங்கும். WAR-ஐ deploy செய்து http://server:8080/... வழியாக திறக்கவும்"); return; }
   if(!token){ showLogin(); return; }
   busy(true);
-  try{ await enter(await api("me")); }
-  catch(e){ if(e.status===401||e.status===403) setToken(null); showLogin(e.status===401?"":e.message); }
+  try{ await enter(await api("me","GET",undefined,{timeout:8000})); }
+  catch(e){
+    if(e.offline&&OFF.ok){ const ss=await OFF.getSess(); if(ss){ try{ await enter(ss,{cached:true}); toast("📴 Offline mode — சேமித்த தரவு பயன்படுத்தப்படுகிறது"); return; }catch(e2){} } }
+    if(e.status===401||e.status===403) setToken(null); showLogin(e.status===401?"":e.message); }
   finally{ busy(false); }
 })();
 </script>

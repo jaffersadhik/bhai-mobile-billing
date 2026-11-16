@@ -123,7 +123,7 @@ const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;"
 const inr=v=>"₹"+Number(v||0).toLocaleString("en-IN",{maximumFractionDigits:2});
 const ls={get(k,d){ try{ const v=localStorage.getItem("bmbshop."+CODE+"."+k); return v==null?d:JSON.parse(v); }catch(e){ return d; } },
           set(k,v){ try{ localStorage.setItem("bmbshop."+CODE+"."+k,JSON.stringify(v)); }catch(e){} }};
-let S=null, loc=ls.get("loc","all"), grp=null, inOnly=ls.get("inOnly",true), cart=ls.get("cart",{}), sel=null;
+let S=null, loc=ls.get("loc","all"), grp=null, inOnly=ls.get("inOnly",null), cart=ls.get("cart",{}), sel=null;
 let byId={}, catById={};
 function toast(m){ const t=$("#toast"); t.textContent=m; t.classList.add("on"); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("on"),2600); }
 async function api(path,method,body){
@@ -139,6 +139,8 @@ const tint=it=>(catById[it.cat]||{}).color||"#eee";
 function qtyAt(id,size,where){ const k=id+"|"+size, w=where||loc;
   if(w==="all") return Object.values(S.stock).reduce((a,m)=>a+(m[k]||0),0);
   return (S.stock[w]||{})[k]||0; }
+const onlyIn=()=>inOnly===null?!NOSTOCK():inOnly;   // 'in stock only' is on by default, off when the shop takes orders without stock
+const NOSTOCK=()=>!!(S.company&&S.company.orderNoStock);   // shop takes orders even when stock is 0
 const itemQty=it=>it.sizes.reduce((a,z)=>a+qtyAt(it.id,z.size),0);
 function priceTxt(it){ const r=it.sizes.map(z=>z.rate), lo=Math.min(...r), hi=Math.max(...r); return lo===hi?inr(lo):inr(lo)+" – "+inr(hi); }
 const cartKeys=()=>Object.keys(cart).filter(k=>cart[k]>0&&byId[k.split("|")[0]]);
@@ -163,7 +165,7 @@ async function boot(){
 }
 function render(){
   const c=S.company, q=(($("#q")||{}).value||"").trim().toLowerCase();
-  const visible=it=>!inOnly||itemQty(it)>0;
+  const visible=it=>!onlyIn()||itemQty(it)>0;
   let body;
   if(q){
     const its=S.catalog.items.filter(it=>visible(it)&&((it.ta+" "+it.en).toLowerCase().includes(q)||catById[it.cat]&&(catById[it.cat].ta+" "+catById[it.cat].en).toLowerCase().includes(q)));
@@ -184,15 +186,15 @@ function render(){
     <div class="lbl">எந்த கடையின் இருப்பை பார்க்க வேண்டும்?</div>
     <div class="locs"><button data-loc="all" class="${loc==="all"?"on":""}">🌐 எல்லா இடங்களும்</button>${S.branches.map(b=>`<button data-loc="${esc(b.id)}" class="${loc===b.id?"on":""}">${b.kind==="warehouse"?"🏭":"🏬"} ${esc(b.name)}</button>`).join("")}</div>
     <div class="find"><input id="q" type="search" placeholder="🔎 பொருள் தேடு (Search)" value="${esc(q)}" autocomplete="off"></div>
-    <label class="tog"><input type="checkbox" id="inOnly"${inOnly?" checked":""}> இருப்பு உள்ளவை மட்டும் காட்டு</label>
+    <label class="tog"><input type="checkbox" id="inOnly"${onlyIn()?" checked":""}> இருப்பு உள்ளவை மட்டும் காட்டு</label>
     ${body}
     <footer>${esc(c.name)} · Powered by MBill · Mobile Bill</footer>`;
   const qi=$("#q"); if(q){ qi.focus(); qi.setSelectionRange(q.length,q.length); }
 }
 function card(it){
   const n=itemQty(it), inc=it.sizes.reduce((a,z)=>a+(cart[it.id+"|"+z.size]||0),0);
-  return `<button class="card${n>0?"":" dim"}" data-item="${esc(it.id)}" style="--tint:${esc(tint(it))}">
-    <div class="img">${pic(it)}<span class="badge${n>0?"":" out"}">${n>0?(n>20?"இருப்பு உள்ளது":"இருப்பு "+n):"இருப்பு இல்லை"}</span>${inc?`<span class="incart">${inc}</span>`:""}</div>
+  return `<button class="card${n>0||NOSTOCK()?"":" dim"}" data-item="${esc(it.id)}" style="--tint:${esc(tint(it))}">
+    <div class="img">${pic(it)}<span class="badge${n>0||NOSTOCK()?"":" out"}">${n>0?(n>20?"இருப்பு உள்ளது":"இருப்பு "+n):(NOSTOCK()?"முன்பதிவு":"இருப்பு இல்லை")}</span>${inc?`<span class="incart">${inc}</span>`:""}</div>
     <div class="in"><b>${esc(it.ta)}</b><small>${esc(it.en||"")}</small><div class="pr">${priceTxt(it)}</div></div></button>`;
 }
 function openItem(id){
@@ -207,12 +209,13 @@ function renderItem(){
   $("#sb").innerHTML=`<h2>${esc(it.ta)}</h2><p class="sub">${esc(it.en||"")} · ${esc((catById[it.cat]||{}).ta||"")}</p>
     <div class="big" style="--tint:${esc(tint(it))}">${pic(it)}</div>
     <div class="lbl" style="margin-top:0">சைஸ் / அளவு</div>
-    <div class="szs">${it.sizes.map(x=>{ const h=qtyAt(it.id,x.size); return `<button data-sz="${esc(x.size)}" class="${x.size===sel.size?"on":""}"${h>0?"":" disabled"}><b>${esc(x.size)}</b><small>${inr(x.rate)}</small><small>${h>0?"இருப்பு "+h:"இல்லை"}</small></button>`; }).join("")}</div>
+    <div class="szs">${it.sizes.map(x=>{ const h=qtyAt(it.id,x.size); return `<button data-sz="${esc(x.size)}" class="${x.size===sel.size?"on":""}"${h>0||NOSTOCK()?"":" disabled"}><b>${esc(x.size)}</b><small>${inr(x.rate)}</small><small>${h>0?"இருப்பு "+h:(NOSTOCK()?"முன்பதிவு":"இல்லை")}</small></button>`; }).join("")}</div>
     ${where?`<p class="sub" style="margin-top:8px">📍 ${where}</p>`:""}
     <div class="addrow"><div style="font-size:24px;font-weight:900;color:var(--leaf-d)">${inr(z.rate)}</div>
       <div class="step" style="margin-left:auto"><button data-iq="-1" aria-label="Less">−</button><span>${sel.qty}</span><button data-iq="1" aria-label="More">+</button></div></div>
     ${inCart?`<p class="sub" style="margin-top:6px">🛒 ஏற்கனவே Cart-ல்: ${inCart}</p>`:""}
-    <button class="cta" id="addCart"${have>0?"":" disabled"}>${have>0?"🛒 Cart-ல் சேர் · "+inr(z.rate*sel.qty):"இருப்பு இல்லை"}</button>
+    ${have<=0&&NOSTOCK()?`<p class="sub" style="margin-top:6px;color:#b45309;font-weight:700">📦 இப்போது ஸ்டாக் இல்லை — முன்பதிவு ஆர்டர் எடுக்கப்படும்; ஸ்டாக் வந்ததும் கடை தொடர்பு கொள்ளும்</p>`:""}
+    <button class="cta" id="addCart"${have>0||NOSTOCK()?"":" disabled"}>${have>0||NOSTOCK()?"🛒 Cart-ல் சேர் · "+inr(z.rate*sel.qty):"இருப்பு இல்லை"}</button>
     <button class="cta ghost" id="closeSheet2">மேலும் பொருட்கள் பார்</button>`;
 }
 function openCart(){
@@ -240,6 +243,7 @@ function checkCartBranch(){
   const b=($("#oBranch")||{}).value; let bad=0;
   cartKeys().forEach(k=>{ const el=document.querySelector(`[data-warn="${CSS.escape(k)}"]`); if(!el) return;
     const [id,sz]=k.split("|"), h=b?qtyAt(id,sz,b):qtyAt(id,sz,"all");
+    if(NOSTOCK()){ el.textContent=cart[k]>h?"📦 ஸ்டாக் குறைவு — முன்பதிவாக எடுக்கப்படும்":""; return; }
     el.textContent=cart[k]>h?(b?"இந்த கடையில் "+h+" மட்டும்":"இருப்பு "+h+" மட்டும்"):""; if(cart[k]>h) bad++; });
   return bad;
 }
@@ -307,8 +311,8 @@ document.addEventListener("click",e=>{
   if(t.id==="backGrp"){ grp=null; render(); return; }
   if(d.item){ openItem(d.item); return; }
   if(d.sz){ sel.size=d.sz; sel.qty=1; renderItem(); return; }
-  if(d.iq){ const h=qtyAt(sel.id,sel.size)-(cart[sel.id+"|"+sel.size]||0); sel.qty=Math.max(1,Math.min(Math.max(1,h),sel.qty+(+d.iq))); renderItem(); return; }
-  if(t.id==="addCart"){ const k=sel.id+"|"+sel.size, h=qtyAt(sel.id,sel.size); const n=Math.min(h,(cart[k]||0)+sel.qty);
+  if(d.iq){ const h=qtyAt(sel.id,sel.size)-(cart[sel.id+"|"+sel.size]||0); sel.qty=Math.max(1,Math.min(NOSTOCK()?99:Math.max(1,h),sel.qty+(+d.iq))); renderItem(); return; }
+  if(t.id==="addCart"){ const k=sel.id+"|"+sel.size, h=qtyAt(sel.id,sel.size); const n=NOSTOCK()?Math.min(99,(cart[k]||0)+sel.qty):Math.min(h,(cart[k]||0)+sel.qty);
     if(n<=(cart[k]||0)){ toast("இருப்பு அளவு வரை மட்டுமே சேர்க்க முடியும்"); return; } cart[k]=n; saveCart(); closeSheet(); render(); toast("🛒 Cart-ல் சேர்க்கப்பட்டது"); return; }
   if(t.id==="openCart"){ openCart(); return; }
   if(d.cq){ const k=t.closest("[data-k]").dataset.k; cart[k]=Math.max(0,(cart[k]||0)+(+d.cq)); if(!cart[k]) delete cart[k]; saveCart(); render(); if(cartKeys().length) openCart(); else closeSheet(); return; }
