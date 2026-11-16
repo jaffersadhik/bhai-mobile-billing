@@ -181,6 +181,7 @@ public class BillingService {
         if (!hasColumn("items", "wt_unit")) db.update("ALTER TABLE items ADD COLUMN wt_unit VARCHAR(2) NOT NULL DEFAULT 'kg'");      // weight items: kg | g
         if (!hasColumn("users", "max_sessions")) db.update("ALTER TABLE users ADD COLUMN max_sessions TINYINT NOT NULL DEFAULT 2 AFTER must_change");
         if (!hasColumn("users", "idle_minutes")) db.update("ALTER TABLE users ADD COLUMN idle_minutes INT NOT NULL DEFAULT 10 AFTER max_sessions");
+        if (!hasColumn("users", "lang")) db.update("ALTER TABLE users ADD COLUMN lang VARCHAR(5) NOT NULL DEFAULT '' AFTER idle_minutes");
         if (!hasColumn("auth_tokens", "last_seen")) db.update("ALTER TABLE auth_tokens ADD COLUMN last_seen DATETIME NULL");
         if (!hasColumn("auth_tokens", "ip")) db.update("ALTER TABLE auth_tokens ADD COLUMN ip VARCHAR(45) NULL");
         if (!hasColumn("auth_tokens", "device")) db.update("ALTER TABLE auth_tokens ADD COLUMN device VARCHAR(120) NULL");
@@ -405,6 +406,15 @@ public class BillingService {
         }
         if (seen.plusSeconds(15).isBefore(now)) db.update("UPDATE auth_tokens SET last_seen = ? WHERE token_hash = ?", now, key);   // keep-alive (at most every 15 s)
         return new Ctx(key, r, nz(r.get("active_company")));
+    }
+
+    /** remembers the user's language; it is applied again at their next login (the login page itself is always English) */
+    public Map<String, Object> setLang(String auth, Map<String, Object> in) {
+        Ctx c = ctx(auth);
+        String l = str(in.get("lang")).trim().toLowerCase(Locale.ROOT);
+        if (!l.matches("[a-z]{2,3}")) throw new ApiException(400, "Invalid language");
+        db.update("UPDATE users SET lang = ? WHERE id = ?", l, c.uid());
+        return obj("lang", l);
     }
 
     /** keep-alive from the app while the user is working (touches last_seen through ctx) */
@@ -3409,6 +3419,7 @@ public class BillingService {
         p.put("active", bool(u.get("active")));
         p.put("maxSessions", u.get("max_sessions") == null ? DEFAULT_MAX_SESSIONS : lng(u.get("max_sessions")));
         p.put("idleMinutes", u.get("idle_minutes") == null ? DEFAULT_IDLE_MINUTES : lng(u.get("idle_minutes")));
+        p.put("lang", str(u.get("lang")));
         p.put("created", iso(ldt(u.get("created_at"))));
         return p;
     }
@@ -4107,6 +4118,7 @@ public class BillingService {
         else if (branchRow(cid, br) == null) throw new ApiException(400, "கிளை தவறு");
         String by = str(c.user.get("full_name"));
         if (by.isEmpty()) by = str(c.user.get("username"));
+        if (bool(in.get("pricesOnly"))) return applyImport(cid, csv, false, 0, null, by, true, true, bool(in.get("preview")));
         return applyImport(cid, csv, bool(in.get("replace")) && c.admin(), 0, br, by, true);
     }
 
@@ -4117,11 +4129,38 @@ public class BillingService {
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> applyImport(String cid, String csv, boolean replace, long openingStock, String branchId, String by, boolean withCatalog) {
+        return applyImport(cid, csv, replace, openingStock, branchId, by, withCatalog, false, false);
+    }
+
+    private Map<String, Object> applyImport(String cid, String csv, boolean replace, long openingStock, String branchId, String by, boolean withCatalog, boolean pricesOnly, boolean preview) {
         return db.tx(t -> {
             Map<String, Object> co = t.one("SELECT catalog_version FROM companies WHERE id = ? FOR UPDATE", cid);
             if (co == null) throw new ApiException(404, "கம்பெனி இல்லை");
             long version = lng(co.get("catalog_version"));
-            CatalogImport.Result r = CatalogImport.merge(csv, replace ? null : loadCatalog(t, cid, true), replace);
+            CatalogImport.Result r = pricesOnly ? CatalogImport.mergePrices(csv, loadCatalog(t, cid, true)) : CatalogImport.merge(csv, replace ? null : loadCatalog(t, cid, true), replace);
+            if (pricesOnly) {                                   // price list: only rate / wholesale / cost of existing sizes change
+                Map<String, Object> o = new LinkedHashMap<>();
+                o.put("rows", r.rows);
+                o.put("changed", r.changed);
+                o.put("unchanged", r.unchanged);
+                o.put("skipped", r.skipped);
+                o.put("errors", new ArrayList<Object>(r.errors));
+                o.put("changes", r.changes);
+                o.put("preview", preview);
+                if (!preview && r.changed > 0) {
+                    Map<String, Object> cin = new LinkedHashMap<>();
+                    cin.put("cats", r.cats);
+                    cin.put("items", r.items);
+                    CleanCatalog clean = cleanCatalog(cin);
+                    t.update("DELETE FROM item_groups WHERE company_id = ?", cid);
+                    t.batch("INSERT INTO item_groups (company_id, id, name_ta, name_en, emoji, color, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)", clean.groups(cid));
+                    t.batch("INSERT INTO items (company_id, id, group_id, name_ta, name_en, sort_order, sold_by, wt_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clean.items(cid));
+                    t.batch("INSERT INTO item_sizes (company_id, item_id, size_label, rate, sort_order, barcode, cost, wrate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", clean.sizes(cid));
+                    t.update("UPDATE companies SET catalog_version = ?, updated_at = ? WHERE id = ?", version + 1, now(), cid);
+                }
+                if (withCatalog && !preview) o.put("catalog", loadCatalog(t, cid, true));
+                return o;
+            }
             if (r.added + r.updated == 0)
                 throw new ApiException(400, "இறக்குமதி செய்ய சரியான வரிகள் இல்லை" + (r.errors.isEmpty() ? "" : " — " + r.errors.get(0)));
             Map<String, Object> cin = new LinkedHashMap<>();

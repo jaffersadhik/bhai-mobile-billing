@@ -65,7 +65,7 @@ with sync_playwright() as p:
     check("-C" in cn1 and pg.evaluate("OFF.pend().length")==3,"offline cancel queued: "+cn1)
     # left now 1 for that line
     pg.evaluate("cfbByNo(%s)"%json.dumps(n1)); pg.wait_for_selector("[data-cfbq]")
-    check("மீதம் 1" in pg.inner_text("#sheetBody"),"left quantity reduced offline (1 left)")
+    check(("remaining 1" in pg.inner_text("#sheetBody")) or ("மீதம் 1" in pg.inner_text("#sheetBody")),"left quantity reduced offline (1 left)")
     # ---- offline cancel from cart
     pg.evaluate("closeSheet(); cart={'i1|M':1}; save(); renderAll(); openCancelForm()")
     pg.fill("#cxReason","wrong item"); pg.click("#saveCancelBill"); pg.wait_for_selector("#newBill",timeout=8000)

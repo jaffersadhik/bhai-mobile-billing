@@ -36,11 +36,16 @@ final class CatalogImport {
         /** itemId, size of every CSV row that was accepted (used for the opening stock of a template) */
         final List<Object[]> touchedSizes = new ArrayList<>();
         int rows, added, updated, skipped;
+        /** price-list mode: sizes whose rate / wholesale / cost really changed, and those that already had the same prices */
+        int changed, unchanged;
+        /** price-list mode: first changes for the preview [item, size, field, old, new] */
+        final List<Object> changes = new ArrayList<>();
         final List<String> errors = new ArrayList<>();
     }
 
     private static final Map<String, String> ALIAS = new HashMap<>();
     static {
+        for (String s : new String[]{"item_id", "id"}) ALIAS.put(s, "item_id");
         for (String s : new String[]{"group", "category", "cat", "group_ta", "group_name", "குரூப்", "வகை"}) ALIAS.put(s, "group");
         for (String s : new String[]{"group_en", "category_en", "cat_en"}) ALIAS.put(s, "group_en");
         for (String s : new String[]{"emoji", "icon"}) ALIAS.put(s, "emoji");
@@ -234,6 +239,92 @@ final class CatalogImport {
             if (qty != null) res.stock.add(new Object[]{x.get("id"), z.get("size"), qty});
         }
         return res;
+    }
+
+    /**
+     * Price-list update: ONLY rate / wholesale / cost of sizes that already exist change. Nothing is created or deleted, and names,
+     * barcodes, stock and groups are never touched. Rows are matched by item_id (when the column is present) or by group + item + size.
+     * Blank wholesale / cost / rate cells leave the current value unchanged.
+     */
+    @SuppressWarnings("unchecked")
+    static Result mergePrices(String csv, Map<String, Object> existing) {
+        Result res = new Result();
+        List<List<String>> table = parseCsv(csv);
+        if (table.isEmpty()) throw new ApiException(400, "CSV காலியாக உள்ளது");
+        Map<String, Integer> col = new HashMap<>();
+        List<String> head = table.get(0);
+        for (int i = 0; i < head.size(); i++) {
+            String k = ALIAS.get(head.get(i).trim().toLowerCase(Locale.ROOT).replace(' ', '_'));
+            if (k != null && !col.containsKey(k)) col.put(k, i);
+        }
+        if (!(col.containsKey("item_id") || col.containsKey("item")) || !(col.containsKey("rate") || col.containsKey("wholesale") || col.containsKey("cost")))
+            throw new ApiException(400, "CSV-ல் item_id (அல்லது item) மற்றும் rate / wholesale / cost நெடுவரிசை தேவை. விலைப்பட்டியலை Download செய்து திருத்தவும்");
+        if (table.size() - 1 > MAX_ROWS) throw new ApiException(400, "ஒரு CSV-ல் அதிகபட்சம் " + MAX_ROWS + " வரிகள்");
+
+        Map<String, Map<String, Object>> groupByName = new HashMap<>();
+        Map<String, Map<String, Object>> itemById = new HashMap<>();
+        Map<String, Map<String, Object>> itemByKey = new HashMap<>();
+        for (Object o : (List<Object>) existing.getOrDefault("cats", new ArrayList<>())) {
+            Map<String, Object> g = new LinkedHashMap<>((Map<String, Object>) o);
+            res.cats.add(g);
+            groupByName.put(norm(g.get("ta")), g);
+        }
+        for (Object o : (List<Object>) existing.getOrDefault("items", new ArrayList<>())) {
+            Map<String, Object> x = new LinkedHashMap<>((Map<String, Object>) o);
+            List<Object> sz = new ArrayList<>();
+            for (Object so : (List<Object>) x.getOrDefault("sizes", new ArrayList<>())) sz.add(new LinkedHashMap<>((Map<String, Object>) so));
+            x.put("sizes", sz);
+            res.items.add(x);
+            itemById.put(String.valueOf(x.get("id")), x);
+            itemByKey.put(x.get("cat") + "|" + norm(x.get("ta")), x);
+        }
+        for (int r = 1; r < table.size(); r++) {
+            List<String> row = table.get(r);
+            int line = r + 1;
+            res.rows++;
+            String id = cell(row, col, "item_id"), name = cell(row, col, "item"), gTa = cell(row, col, "group"), size = cell(row, col, "size");
+            if (id.isEmpty() && name.isEmpty()) { res.skipped++; err(res, line, "ஐட்டம் பெயர் / item_id இல்லை"); continue; }
+            Map<String, Object> x = id.isEmpty() ? null : itemById.get(id);
+            if (x == null) {
+                Map<String, Object> g = gTa.isEmpty() ? null : groupByName.get(norm(gTa));
+                if (g != null) x = itemByKey.get(g.get("id") + "|" + norm(name));
+                else if (gTa.isEmpty() && !name.isEmpty()) {          // no group column: match by item name when it is unique
+                    Map<String, Object> only = null; int n = 0;
+                    for (Object io : res.items) { Map<String, Object> m = (Map<String, Object>) io; if (norm(m.get("ta")).equals(norm(name))) { only = m; n++; } }
+                    if (n == 1) x = only;
+                }
+            }
+            String label = name.isEmpty() ? id : name;
+            if (x == null) { res.skipped++; err(res, line, label + ": ஐட்டம் கிடைக்கவில்லை (புதிய ஐட்டம் சேர்க்க Import பயன்படுத்தவும்)"); continue; }
+            label = String.valueOf(x.get("ta"));
+            boolean wt = "weight".equals(x.get("by"));
+            if (wt) size = "1 " + x.get("unit");
+            else if (size.isEmpty()) size = "1 pc";
+            Map<String, Object> z = null;
+            for (Object so : (List<Object>) x.get("sizes")) if (norm(((Map<String, Object>) so).get("size")).equals(norm(size))) { z = (Map<String, Object>) so; break; }
+            if (z == null) { res.skipped++; err(res, line, label + ": size '" + shorten(size) + "' கிடைக்கவில்லை"); continue; }
+            Double rate = null, wr = null, cost = null;
+            String rs = cell(row, col, "rate"), ws = cell(row, col, "wholesale"), cs = cell(row, col, "cost");
+            if (!rs.isEmpty()) { rate = money(rs); if (rate == null || !(rate > 0 && rate <= 999999)) { res.skipped++; err(res, line, label + ": rate தவறு"); continue; } }
+            if (!ws.isEmpty()) { wr = money(ws); if (wr == null || !(wr > 0 && wr <= 999999)) { res.skipped++; err(res, line, label + ": wholesale தவறு"); continue; } }
+            if (!cs.isEmpty()) { cost = money(cs); if (cost == null || !(cost >= 0 && cost <= 999999)) { res.skipped++; err(res, line, label + ": cost தவறு"); continue; } }
+            boolean ch = false;
+            ch |= setPrice(res, z, "rate", rate, label, size);
+            ch |= setPrice(res, z, "wrate", wr, label, size);
+            ch |= setPrice(res, z, "cost", cost, label, size);
+            if (ch) res.changed++; else res.unchanged++;
+        }
+        return res;
+    }
+
+    private static boolean setPrice(Result res, Map<String, Object> z, String key, Double nv, String item, String size) {
+        if (nv == null) return false;
+        Object ov = z.get(key);
+        Double o = ov instanceof Number ? ((Number) ov).doubleValue() : null;
+        if (o != null && Math.abs(o - nv) < 0.005) return false;
+        z.put(key, nv);
+        if (res.changes.size() < 60) res.changes.add(new Object[]{item, size, key.equals("wrate") ? "wholesale" : key, o, nv});
+        return true;
     }
 
     private static void err(Result r, int line, String msg) {

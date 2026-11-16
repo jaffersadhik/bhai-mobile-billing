@@ -23,7 +23,7 @@ with sync_playwright() as p:
     pg.wait_for_selector("#mClear",state="attached")
     with pg.expect_navigation(timeout=15000): pg.evaluate("document.getElementById('mClear').click()")
     pg.wait_for_selector("#lUser",timeout=15000); time.sleep(1)
-    check(len(msgs)==1 and "Server" in msgs[0],"confirm asked (no pending bills)")
+    check(len(msgs)==1 and "server" in msgs[0],"confirm asked (no pending bills)")
     check(pg.evaluate("localStorage.getItem('zz_test')")is None,"localStorage cleared")
     check(pg.evaluate("!document.body.classList.contains('authed')"),"logged out, login screen shown")
     dbs=pg.evaluate("indexedDB.databases().then(d=>d.map(x=>x.name))")

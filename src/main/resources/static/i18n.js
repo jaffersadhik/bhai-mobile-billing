@@ -25,9 +25,12 @@
   var langs = FALLBACK_LANGS.slice();
   var raw = {};                    // code -> raw JSON object
   var packs = {};                  // code -> built pack
-  var state = { lang: "ta", en2: true };
+  /* English is the default. The billing app keeps the language per USER on the server (the login page is always English);
+     a page that sets window.I18N_PERSIST = true (the public shop) remembers the choice on the device instead. */
+  var PERSIST = window.I18N_PERSIST === true;
+  var state = { lang: "en", en2: true };
   try {
-    var sl = localStorage.getItem(LS_LANG); if (sl) state.lang = sl;
+    if (PERSIST) { var sl = localStorage.getItem(LS_LANG); if (sl) state.lang = sl; }
     var se = localStorage.getItem(LS_EN); if (se !== null) state.en2 = se !== "0";
   } catch (e) { }
 
@@ -318,9 +321,9 @@
     window.showSheet();
   }
   function setLang(code, keepSheet) {
-    if (!langInfo(code)) code = "ta";
+    if (!langInfo(code)) code = "en";
     return ensurePack(code).then(function () {
-      state.lang = code; try { localStorage.setItem(LS_LANG, code); } catch (e) { }
+      state.lang = code; try { if (PERSIST) localStorage.setItem(LS_LANG, code); } catch (e) { }
       applyAll();
       if (!keepSheet && typeof window.closeSheet === "function") { try { window.closeSheet(); } catch (e) { } }
     });
@@ -332,7 +335,10 @@
   document.addEventListener("click", function (e) {
     var t = e.target.closest && e.target.closest("button"); if (!t) return;
     if (t.id === "langBtn" || t.id === "mLang") { e.stopPropagation(); e.preventDefault(); openPicker(); return; }
-    if (t.hasAttribute("data-langpick")) { e.stopPropagation(); e.preventDefault(); setLang(t.getAttribute("data-langpick")); }
+    if (t.hasAttribute("data-langpick")) {
+      e.stopPropagation(); e.preventDefault(); var pick = t.getAttribute("data-langpick");
+      setLang(pick).then(function () { if (typeof window.onLangPick === "function") { try { window.onLangPick(pick); } catch (x) { } } });
+    }
   }, true);
   document.addEventListener("change", function (e) {
     if (e.target && e.target.id === "langEn") { e.stopPropagation(); setEn2(e.target.checked); }
@@ -358,7 +364,7 @@
     fetch("i18n/languages.json?v=" + VER, { cache: "no-cache" }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (j) { if (j && j.length) langs = j; }).catch(function () { })
       .then(function () {
-        if (!langInfo(state.lang)) state.lang = "ta";
+        if (!langInfo(state.lang)) state.lang = "en";
         return ensurePack(state.lang);
       })
       .then(function () { applyAll(); });

@@ -1,5 +1,5 @@
 import sys,json,uuid,subprocess,urllib.request,urllib.error
-sys.path.insert(0,'/home/claude/w7/src/bhai-mobile-billing/test')
+sys.path.insert(0,'/home/claude/w8/src/bhai-mobile-billing/test')
 from api import *
 BASE="http://127.0.0.1:8099/api/"; ok=0
 def check(c,m):

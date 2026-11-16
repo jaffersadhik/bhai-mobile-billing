@@ -1,5 +1,5 @@
 import sys,uuid,time
-sys.path.insert(0,'/home/claude/w7/src/bhai-mobile-billing/test')
+sys.path.insert(0,'/home/claude/w8/src/bhai-mobile-billing/test')
 from api import *
 from playwright.sync_api import sync_playwright
 BASE="http://127.0.0.1:8099/"; ok=0

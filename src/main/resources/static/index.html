@@ -930,6 +930,64 @@ async function runImport(){
   }catch(e){ apiErr(e); } finally{ busy(false); }
 }
 
+/* ---- price list: download every item's prices as CSV, edit in Excel, upload to change them in bulk ---- */
+let prCsv="", prFile="";
+const csvQ = v => { const s=String(v==null?"":v); return /[",\n\r;]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+function priceCsv(){
+  const cost=canSeeCost(), H=["item_id","group","group_en","item","item_en","size","sold_by","wt_unit","rate","wholesale"].concat(cost?["cost"]:[],["barcode"]), L=[H.join(",")];
+  ITEMS.forEach(it=>{ const c=catById[it.cat]||[]; it.sizes.forEach(z=>{
+    const r=[it.id,c[1]||"",c[2]||"",it.ta,it.en||"",isW(it)?"":z.size,isW(it)?"weight":"count",isW(it)?it.unit:"",z.rate,z.wrate!=null?z.wrate:""].concat(cost?[z.cost!=null?z.cost:""]:[],[z.code||""]);
+    L.push(r.map(csvQ).join(",")); }); });
+  return "\uFEFF"+L.join("\r\n")+"\r\n";
+}
+function openPrices(){
+  prCsv=""; prFile="";
+  const n=ITEMS.reduce((a,it)=>a+it.sizes.length,0);
+  $("#sheetBody").innerHTML=`<h2>💲 விலைப்பட்டியல் CSV</h2>
+    <p class="sub">எல்லா ஐட்டம் விலையையும் ஒரே நேரத்தில் மாற்ற: ① பட்டியலை Download செய்யவும் ② Excel-ல் <b>rate / wholesale / cost</b> மட்டும் திருத்தவும் ③ அதே கோப்பை Upload செய்யவும்.</p>
+    <div class="box"><button class="cta leaf" id="prDown"${n?"":" disabled"}>⬇ விலைப்பட்டியல் Download (${n} வரிகள்)</button>
+      <p class="hint" style="margin:8px 0 0">item_id, group, item, size ஆகியவற்றை மாற்ற வேண்டாம் — அவற்றை வைத்தே ஐட்டத்தை கண்டுபிடிக்கும். காலியாக விட்ட wholesale / cost மாறாது. புதிய ஐட்டம் சேர்க்க "ஐட்டம் Import" பயன்படுத்தவும்.</p></div>
+    <label class="cta ghost" style="display:block;text-align:center;cursor:pointer">📂 திருத்திய CSV-ஐ தேர்வு செய்<input type="file" id="prFileIn" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden></label>
+    <div id="prPrev"></div>
+    <button class="cta ghost" data-close>மூடு</button>`;
+  showSheet();
+}
+function downloadPrices(){
+  const blob=new Blob([priceCsv()],{type:"text/csv;charset=utf-8"}), a=document.createElement("a"), d=new Date();
+  a.href=URL.createObjectURL(blob); a.download="price-list-"+(company&&company.name?company.name.replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"")+"-":"")+d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")+".csv";
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },500);
+  toast("விலைப்பட்டியல் Download ஆனது");
+}
+async function readPriceFile(f){
+  if(!f) return;
+  let t=""; try{ t=await f.text(); }catch(e){ toast("கோப்பை படிக்க முடியவில்லை"); return; }
+  prCsv=t; prFile=f.name;
+  const bad=t.indexOf("\uFFFD")>=0;
+  busy(true);
+  try{
+    const r=await api("catalog/import","POST",{csv:t,pricesOnly:true,preview:true});
+    const ch=r.changes||[], e=r.errors||[], f4=v=>v==null?"—":inr(v);
+    $("#prPrev").innerHTML=`<div class="box" style="margin-top:10px"><p class="sub" style="margin:0 0 6px">📄 ${esc(prFile)}${bad?" · ⚠️ UTF-8 அல்ல":""}</p>
+      <p style="margin:0 0 6px"><b style="color:#137a3f">🔄 மாறும் விலை: ${r.changed}</b> · மாற்றம் இல்லாதவை: ${r.unchanged}${r.skipped?` · <span style="color:var(--bad)">⚠️ தவிர்த்தது: ${r.skipped}</span>`:""}</p>
+      ${ch.length?`<div style="max-height:34vh;overflow:auto;font-size:12.5px">${ch.map(c=>`<div style="padding:3px 0;border-bottom:1px dashed var(--line)"><b>${esc(c[0])}</b> <small style="color:var(--muted)">${esc(c[1])} · ${esc(c[2])}</small><br>${f4(c[3])} → <b>${f4(c[4])}</b></div>`).join("")}${ch.length>=60?`<small style="color:var(--muted)">…முதல் 60 மாற்றங்கள் மட்டும் காட்டப்படுகிறது</small>`:""}</div>`:""}
+      ${e.length?`<div class="warnbox" style="text-align:left;margin-top:8px">${e.map(esc).join("<br>")}</div>`:""}
+      <button class="cta leaf" id="prApply"${r.changed?"":" disabled"} style="margin-top:10px">✅ ${r.changed} விலைகளை மாற்று</button></div>`;
+  }catch(e){ prCsv=""; $("#prPrev").innerHTML=`<div class="warnbox" style="margin-top:10px">${esc(e.message||"Error")}</div>`; apiErr(e); }
+  finally{ busy(false); }
+}
+async function applyPrices(){
+  if(!prCsv) return;
+  busy(true);
+  try{
+    const r=await api("catalog/import","POST",{csv:prCsv,pricesOnly:true});
+    if(r.catalog){ catalog=r.catalog; buildCatalog(); purgeCart(); }
+    prCsv=""; stockData=null; srData=null;
+    $("#sheetBody").innerHTML=`<div class="ok"><div class="tick">💲</div><h2 style="padding:0">விலைகள் மாற்றப்பட்டன</h2>
+      <p class="sub">🔄 ${r.changed} விலைகள் புதுப்பிக்கப்பட்டன${r.skipped?` · ⚠️ தவிர்த்தது ${r.skipped}`:""}</p><button class="cta leaf" data-close>சரி</button></div>`;
+    renderAll();
+  }catch(e){ apiErr(e); } finally{ busy(false); }
+}
+
 /* ================= CART HELPERS ================= */
 const rateOf = (id,size) => byId[id].sizes.find(z=>z.size===size).rate;
 const wrateOf = (id,size) => { const z=byId[id]&&byId[id].sizes.find(x=>x.size===size); return z?(z.wrate!=null?z.wrate:z.rate):0; };   // wholesale selling price (blank = retail)
@@ -2298,7 +2356,7 @@ function openMenu(){
     ${company&&!isWh()?`<button class="mrow" id="mCancels">✖ ரத்து பில் வரலாறு (Cancel bills)</button>`:""}
     ${company&&!isWh()&&!isSales()?`<button class="mrow" id="mReport">📊 விற்பனை அறிக்கை (Report)</button>`:""}
     ${canEdit()&&catalog.setup?`<button class="mrow" id="mLabels">🏷 Barcode Labels Print</button>`:""}
-    ${company&&(isAdmin()||isStock())?`<button class="mrow" id="mImport">📥 ஐட்டம் Import (CSV / Excel)</button>`:""}
+    ${company&&(isAdmin()||isStock())?`<button class="mrow" id="mImport">📥 ஐட்டம் Import (CSV / Excel)</button><button class="mrow" id="mPrices">💲 விலைப்பட்டியல் CSV (Download / Upload)</button>`:""}
     ${canStock()&&catalog.setup?`<button class="mrow" id="mStock">${isWh()?"🏭 Warehouse ஸ்டாக்":"📦 ஸ்டாக் (Stock)"}</button>`:""}
     ${company&&(isOwner()||isAdmin()||isStock()||isWh())?`<button class="mrow" id="mStockRep">📋 ஸ்டாக் அறிக்கை (Stock report)</button><button class="mrow" id="mPo">📥 Purchase Orders</button><button class="mrow" id="mSup">🏭 Supplier விவரம் (Suppliers)</button><button class="mrow" id="mTr">🚚 Stock Transfers (Warehouse → கிளை)</button>`:""}
     ${company?`<button class="mrow" id="mCompany">🏬 கம்பெனி விவரம் (Company)</button>`:""}
@@ -2644,8 +2702,18 @@ async function openCompanyBilling(id,go){
 
 /* ================= LOGIN / SESSION ================= */
 function lerr(t){ const el=$("#lErr"); el.textContent=t; el.classList.toggle("on",!!t); }
+/* ---- language: English by default; the language a user picks is remembered for THAT user and used at their next login ---- */
+let loginPicked=null, lastSess=null;
+window.onLangPick=code=>{
+  if(me&&token){ me.lang=code; if(lastSess){ lastSess.user.lang=code; try{ OFF.saveSess(lastSess); }catch(e){} } api("me/lang","POST",{lang:code},{quiet:true,timeout:8000}).catch(()=>{}); }
+  else loginPicked=code;            // picked on the login page: applies to this login and is saved with the user
+};
 async function enter(s,opt){
   opt=opt||{};
+  lastSess=s;
+  { const want=loginPicked||s.user.lang||"en";
+    if(loginPicked&&loginPicked!==s.user.lang&&!opt.cached){ s.user.lang=loginPicked; api("me/lang","POST",{lang:loginPicked},{quiet:true,timeout:8000}).catch(()=>{}); }
+    loginPicked=null; try{ await I18N.set(want,true); }catch(e){} }
   me=s.user; company=s.company||null; defaultPw=!!s.defaultPassword; myBranch=s.branch?s.branch.name:"";
   lastAct=Date.now(); lastPing=lastAct;
   if(!opt.cached) OFF.saveSess(s);
@@ -2673,6 +2741,7 @@ async function doLogin(e){
   finally{ $("#lBtn").disabled=false; busy(false); }
 }
 function showLogin(msg){
+  loginPicked=null; try{ I18N.set("en",true); }catch(e){}      // the login page is always English
   me=null; company=null; adminData=null; closeSheet(); document.body.classList.remove("authed"); renderBrand();
   $("#lPass").value=""; lerr(msg||""); window.scrollTo(0,0);
   setTimeout(()=>{ const i=$("#lUser").value?$("#lPass"):$("#lUser"); if(i) i.focus(); },50);
@@ -4319,6 +4388,9 @@ document.addEventListener("click",e=>{
   if(t.id==="mOrders"){ closeSheet(); ordData=null; if(location.hash!=="#orders") location.hash="orders"; else loadOrders(); return; }
   if(t.id==="mShop"){ openShopLink(); return; }
   if(t.id==="mImport"){ openImport(); return; }
+  if(t.id==="mPrices"){ openPrices(); return; }
+  if(t.id==="prDown"){ downloadPrices(); return; }
+  if(t.id==="prApply"){ applyPrices(); return; }
   if(t.id==="impGo"){ runImport(); return; }
   if(t.id==="shopCopy"){ copyText(shopLink("")); return; }
   if(t.id==="shopToggle"){ shopToggle(); return; }
@@ -4651,6 +4723,7 @@ document.addEventListener("change",e=>{
     if(e.target.id==="cCat"&&e.target.value!=="__new"){ customCat=e.target.value; }
   }
   if(e.target.id==="ifParty"){ ifRates(); invForm.paid=($("#ifPaid")||{}).value||""; if(e.target.value==="__new"){ invForm.pickNew=true; openPartyForm(null); } else { invFormParty=e.target.value; openInvoiceForm(); } return; }
+  if(e.target.id==="prFileIn"){ readPriceFile(e.target.files&&e.target.files[0]); e.target.value=""; return; }
   if(e.target.id==="impFile"){ readImpFile(e.target.files&&e.target.files[0]); e.target.value=""; return; }
   if(e.target.id==="phFile"&&e.target.files&&e.target.files[0]){ uploadPhoto(e.target.files[0]); e.target.value=""; return; }
   const id=e.target.id;

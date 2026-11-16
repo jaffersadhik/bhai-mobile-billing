@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS users (
   must_change  TINYINT(1)   NOT NULL DEFAULT 0,
   max_sessions TINYINT      NOT NULL DEFAULT 2,    -- simultaneous logins allowed for this username (0 = unlimited)
   idle_minutes INT          NOT NULL DEFAULT 10,   -- auto-logout after this many idle minutes (0 = never)
+  lang         VARCHAR(5)   NOT NULL DEFAULT '',   -- the user's chosen app language ('' = English default)
   created_at   DATETIME     NOT NULL,
   updated_at   DATETIME     NOT NULL,
   PRIMARY KEY (id),

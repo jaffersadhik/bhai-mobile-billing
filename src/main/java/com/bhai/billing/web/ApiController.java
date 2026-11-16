@@ -48,6 +48,10 @@ public class ApiController {
         return run(() -> svc.login(nn(body), ip, req.getHeader("User-Agent")));
     }
 
+    @PostMapping("/me/lang")
+    public ResponseEntity<Object> setLang(@RequestHeader(value = AUTH, required = false) String auth,
+                                          @RequestBody(required = false) Map<String, Object> body) { return run(() -> svc.setLang(auth, nn(body))); }
+
     @PostMapping("/ping")
     public ResponseEntity<Object> ping(@RequestHeader(value = AUTH, required = false) String auth) { return run(() -> svc.ping(auth)); }
 
