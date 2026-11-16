@@ -43,7 +43,7 @@ public class BillingService {
     static final Pattern PREFIX = Pattern.compile("[A-Z0-9]{1,8}");
     static final Pattern COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
     /** printable ASCII, no spaces - covers EAN/UPC/Code128/Code39/QR text used on garment tags */
-    static final Pattern BARCODE = Pattern.compile("[\\x21-\\x7E]{3,40}");
+    static final Pattern BARCODE = Pattern.compile("[\\x21-\\x7E]{1,40}");
     static final String DEFAULT_FOOTER = "நன்றி! மீண்டும் வருக ❤️";
     static final DateTimeFormatter ISO = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 

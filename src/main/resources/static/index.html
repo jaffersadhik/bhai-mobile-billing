@@ -979,7 +979,7 @@ function renderBar(){
   else left=`<div class="mark" aria-hidden="true">${esc(coMark())}</div><div><span class="appline">${esc(APP_NAME)}</span><h1 class="co">${esc(company?company.name:APP_NAME)}</h1></div>`;
   $("#bar").innerHTML = left + (me?`<span class="left-sp"></span>${OFF.chipHtml()}<button class="out" id="menuBtn" aria-label="Menu"><span aria-hidden="true">☰</span><em>${esc(me.user)}</em></button>`:"");
   $("#findBox").hidden = !(v==="home"||v==="cat");
-  $("#q").placeholder = c ? `${c[1]} பகுதியில் தேடு` : "எல்லா ஐட்டங்களிலும் தேடு (Search)";
+  $("#q").placeholder = c ? `${c[1]} பகுதியில் தேடு / Barcode` : "ஐட்டம் பெயர் / Barcode எண் தேடு (Search)";
 }
 function heroHtml(){
   return `<section class="hero">${company.bismillah!==false?`<div class="bis">${esc(BISMILLAH)}</div>`:""}<h2>${esc(company.name)}</h2>
@@ -1019,7 +1019,7 @@ function manualBtn(sub,prefill){
 }
 function renderView(){
   const v=view(), q=$("#q").value.trim().toLowerCase();
-  const match = it => !q || (it.ta+" "+it.en).toLowerCase().includes(q);
+  const match = it => !q || (it.ta+" "+it.en).toLowerCase().includes(q) || it.sizes.some(z=>z.code&&String(z.code).toLowerCase().includes(q));   // name OR typed / scanned barcode
   const empty = `<div class="none"><b>🔎</b>ஐட்டம் கிடைக்கவில்லை<br>No item found</div>`;
   let html="";
   if(v==="none") html="";
@@ -2648,7 +2648,7 @@ function scanLoop(s){
 }
 function gotScan(raw,manual){
   const s=scanS; if(!s) return;
-  const code=cleanCode(raw); if(code.length<3){ if(manual) toast("சரியான barcode எண் இல்லை"); return; }
+  const code=cleanCode(raw); if(code.length<(manual?1:3)){ if(manual) toast("சரியான barcode எண் இல்லை"); return; }
   const now=Date.now();
   // the same tag kept in front of the camera counts once; move it away (~1.2 s) and show it again for the next piece
   if(!manual && code===s.last && now-s.lastAt<1200){ s.lastAt=now; return; }
@@ -2682,7 +2682,7 @@ function focusItem(id,msg,wfocus){
 /* barcode number typed (no camera needed): registered -> the item opens (count items are also added); unknown -> link / add dialog */
 function typeBarcode(raw){
   const code=findCode(cleanCode(raw));
-  if(code.length<3){ toast("சரியான barcode எண்ணை type செய்யவும்"); return; }
+  if(code.length<1){ toast("சரியான barcode எண்ணை type செய்யவும்"); return; }
   const h=byCode[code];
   if(!h||!byId[h.id]){ beep(false); openUnknownCode(code,$("#billList")?"bill":"home"); return; }
   const it=byId[h.id];
@@ -4352,7 +4352,7 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Enter" && e.target.id==="bcIn"){ e.preventDefault(); typeBarcode(e.target.value); e.target.value=""; return; }
   if(e.key==="Enter" && e.target.dataset && e.target.dataset.win!==undefined){ e.preventDefault(); const h=e.target.closest("[data-item]"); if(h) setWeight(h.dataset.item,e.target.value,h.querySelector("[data-wu]").value); return; }
   if(e.key==="Enter" && e.target.dataset && (e.target.dataset.win!==undefined||e.target.dataset.qin!==undefined||e.target.dataset.rin!==undefined||e.target.dataset.bwin!==undefined)){ e.preventDefault(); e.target.blur(); return; }
-  if(e.key==="Enter" && e.target.id==="q"){ const c=cleanCode(e.target.value); if(c.length>=3 && byCode[c]){ e.preventDefault(); e.target.value=""; renderView(); scanToCart(c); } return; }
+  if(e.key==="Enter" && e.target.id==="q"){ const c=findCode(cleanCode(e.target.value)); if(c.length>=1 && byCode[c]){ e.preventDefault(); e.target.value=""; renderView(); scanToCart(c); } return; }
   if(e.key==="Enter" && e.target.dataset && e.target.dataset.ri!==undefined){ e.preventDefault(); saveItemEdit(); }
 });
 $("#q").addEventListener("input",renderView);
