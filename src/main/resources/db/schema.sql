@@ -85,6 +85,17 @@ CREATE TABLE IF NOT EXISTS users (
 -- auth_tokens : login sessions (only the SHA-256 of the token is stored)
 --   company_id = company an ADMIN has opened for billing (customers use users.company_id)
 -- ---------------------------------------------------------------------
+-- ---------------------------------------------------------------------
+-- translations : online translations of master data / screen phrases (Tamil source text -> language), shared by all users
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS translations (
+  src_hash CHAR(32)     NOT NULL,                  -- md5 of the Tamil source text
+  lang     VARCHAR(8)   NOT NULL,
+  src      VARCHAR(320) NOT NULL,
+  txt      VARCHAR(640) NOT NULL,
+  PRIMARY KEY (src_hash, lang)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS auth_tokens (
   token_hash   CHAR(64)     NOT NULL,
   user_id      VARCHAR(20)  NOT NULL,

@@ -31,10 +31,12 @@ public class ApiController {
     private static final String AUTH = "X-Auth";
     private final BillingService svc;
     private final PostDeployTests tests;
+    private final com.bhai.billing.core.Translator translator;
 
-    public ApiController(BillingService svc, PostDeployTests tests) {
+    public ApiController(BillingService svc, PostDeployTests tests, com.bhai.billing.core.Translator translator) {
         this.svc = svc;
         this.tests = tests;
+        this.translator = translator;
     }
 
     // ---- session
@@ -46,6 +48,23 @@ public class ApiController {
         String xf = req.getHeader("X-Forwarded-For");
         String ip = xf != null && !xf.isBlank() ? xf.split(",")[0].trim() : req.getRemoteAddr();
         return run(() -> svc.login(nn(body), ip, req.getHeader("User-Agent")));
+    }
+
+    /** online translation of Tamil master data / phrases ({to:["en"], items:[{s,e?}]}); open to the login page and the public shop too, rate limited */
+    @PostMapping("/translate")
+    @SuppressWarnings("unchecked")
+    public ResponseEntity<Object> translate(@RequestBody(required = false) Map<String, Object> body, HttpServletRequest req) {
+        String xf = req.getHeader("X-Forwarded-For");
+        String ip = xf != null && !xf.isBlank() ? xf.split(",")[0].trim() : req.getRemoteAddr();
+        return run(() -> {
+            Map<String, Object> b = nn(body);
+            translator.checkRate(ip);
+            Object to = b.get("to"), items = b.get("items");
+            if (!(to instanceof java.util.List) || !(items instanceof java.util.List)) throw new ApiException(400, "Invalid request");
+            java.util.List<String> langs = new java.util.ArrayList<>();
+            for (Object o : (java.util.List<Object>) to) langs.add(String.valueOf(o));
+            return java.util.Collections.singletonMap("map", translator.translate(langs, (java.util.List<Object>) items));
+        });
     }
 
     @PostMapping("/me/lang")

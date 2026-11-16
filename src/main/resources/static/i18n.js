@@ -10,7 +10,9 @@
  *   English            → small line under it (turn off in the language sheet)
  *
  * Add a language: drop i18n/<code>.json + add one entry to i18n/languages.json.
- * Phrases a pack does not have fall back to English (never to a blank).
+ * Phrases a pack does not have — and master data typed in Tamil (item / group / supplier names ...) — are translated ONLINE by the
+ * server (POST /api/translate, cached in the table `translations`) and shown in the selected language.
+ * English shows ONLY English (no second line, nothing in Tamil); every other language shows itself + a small English line.
  * ========================================================================== */
 (function () {
   "use strict";
@@ -25,6 +27,7 @@
   var langs = FALLBACK_LANGS.slice();
   var raw = {};                    // code -> raw JSON object
   var packs = {};                  // code -> built pack
+  var LABELS = new Set();          // English-only labels of the app screens (i18n/labels.json) — translated online in other languages
   /* English is the default. The billing app keeps the language per USER on the server (the login page is always English);
      a page that sets window.I18N_PERSIST = true (the public shop) remembers the choice on the device instead. */
   var PERSIST = window.I18N_PERSIST === true;
@@ -41,8 +44,7 @@
       if (!key || val === undefined || val === null || String(val) === "") return;
       exact.set(key, String(val));
     }
-    if (rawEn) for (k in rawEn) add(k, rawEn[k]);                       // English fallback first
-    if (rawLang && rawLang !== rawEn) for (k in rawLang) add(k, rawLang[k]);
+    for (k in rawLang) add(k, rawLang[k]);                              // only the language's own phrases; the rest is translated online
     exact.forEach(function (val, key) {
       if (!TA.test(key)) { enOnly.add(key); return; }                   // English-only labels: whole text only
       if (key.length < 3) return;                                       // 1-2 letter fragments: whole text only
@@ -57,9 +59,10 @@
     var jobs = [];
     if (!raw.en) jobs.push(load("en"));
     if (code !== "ta" && code !== "en" && !raw[code]) jobs.push(load(code));
+    if (code !== "ta" && code !== "en" && !LABELS.size) jobs.push(fetch("i18n/labels.json?v=" + VER).then(function (r) { return r.ok ? r.json() : []; }).then(function (a) { LABELS = new Set(a); }).catch(function () { }));
     return Promise.all(jobs).then(function () {
       if (!packs.en) packs.en = build(raw.en || {}, null);
-      if (code !== "ta" && code !== "en" && !packs[code]) packs[code] = build(raw[code] || {}, raw.en || {});
+      if (code !== "ta" && code !== "en" && !packs[code]) packs[code] = build(raw[code] || {}, null);
     });
   }
   function load(code) {
@@ -70,12 +73,85 @@
   }
 
   /* ----------------------------------------------------------- translation */
+  /* ---- online translation of whatever the packs do not have (master data, new phrases, other languages) ---- */
+  var RUN = /[஀-௿]+(?:[ \u00a0'’.\-][஀-௿]+)*/g;
+  var dyn = {}, need = {}, tried = {}, flushT = null, flushing = 0, waiters = [], saveT = null;
+  function dynMap(code) {
+    if (dyn[code]) return dyn[code];
+    var m = new Map();
+    try { var j = JSON.parse(localStorage.getItem("bmb_dyn_" + code) || "{}"); for (var k in j) m.set(k, j[k]); } catch (e) { }
+    return (dyn[code] = m);
+  }
+  function saveDyn(code) {
+    clearTimeout(saveT);
+    saveT = setTimeout(function () {
+      try {
+        var m = dyn[code]; if (!m) return; var o = {}, n = 0, skip = Math.max(0, m.size - 4000);
+        m.forEach(function (v, k) { if (n++ >= skip) o[k] = v; });
+        localStorage.setItem("bmb_dyn_" + code, JSON.stringify(o));
+      } catch (e) { }
+    }, 800);
+  }
+  function enOf(src) {                    // best English text we already have for a Tamil / English-only source
+    var e = dynMap("en").get(src); if (e) return e;
+    var P = packs.en; if (P) { var h = P.exact.get(src.trim()); if (h && !TA.test(h)) return h; }
+    return "";
+  }
+  function queue(src, code) {
+    var key = code + "\u0001" + src, now = Date.now();
+    if (tried[key] && now - tried[key] < 60000) return;     // asked recently (or failed): do not hammer the server
+    tried[key] = now;
+    (need[code] || (need[code] = new Map())).set(src, code === "en" ? "" : enOf(src));
+    clearTimeout(flushT); flushT = setTimeout(flush, 180);
+  }
+  function flush() {
+    var codes = Object.keys(need);
+    codes.forEach(function (code) {
+      var m = need[code]; delete need[code];
+      var arr = []; m.forEach(function (h, s) { arr.push({ s: s, e: h || "" }); });
+      for (var i = 0; i < arr.length; i += 120) sendBatch(code, arr.slice(i, i + 120));
+    });
+  }
+  function sendBatch(code, items) {
+    flushing++;
+    fetch("api/translate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: [code], items: items }) })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        var res = j && j.map && j.map[code], got = 0;
+        if (res) { var D = dynMap(code); for (var s in res) { if (res[s] && !D.has(s)) { D.set(s, res[s]); got++; } } if (got) saveDyn(code); }
+        if (got && state.lang) setTimeout(applyAll, 30);
+      })
+      .catch(function () { })
+      .then(function () { flushing--; if (!flushing && !flushT) { var w = waiters; waiters = []; w.forEach(function (f) { f(); }); } });
+  }
+  /** resolves when the texts of this HTML / string have been translated (max ~5 s) — print / PDF documents */
+  function settle(h) {
+    h = String(h == null ? "" : h);
+    tx(h, state.lang); if (state.lang !== "en") tx(h, "en");
+    if (!flushT && !flushing) return Promise.resolve(h);
+    return new Promise(function (ok) { var t = setTimeout(ok, 5000); waiters.push(function () { clearTimeout(t); ok(); }); }).then(function () { return h; });
+  }
+  function runsTx(s, code) {
+    var D = dynMap(code);
+    return s.replace(RUN, function (run) {
+      var v = D.get(run);
+      if (v !== undefined) return v;
+      queue(run, code);
+      if (code !== "en") { var e = enOf(run); if (e) return e; }        // meanwhile show the English we already have
+      return run;
+    });
+  }
   function tx(s, code) {
     if (!s || code === "ta") return s;
     var P = packs[code]; if (!P) return s;
     var t = s.trim();
     var hit = P.exact.get(t);
     if (hit !== undefined) { if (t === s) return hit; var i0 = s.indexOf(t); return s.slice(0, i0) + hit + s.slice(i0 + t.length); }
+    if (code !== "en" && LABELS.has(t)) {          // English-only app label (e.g. "Admin Panel") in another language
+      var dv = dynMap(code).get(t);
+      if (dv !== undefined) return s.replace(t, dv);
+      queue(t, code); return s;
+    }
     if (!TA.test(s)) return s;
     var out = "", i = 0, n = s.length, last = 0, any = false;
     while (i < n) {
@@ -84,11 +160,12 @@
       if (m) { out += s.slice(last, i) + m[1]; i += m[0].length; last = i; any = true; }
       else i++;
     }
-    return any ? out + s.slice(last) : s;
+    var res = any ? out + s.slice(last) : s;
+    return TA.test(res) ? runsTx(res, code) : res;                       // whatever is still Tamil: master data / new text -> online
   }
   function primary(s) { return state.lang === "ta" ? s : tx(s, state.lang); }
   function secondary(s, p) {
-    if (!state.en2 || state.lang === "en") return "";
+    if (!state.en2 || state.lang === "en") return "";          // English shows only English: no second line
     var e = tx(s, "en");
     if (!e || TA.test(e)) return "";
     var et = e.trim();
@@ -98,8 +175,7 @@
   function relevant(s) {
     if (TA.test(s)) return true;
     if (state.lang === "ta" || state.lang === "en") return false;
-    var P = packs[state.lang];
-    return !!(P && P.enOnly.has(s.trim()));
+    return LABELS.has(s.trim());
   }
   function active() { return !(state.lang === "ta" && !state.en2); }
 
@@ -268,8 +344,14 @@
       document.body.normalize();
       processRoot(document.body);
       document.documentElement.lang = state.lang;
+      setDir();
       updateLabels();
     });
+  }
+  function setDir() {
+    var li = langInfo(state.lang), rtl = !!(li && li.rtl);
+    document.documentElement.dir = rtl ? "rtl" : "ltr";
+    document.documentElement.classList.toggle("rtl", rtl);
   }
 
   /* wa.me text param */
@@ -309,14 +391,14 @@
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function openPicker() {
     var body = document.getElementById("sheetBody") || document.getElementById("sb"); if (!body || typeof window.showSheet !== "function") return;
-    body.innerHTML = '<h2 data-noi18n>🌐 மொழி / Language</h2><p class="sub">தேர்ந்தெடுத்த மொழி தடிமனாகவும், ஆங்கிலம் சிறியதாகவும் தெரியும்</p>' +
+    body.innerHTML = '<h2 data-noi18n>' + (state.lang === "en" ? '🌐 Language' : '🌐 மொழி / Language') + '</h2>' + (state.lang === "en" ? '<p class="sub">தேர்ந்தெடுத்த மொழி மட்டும் தெரியும்</p>' : '<p class="sub">தேர்ந்தெடுத்த மொழி தடிமனாகவும், ஆங்கிலம் சிறியதாகவும் தெரியும்</p>') +
       '<div class="box" style="padding:6px">' + langs.map(function (l) {
         var on = l.code === state.lang;
         return '<button type="button" class="mrow lang-row' + (on ? ' on' : '') + '" data-langpick="' + esc(l.code) + '" lang="' + esc(l.code) + '">' +
-          '<b>' + esc(l.native) + '</b><em>' + esc(l.english) + (l.coverage < 100 ? ' · ' + l.coverage + '%' : '') + '</em>' + (on ? '<i>✓</i>' : '') + '</button>';
+          '<b>' + esc(l.native) + '</b><em>' + esc(l.english) + '' + '</em>' + (on ? '<i>✓</i>' : '') + '</button>';
       }).join("") + '</div>' +
-      '<label class="rem" style="margin:10px 2px"><input type="checkbox" id="langEn"' + (state.en2 ? " checked" : "") + '>சிறிய ஆங்கில வரியை காட்டு</label>' +
-      '<p class="hint">% = மொழிபெயர்ப்பு முடிந்த அளவு. மீதி ஆங்கிலத்தில் தெரியும்</p>' +
+      (state.lang === "en" ? "" : '<label class="rem" style="margin:10px 2px"><input type="checkbox" id="langEn"' + (state.en2 ? " checked" : "") + '>சிறிய ஆங்கில வரியை காட்டு</label>') +
+      '<p class="hint">மொழிபெயர்ப்பு இல்லாத சொற்கள் (ஐட்டம் / குரூப் பெயர்கள் உட்பட) இன்டர்நெட் மூலம் தானாக மொழிபெயர்க்கப்படும்</p>' +
       '<button class="cta ghost" data-close id="closeSheet2">மூடு (Close)</button>';
     window.showSheet();
   }
@@ -349,6 +431,8 @@
     var st = document.createElement("style");
     st.textContent =
       "x-i18n{display:inline}x-p,x-s{display:inline}" +
+      "html.rtl body{text-align:right}html.rtl input[type=number],html.rtl input[type=tel],html.rtl input[type=password],html.rtl input[type=email],html.rtl .num{direction:ltr;text-align:right}" +
+      "html.rtl x-i18n.inl>x-s{margin-left:0;margin-right:.3em}html.rtl .lang-row{text-align:right}html.rtl .lang-row i{margin-left:0;margin-right:auto}" +
       "x-i18n.two>x-p{font-weight:700}" +
       "x-i18n>x-s{font-size:.72em;font-weight:500;line-height:1.25;opacity:.8;letter-spacing:0;text-transform:none;font-style:normal}" +
       "x-i18n.blk>x-s{display:block;margin-top:1px}x-i18n.inl>x-s{margin-left:.3em}" +
@@ -386,7 +470,14 @@
       c.querySelectorAll("[data-i18n-src]").forEach(function (o) { o.textContent = o.getAttribute("data-i18n-src"); });
       return c.textContent;
     },
-    tx: tx
+    tx: tx,
+    settle: settle,
+    /** master data the user already typed in both languages: [[tamil, english], ...] — used before asking the server */
+    learn: function (pairs) {
+      var D = dynMap("en"), n = 0;
+      (pairs || []).forEach(function (p) { if (p && p[0] && p[1] && TA.test(p[0]) && !TA.test(p[1]) && D.get(p[0]) !== p[1]) { D.set(p[0], String(p[1])); n++; } });
+      if (n) { saveDyn("en"); if (state.lang !== "ta" || state.en2) setTimeout(applyAll, 30); }
+    }
   };
   if (document.body) init(); else document.addEventListener("DOMContentLoaded", init);
 })();

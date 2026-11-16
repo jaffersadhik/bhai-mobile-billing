@@ -34,5 +34,12 @@
   "native": "മലയാളം",
   "english": "Malayalam",
   "coverage": 24
+ },
+ {
+  "code": "ar",
+  "native": "العربية",
+  "english": "Arabic",
+  "coverage": 100,
+  "rtl": true
  }
 ]

@@ -17,14 +17,14 @@
 <meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700&family=Mukta+Malar:wght@600;800&family=Noto+Sans+Tamil:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;700&family=Noto+Sans+Telugu:wght@400;700&family=Noto+Sans+Kannada:wght@400;700&family=Noto+Sans+Malayalam:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700&family=Mukta+Malar:wght@600;800&family=Noto+Sans+Tamil:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;700&family=Noto+Sans+Telugu:wght@400;700&family=Noto+Sans+Kannada:wght@400;700&family=Noto+Sans+Malayalam:wght@400;700&family=Noto+Sans+Arabic:wght@400;700&display=swap" rel="stylesheet">
 <style>
 :root{
   --leaf:#0e6b4a; --leaf-d:#09442f; --leaf-l:#dff0e7;
   --gold:#e9b431; --gold-l:#fbe7ac;
   --ink:#14231c; --muted:#5f6f66; --line:#dbe6df;
   --bg:#f2f7f4; --card:#fff; --wa:#1faa59; --bad:#b3261e;
-  --body:'DM Sans','Noto Sans Tamil','Noto Sans Devanagari','Noto Sans Telugu','Noto Sans Kannada','Noto Sans Malayalam','Latha','Nirmala UI',system-ui,sans-serif;
+  --body:'DM Sans','Noto Sans Tamil','Noto Sans Devanagari','Noto Sans Telugu','Noto Sans Kannada','Noto Sans Malayalam','Noto Sans Arabic','Latha','Nirmala UI',system-ui,sans-serif;
   --head:'Mukta Malar','DM Sans','Noto Sans Tamil','Noto Sans Devanagari','Noto Sans Telugu','Noto Sans Kannada','Noto Sans Malayalam','Latha',system-ui,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -834,6 +834,7 @@ const brIco = b => b && b.kind==="warehouse" ? "🏭" : "🏬";
 let myBranch="";
 
 function buildCatalog(){
+  try{ I18N.learn((catalog.cats||[]).map(c=>[c.ta,c.en]).concat((catalog.items||[]).map(x=>[x.ta,x.en]))); }catch(e){}
   CATS=(catalog.cats||[]).map(c=>[c.id,c.ta,c.en||"",c.emoji||"🛍️",c.color||"#e8eef0"]);
   catById={}; CATS.forEach(c=>catById[c[0]]=c);
   ITEMS=[]; byId={}; byCode={};
@@ -1429,7 +1430,7 @@ function billText(b){
 const loadScript=src=>new Promise((ok,bad)=>{ if(document.querySelector(`script[src="${src}"]`)&&loadScript[src]) return ok(); const e=document.createElement("script"); e.src=src; e.onload=()=>{loadScript[src]=1;ok();}; e.onerror=bad; document.head.appendChild(e); });
 async function htmlToPdf(doc,name,width){
   await loadScript("vendor/html2canvas.min.js"); await loadScript("vendor/jspdf.umd.min.js");
-  doc=I18N.html(doc);
+  doc=I18N.html(await I18N.settle(doc));
   const f=document.createElement("iframe"); f.style.cssText=`position:fixed;left:-10000px;top:0;width:${width}px;height:10px;border:0`; document.body.appendChild(f);
   try{
     f.contentDocument.open(); f.contentDocument.write(doc); f.contentDocument.close();
@@ -1912,9 +1913,10 @@ function invoiceText(v,P){
   L.push(`*மொத்தம்: ${inr(v.total)}*`,`செலுத்தியது: ${inr(v.paid)}`,`*மீதம்: ${inr(v.balance)}*`); if(v.due) L.push(`கடைசி தேதி: ${v.due}`);
   L.push("","நன்றி ❤️"); return L.filter((x,i)=>x!==""||i>0).join("\n");
 }
-function printInvoice(i){
+async function printInvoice(i){
   const w=window.open("","_blank"); if(!w){ toast("Popup அனுமதி தேவை"); return; }
-  w.document.write(I18N.html(invoiceDoc(ptCur.invoices[i],ptCur.party,true))); w.document.close();
+  const d0=invoiceDoc(ptCur.invoices[i],ptCur.party,true); await I18N.settle(d0);
+  w.document.write(I18N.html(d0)); w.document.close();
 }
 function invoiceDoc(v,P,print){
   const c=company, half=v.gstPct/2, cg=Math.round(v.gst*50)/100;

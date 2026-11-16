@@ -43,6 +43,11 @@ public class AppConfig {
     }
 
     @Bean
+    public com.bhai.billing.core.Translator translator(JdbcDb db, @Value("${translate.google.key:}") String key, @Value("${translate.url:}") String url) {
+        return new com.bhai.billing.core.Translator(db, key, url);
+    }
+
+    @Bean
     public PostDeployTests postDeployTests(JdbcDb db, @Value("${bmb.zone:Asia/Kolkata}") String zone) {
         return new PostDeployTests(db, ZoneId.of(zone));
     }
