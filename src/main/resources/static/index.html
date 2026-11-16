@@ -2306,6 +2306,7 @@ function openMenu(){
     ${isAdmin()?`<button class="mrow" id="mAdmin">⚙ Admin Panel — Users / Companies</button>`:""}
     <button class="mrow" id="mLang">🌐 மொழி / Language <em data-langlabel style="font-style:normal;margin-left:auto;opacity:.7"></em></button>
     <button class="mrow" id="mPw">🔑 கடவுச்சொல் மாற்று (Password)</button>
+    <button class="mrow" id="mClear">🧹 Browser டேட்டா அழி (Clear data)</button>
     <button class="mrow warnr" id="mLogout">⏻ வெளியேறு (Logout)</button>`;
   showSheet();
 }
@@ -2651,6 +2652,20 @@ async function logout(){
   if(!confirm(np?`⚠️ ${np} பில்/ரத்து இன்னும் server-க்கு அனுப்பப்படவில்லை. அவை இந்த போனில் பாதுகாப்பாக இருக்கும்; இதே user மீண்டும் login செய்தால் அனுப்பப்படும். வெளியேறவா?`:"வெளியேற வேண்டுமா? (Logout)")) return;
   try{ await api("logout","POST",undefined,{timeout:5000,quiet:true}); }catch(e){}
   OFF.dropSess(); setToken(null); history.replaceState(null,"",location.pathname+location.search); showLogin();
+}
+/* Clear this browser's copy of the app: login, saved carts, offline cache + queue, service worker. Server data is untouched. */
+async function clearAppData(){
+  const np=OFF.pend().length;
+  if(!confirm(np?`⚠️ ${np} பில்/ரத்து இன்னும் server-க்கு அனுப்பப்படவில்லை — டேட்டாவை அழித்தால் அவை நிரந்தரமாக போய்விடும்!\n\nமுதலில் இணையத்தில் இணைந்து sync ஆக விடவும்.\n\nஆனாலும் அழிக்கவா?`
+      :"இந்த browser-ல் சேமித்த டேட்டா (login, cache, offline நகல், சேமித்த cart) அழிக்கப்படும்; ஆப் மீண்டும் ஏற்றப்படும். Server-ல் உள்ள பில்/ஸ்டாக் எதுவும் அழியாது.\n\nதொடரவா?")) return;
+  busy(true);
+  try{ if(!np) await api("logout","POST",undefined,{timeout:4000,quiet:true}); }catch(e){}
+  const step=async f=>{ try{ await f(); }catch(e){} };
+  await step(async()=>{ const rs=await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r=>r.unregister())); });
+  await step(async()=>{ const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); });
+  await step(()=>new Promise(res=>{ const q=indexedDB.databases?indexedDB.databases():Promise.resolve([]); q.then(ds=>Promise.all((ds||[]).map(d=>new Promise(r=>{ const x=indexedDB.deleteDatabase(d.name); x.onsuccess=x.onerror=x.onblocked=()=>r(); }))).then(res)).catch(res); setTimeout(res,2500); }));
+  try{ localStorage.clear(); sessionStorage.clear(); }catch(e){}
+  location.replace(location.pathname);
 }
 $("#loginForm").addEventListener("submit",doLogin);
 $("#lEye").addEventListener("click",()=>{ const i=$("#lPass"), show=i.type==="password"; i.type=show?"text":"password"; $("#lEye").textContent=show?"🙈":"👁"; });
@@ -4351,6 +4366,7 @@ document.addEventListener("click",e=>{
   if(t.id==="mAdmin"){ closeSheet(); if(location.hash!=="#admin") location.hash="admin"; else loadAdmin(); return; }
   if(t.id==="mPw"||t.id==="chgPw") return openPw();
   if(t.id==="pwSave") return savePw();
+  if(t.id==="mClear") return clearAppData();
   if(t.id==="mLogout") return logout();
   if(t.id==="toHome"){ location.hash=""; return; }
   /* admin */

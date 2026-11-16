@@ -132,3 +132,6 @@ Patches on Windows: extracting the full zip over the folder is simpler than `git
 - Menu → **🏭 Supplier விவரம்** (also a button on the Purchase Orders page): list of suppliers with PO count / total / due, search, details, **add / edit / delete** (delete only when the supplier has no POs). Owner = view only.
 - Detail has **📥 New Purchase Order for this supplier**. The PO form already lets you pick an existing supplier or **➕ புது Supplier**.
 - API: `GET /suppliers` (with stats), `POST /suppliers` (add / edit by `id`), `POST /suppliers/{id}/delete`. Test: `test/t_suppliers.py`.
+
+## Clear browser data
+Menu → **🧹 Browser டேட்டா அழி**: unregisters the service worker, deletes caches, IndexedDB (offline copy + queue), localStorage / sessionStorage, then reloads to the login screen. Server data is untouched. If bills / cancellations are still unsynced it warns that they will be lost. Test: `test/t_clear_data.py`.
