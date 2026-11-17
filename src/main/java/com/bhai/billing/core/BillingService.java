@@ -186,6 +186,13 @@ public class BillingService {
         // the first (oldest) admin becomes the system user when there is none yet
         if (lng(db.one("SELECT COUNT(*) AS n FROM users WHERE user_type = 'system'").get("n")) == 0)
             db.update("UPDATE users SET user_type = 'system' WHERE id = (SELECT id FROM (SELECT id FROM users WHERE user_type = 'admin' ORDER BY created_at, id LIMIT 1) x)");
+        {   // companies and company users created before the System type existed (no owner yet) belong to the System user, so it sees all of them
+            Map<String, Object> sy = db.one("SELECT id FROM users WHERE user_type = 'system' ORDER BY active DESC, created_at, id LIMIT 1");
+            if (sy != null) {
+                db.update("UPDATE companies SET created_by = ? WHERE created_by IS NULL", str(sy.get("id")));
+                db.update("UPDATE users SET created_by = ? WHERE created_by IS NULL AND user_type NOT IN ('admin', 'system')", str(sy.get("id")));
+            }
+        }
         if (!hasColumn("branches", "kind")) db.update("ALTER TABLE branches ADD COLUMN kind VARCHAR(10) NOT NULL DEFAULT 'shop' AFTER name");
         if (!hasColumn("companies", "tr_seq")) db.update("ALTER TABLE companies ADD COLUMN tr_seq BIGINT NOT NULL DEFAULT 0 AFTER bill_seq");
         if (!hasColumn("users", "branch_id")) db.update("ALTER TABLE users ADD COLUMN branch_id VARCHAR(20) NULL AFTER company_id");

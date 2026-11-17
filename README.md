@@ -184,3 +184,5 @@ Menu → **🧹 Browser டேட்டா அழி**: unregisters the service 
 - Tests: `test/t_system_user.py` (API, 21 checks), `test/t_system_ui.py`.
 
 - Post-deploy tests (overlay _18): the admin-wide checks now use the **System** user (falling back to a plain admin), `/api/admin/invoices` is checked only with a System user, and "at least one active admin" means an active **System or Admin** — the system works with no plain admin at all.
+
+- Migration fix (overlay _19): companies and company users that existed before the System type (no `created_by`) are assigned to the System user at start-up, so the System user sees all legacy companies (the first overlay left them ownerless, visible to nobody but a System user whose list was empty for admins).
