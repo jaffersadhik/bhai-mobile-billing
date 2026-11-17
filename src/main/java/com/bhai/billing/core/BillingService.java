@@ -202,6 +202,8 @@ public class BillingService {
         }
         // company option: take online / staff orders even when the item has no stock (off = no order without stock)
         if (!hasColumn("companies", "order_no_stock")) db.update("ALTER TABLE companies ADD COLUMN order_no_stock TINYINT(1) NOT NULL DEFAULT 0");
+        // pre-order is ON for every NEW company (existing companies keep their own choice): a customer can order an item that has no stock yet
+        db.update("ALTER TABLE companies ALTER COLUMN order_no_stock SET DEFAULT 1");
         ensureBranches(null);
         ensurePayModes(null);
     }
@@ -3779,11 +3781,14 @@ public class BillingService {
         if (lng(db.one("SELECT COUNT(*) AS n FROM shop_orders WHERE company_id = ? AND phone = ? AND status IN ('new','accepted')", cid, phone).get("n")) >= 5)
             throw new ApiException(429, "இந்த எண்ணுக்கு ஏற்கனவே 5 ஆர்டர்கள் நிலுவையில் உள்ளன — கடையை அழைக்கவும்");
         Map<String, Object[]> cat = new HashMap<>();
-        for (Map<String, Object> z : db.query("SELECT z.item_id, z.size_label, z.rate, i.name_ta, i.name_en FROM item_sizes z JOIN items i ON i.company_id = z.company_id AND i.id = z.item_id WHERE z.company_id = ? AND i.sold_by = 'count'", cid))
-            cat.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), new Object[]{dbl(z.get("rate")), str(z.get("name_ta")), str(z.get("name_en"))});
+        Map<String, Integer> wtUnit = new HashMap<>();
+        for (Map<String, Object> z : db.query("SELECT z.item_id, z.size_label, z.rate, i.name_ta, i.name_en, i.sold_by, i.wt_unit FROM item_sizes z JOIN items i ON i.company_id = z.company_id AND i.id = z.item_id WHERE z.company_id = ?", cid)) {
+            // weight items (fish, meat ...) are ordered in whole kg (or g) steps; their stock is kept in grams
+            if ("weight".equals(str(z.get("sold_by")))) wtUnit.put(str(z.get("item_id")), "g".equals(str(z.get("wt_unit"))) ? 1 : 1000);
+            cat.put(str(z.get("item_id")) + "|" + str(z.get("size_label")), new Object[]{dbl(z.get("rate")), str(z.get("name_ta")), str(z.get("name_en"))}); }
         Map<String, Long> have = new HashMap<>();
         for (Map<String, Object> r : db.query("SELECT item_id, size_label, qty FROM stock WHERE company_id = ? AND branch_id = ?", cid, branch))
-            have.put(str(r.get("item_id")) + "|" + str(r.get("size_label")), lng(r.get("qty")));
+            have.put(str(r.get("item_id")) + "|" + str(r.get("size_label")), lng(r.get("qty")) / wtUnit.getOrDefault(str(r.get("item_id")), 1));
         List<Object> lines = new ArrayList<>();
         Map<String, Long> seen = new LinkedHashMap<>();
         for (Object o : list(in.get("lines"))) {

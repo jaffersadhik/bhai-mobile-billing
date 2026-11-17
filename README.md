@@ -164,3 +164,9 @@ Menu → **🧹 Browser டேட்டா அழி**: unregisters the service 
 ## Share a user's login on WhatsApp (admin)
 - Admin → Users → each user card has **📲 WhatsApp**. The sheet asks for the WhatsApp number (pre-filled with the company phone; 10 digits get the country code 91, or type it with country code) and a password (🎲 makes a random one). The message contains the company details (name, owner, address, city, phone, email, GSTIN), the user (name, type, branch), **Username, Password and the login URL**. Buttons: send on WhatsApp / Copy.
 - The server stores only a password hash, so an old password cannot be shown: a password typed here is first **set on the user** (`POST /admin/user`) and then sent; passwords set in this browser session (new user form, this sheet) are remembered in memory and pre-filled. Test: `test/t_share_user_ui.py`.
+
+## Pre-order (முன்பதிவு) — online shop (overlay _15)
+- Company setting **Pre-order** (`companies.order_no_stock`) is now **ON for every new company** (existing companies keep their value — tick it in Company settings). When ON, "Place Order" works even when stock is 0; short lines are saved with `short` and shown as 📦 in admin Orders/Order detail, in the customer's cart, success page and the WhatsApp order text.
+- When OFF, an order above stock is refused with HTTP 409.
+- Fix: weight items (fish, meat — `sold_by=weight`) can now be ordered from the shop in whole kg/g steps (earlier server answered "ஆர்டர் ஐட்டம் தவறு"); stock (kept in grams) is converted to kg for the check.
+- Test: `test/t_preorder_ui.py`.

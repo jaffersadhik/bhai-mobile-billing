@@ -137,9 +137,9 @@ const photoUrl=it=>it.photo?`/api/shop/${encodeURIComponent(CODE)}/photo/${encod
 const pic=(it,cls)=>it.photo?`<img loading="lazy" src="${esc(photoUrl(it))}" alt="${esc(it.ta)}">`:esc((catById[it.cat]||{}).emoji||"🛍");
 const tint=it=>(catById[it.cat]||{}).color||"#eee";
 /* stock of one item + size at the chosen location ("all" = every shop and warehouse together) */
-function qtyAt(id,size,where){ const k=id+"|"+size, w=where||loc;
-  if(w==="all") return Object.values(S.stock).reduce((a,m)=>a+(m[k]||0),0);
-  return (S.stock[w]||{})[k]||0; }
+function qtyAt(id,size,where){ const k=id+"|"+size, w=where||loc, it=byId[id], ug=it&&it.by==="weight"?(it.unit==="g"?1:1000):1;   // weight items: stock is in grams
+  if(w==="all") return Math.floor(Object.values(S.stock).reduce((a,m)=>a+(m[k]||0),0)/ug);
+  return Math.floor(((S.stock[w]||{})[k]||0)/ug); }
 const onlyIn=()=>inOnly===null?!NOSTOCK():inOnly;   // 'in stock only' is on by default, off when the shop takes orders without stock
 const NOSTOCK=()=>!!(S.company&&S.company.orderNoStock);   // shop takes orders even when stock is 0
 const itemQty=it=>it.sizes.reduce((a,z)=>a+qtyAt(it.id,z.size),0);
@@ -229,6 +229,7 @@ function openCart(){
         <div><b>${esc(it.ta)}</b><small>${esc(sz)} · ${inr(r)} × ${cart[k]} = <b>${inr(r*cart[k])}</b></small><small class="bad" data-warn="${esc(k)}"></small></div>
         <div class="step"><button data-cq="-1" aria-label="Less">−</button><span>${cart[k]}</span><button data-cq="1" aria-label="More">+</button></div></div>`; }).join("")}
       <div class="tot"><span>மொத்தம் (${cartPcs()} pcs)</span><span>${inr(cartTot())}</span></div></div>
+    <p class="sub" id="preNote" style="color:#b45309;font-weight:700" hidden>📦 முன்பதிவு: ஸ்டாக் இல்லாத ஐட்டங்கள் முன்பதிவாக எடுக்கப்படும் — ஸ்டாக் வந்தவுடன் கடை உங்களை தொடர்பு கொள்ளும்.</p>
     <div class="lbl">உங்கள் விவரம்</div>
     <label class="fld" id="fN">பெயர் *<input id="oName" maxlength="60" autocomplete="name" value="${esc(f.name||"")}"></label>
     <label class="fld" id="fP">மொபைல் எண் *<input id="oPhone" inputmode="numeric" maxlength="10" autocomplete="tel" value="${esc(f.phone||(Q.get("m")||"").replace(/\D/g,"").slice(-10))}"></label>
@@ -246,6 +247,7 @@ function checkCartBranch(){
     const [id,sz]=k.split("|"), h=b?qtyAt(id,sz,b):qtyAt(id,sz,"all");
     if(NOSTOCK()){ el.textContent=cart[k]>h?"📦 ஸ்டாக் குறைவு — முன்பதிவாக எடுக்கப்படும்":""; return; }
     el.textContent=cart[k]>h?(b?"இந்த கடையில் "+h+" மட்டும்":"இருப்பு "+h+" மட்டும்"):""; if(cart[k]>h) bad++; });
+  { const pn=$("#preNote"); if(pn) pn.hidden=!(NOSTOCK()&&cartKeys().some(k=>{ const [id,sz]=k.split("|"); return cart[k]>(b?qtyAt(id,sz,b):qtyAt(id,sz,"all")); })); }
   return bad;
 }
 async function placeOrder(){
@@ -260,18 +262,20 @@ async function placeOrder(){
   try{
     const r=await api("/orders","POST",{name,phone,mode,address,branch,notes,lines:cartKeys().map(k=>({itemId:k.split("|")[0],size:k.split("|")[1],qty:cart[k]}))});
     const L=ls.get("orders",[]); L.unshift({no:r.no,token:r.token,at:new Date().toISOString(),total:r.total}); ls.set("orders",L.slice(0,30));
-    const ordLines=cartKeys().map(k=>{ const [id,sz]=k.split("|"); return {n:byId[id].ta,sz,q:cart[k],r:rateOf(k)}; });
+    const ordLines=cartKeys().map(k=>{ const [id,sz]=k.split("|"); return {n:byId[id].ta,sz,q:cart[k],r:rateOf(k),pre:NOSTOCK()&&cart[k]>qtyAt(id,sz,branch)}; });
+    const hasPre=ordLines.some(l=>l.pre);
     const brName=((S.branches.find(b=>b.id===branch))||{}).name||"";
     cart={}; saveCart(); render();
     const link=trackUrl(r.token);
     const waNo=(S.company.wa||S.company.phone||"").replace(/\D/g,"").slice(-10);
     const waMsg=[`*${S.company.name}* — புதிய Online ஆர்டர் ${r.no}`,
       `👤 ${name}`,`📱 ${phone}`,mode==="pickup"?"🏬 கடையில் பெறுவார் (Pickup)":"🚚 டோர் டெலிவரி",mode==="pickup"?null:`📍 ${address}`,brName?`🏬 கடை: ${brName}`:null,"",
-      ...ordLines.map((l,i)=>`${i+1}. ${l.n} (${l.sz}) × ${l.q} = ${inr(l.r*l.q)}`),"",`*மொத்தம்: ${inr(r.total)}*`,notes?`📝 ${notes}`:null,
+      ...ordLines.map((l,i)=>`${i+1}. ${l.n} (${l.sz}) × ${l.q} = ${inr(l.r*l.q)}${l.pre?" 📦 முன்பதிவு":""}`),hasPre?"📦 முன்பதிவு ஐட்டங்கள்: ஸ்டாக் வந்தவுடன் வழங்கவும்":null,"",`*மொத்தம்: ${inr(r.total)}*`,notes?`📝 ${notes}`:null,
       `ஆர்டர் நிலை: ${link}`].filter(x=>x!==null).join("\n");
     const waUrl="https://wa.me/91"+waNo+"?text="+encodeURIComponent(waMsg)+"&raw=1";
     $("#sb").innerHTML=`<div class="ok"><div class="tick">✓</div><h2>ஆர்டர் ${esc(r.no)} பெறப்பட்டது</h2>
       <p class="sub">${inr(r.total)} · கடை உறுதி செய்தவுடன் நிலை மாறும். இந்த link-ல் எப்போதும் நிலையை பார்க்கலாம்.</p>
+      ${hasPre?`<p class="sub" style="color:#b45309;font-weight:700">📦 இது முன்பதிவு ஆர்டர் — ஸ்டாக் வந்தவுடன் கடை உங்களை தொடர்பு கொள்ளும்.</p>`:""}
       <a class="cta ghost" href="${esc(link)}">📦 ஆர்டர் நிலை பார் (Track)</a>
       ${waNo?`<p class="sub" style="margin-top:6px">📲 கடைக்கு WhatsApp-ல் ஆர்டர் விவரத்தை அனுப்பினால் உடனே பார்ப்பார்கள்</p><a class="cta" id="waSend" href="${esc(waUrl)}" target="_blank" rel="noopener">💬 WhatsApp-ல் ஆர்டரை அனுப்பு</a>`:""}
       <button class="cta ghost" id="closeSheet2">மேலும் ஷாப்பிங்</button></div>`;
