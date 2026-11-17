@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS users (
   id           VARCHAR(20)  NOT NULL,
   username     VARCHAR(30)  NOT NULL,
   full_name    VARCHAR(60)  NOT NULL,
-  user_type    ENUM('admin','owner','sales','stock','warehouse') NOT NULL,
+  user_type    ENUM('admin','owner','sales','stock','warehouse','system') NOT NULL,
   company_id   VARCHAR(20)  NULL,
   branch_id    VARCHAR(20)  NULL,
   pass_salt    VARCHAR(44)  NOT NULL,
@@ -72,13 +72,14 @@ CREATE TABLE IF NOT EXISTS users (
   max_sessions TINYINT      NOT NULL DEFAULT 2,    -- simultaneous logins allowed for this username (0 = unlimited)
   idle_minutes INT          NOT NULL DEFAULT 10,   -- auto-logout after this many idle minutes (0 = never)
   lang         VARCHAR(5)   NOT NULL DEFAULT '',   -- the user's chosen app language ('' = English default)
+  created_by   VARCHAR(20)  NULL,                  -- the admin / system user who created this user (an admin only sees his own)
   created_at   DATETIME     NOT NULL,
   updated_at   DATETIME     NOT NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uk_users_username (username),
   KEY idx_users_company (company_id),
   CONSTRAINT fk_users_company FOREIGN KEY (company_id) REFERENCES companies (id),
-  CONSTRAINT chk_users_company CHECK ((user_type = 'admin' AND company_id IS NULL) OR (user_type <> 'admin' AND company_id IS NOT NULL))
+  CONSTRAINT chk_users_company CHECK ((user_type IN ('admin','system') AND company_id IS NULL) OR (user_type NOT IN ('admin','system') AND company_id IS NOT NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------

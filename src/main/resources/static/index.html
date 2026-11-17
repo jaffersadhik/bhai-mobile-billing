@@ -820,7 +820,9 @@ let CATS=[], ITEMS=[], byId={}, catById={}, byCode={};
 let cart={}, sel={}, customs={}, ovr={}, wu={};   // cart: "id|size"→qty (count) · "id|W"→grams (weight item) · ovr: rate typed at billing · wu: kg/g chosen for typing
 let customQty=1, customFrom="home", customCat=null, cameFromHome=false;
 
-const isAdmin = () => !!(me && me.type==="admin");
+const isAdmin = () => !!(me && (me.type==="admin"||me.type==="system"));   // admin-level: admin + system
+const isSystem = () => !!(me && me.type==="system");     // system: creates admin / system users, sees every company
+const isAL = t => t==="admin"||t==="system";
 const isOwner = () => !!(me && me.type==="owner");   // reports only
 const isStock = () => !!(me && me.type==="stock");   // sales + stock
 const isWh = () => !!(me && me.type==="warehouse");
@@ -829,7 +831,7 @@ const canRate = () => !!(me && me.type!=="sales");      // sales staff cannot ch
 const canEdit = () => !!(me && company && !isOwner());     // admin (inside an opened company), sales and stock users manage groups / items
 const canStock = () => !!(me && company && (isAdmin()||isStock()||isWh()));
 const canSeeCost = () => !!(me && me.type!=="sales");   // cost price + profit: admin, owner, stock (never sales staff)
-const TYPE_LABEL = {admin:"⚙ Admin", owner:"👑 Owner", sales:"🧾 Sales", stock:"📦 Stock", warehouse:"🏭 Warehouse"};
+const TYPE_LABEL = {system:"🛡 System", admin:"⚙ Admin", owner:"👑 Owner", sales:"🧾 Sales", stock:"📦 Stock", warehouse:"🏭 Warehouse"};
 const brIco = b => b && b.kind==="warehouse" ? "🏭" : "🏬";
 let myBranch="";
 
@@ -1022,7 +1024,7 @@ function view(){
   const h=location.hash.slice(1);
   if(h==="admin" && isAdmin()) return "admin";
   if(h==="inv" && (isAdmin()||isOwner())) return "inv";
-  if(h==="qa" && isAdmin()) return "qa";
+  if(h==="qa" && isSystem()) return "qa";
   if(!company) return isAdmin() ? "admin" : "nocompany";
   if(isWh()&&catalog.setup&&catById[h]) return "cat";
   if(isWh()&&(h==="parties"||h==="money")) return h;
@@ -1079,7 +1081,7 @@ function renderBar(){
 function heroHtml(){
   return `<section class="hero">${company.bismillah!==false?`<div class="bis">${esc(BISMILLAH)}</div>`:""}<h2>${esc(company.name)}</h2>
     ${company.tagline?`<p>${esc(company.tagline)}</p>`:""}<span class="pill">${esc(APP_NAME)}</span><br>
-    <span class="owner">👤 ${esc(me.name)} · ${esc(me.user)}${isAdmin()?" · Admin":""}${myBranch?" · 🏬 "+esc(myBranch):""}</span></section>`;
+    <span class="owner">👤 ${esc(me.name)} · ${esc(me.user)}${isSystem()?" · System":isAdmin()?" · Admin":""}${myBranch?" · 🏬 "+esc(myBranch):""}</span></section>`;
 }
 const pwWarn = () => defaultPw ? `<div class="warnbox">⚠️ Default password பயன்படுத்துகிறீர்கள். உடனே மாற்றவும்<button id="chgPw">மாற்று</button></div>` : "";
 function ctl(id){
@@ -2406,6 +2408,7 @@ async function loadAdmin(){
 /* ---- post-deploy (live) tests: results, alert for failures, rollback request ---- */
 let qaData=null, qaSel=null, qaFlt="bad", qaLoading=false, qaPoll=null;
 function qaBanner(q){
+  if(!isSystem()) return "";
   const tile=`<button class="admin" id="openQa" style="margin:10px 0"><span class="pl" aria-hidden="true">🧪</span><div><b>Post-deploy Tests — Build ${esc(q?q.build:"")}</b><small>ஒவ்வொரு deploy-க்குப் பிறகும் தானாக இயங்கும் · முடிவுகள் · முந்தைய build ஒப்பீடு · Rollback</small></div></button>`;
   if(!q||!q.last) return tile;
   const L=q.last;
@@ -2455,7 +2458,7 @@ function renderAdmin(){
   if(!adminData) return `<div class="none"><b>⏳</b>ஏற்றுகிறது…</div>`;
   const cs=adminData.companies, us=adminData.users;
   return `${pwWarn()}${qaBanner(adminData.qa)}${adminSalesHtml(adminData.sales)}
-    <button class="admin" id="openInv" style="margin:10px 0"><span class="pl" aria-hidden="true">🧾</span><div><b>Software Invoices — எல்லா கம்பெனிகள்</b><small>மாதம் வாரியாக · பில் × கட்டணம் · Payment received · WhatsApp</small></div></button>
+    ${isSystem()?`<button class="admin" id="openInv" style="margin:10px 0"><span class="pl" aria-hidden="true">🧾</span><div><b>Software Invoices — எல்லா கம்பெனிகள்</b><small>மாதம் வாரியாக · பில் × கட்டணம் · Payment received · WhatsApp</small></div></button>`:""}
     <div class="adm-head"><h2 class="h2">கம்பெனிகள் · ${cs.length}</h2><button class="gbtn" id="addCompany">➕ புது கம்பெனி</button></div>
     ${cs.length?`<div class="list">${cs.map(c=>`<article class="acard">
         <div class="r1"><div><b>${esc(c.name)}</b><small>${esc([c.owner,c.city].filter(Boolean).join(" · ")||c.tagline||"")}</small></div>${company&&company.id===c.id?`<span class="tag on">திறந்துள்ளது</span>`:""}</div>
@@ -2465,7 +2468,7 @@ function renderAdmin(){
     <div class="adm-head" id="usersHead"><h2 class="h2">பயனர்கள் · ${us.length}</h2><button class="gbtn" id="addUser">➕ புது User</button></div>
     <button class="cta ghost" id="openSess" style="margin:0 0 8px">🟢 இப்போது login ஆனவர்கள் (Active sessions)${adminData.sessN?" · "+adminData.sessN:""}</button>
     <div class="ufl"><select id="uFilterCo" aria-label="Filter users by company"><option value="">🏬 எல்லா கம்பெனிகளும் (${us.length})</option>
-        <option value="__admin"${uFilterCo==="__admin"?" selected":""}>⚙ Admin users (${us.filter(u=>u.type==="admin").length})</option>
+        <option value="__admin"${uFilterCo==="__admin"?" selected":""}>⚙ Admin / System users (${us.filter(u=>isAL(u.type)).length})</option>
         ${cs.map(c=>`<option value="${esc(c.id)}"${uFilterCo===c.id?" selected":""}>${esc(c.name)} (${us.filter(u=>u.companyId===c.id).length})</option>`).join("")}</select>
       <input id="uFilterQ" type="search" placeholder="பெயர் / username தேடு" autocomplete="off" aria-label="Search users"></div>
     <div class="list" id="userList"></div>`;
@@ -2475,12 +2478,12 @@ function renderUserList(){
   const box=$("#userList"); if(!box||!adminData) return;
   const q=(($("#uFilterQ")||{}).value||"").trim().toLowerCase();
   let us=adminData.users;
-  if(uFilterCo==="__admin") us=us.filter(u=>u.type==="admin");
+  if(uFilterCo==="__admin") us=us.filter(u=>isAL(u.type));
   else if(uFilterCo) us=us.filter(u=>u.companyId===uFilterCo);
   if(q) us=us.filter(u=>(u.name+" "+u.user+" "+(u.branchName||"")).toLowerCase().includes(q));
   box.innerHTML = us.length ? us.map(u=>`<article class="acard ${u.active?"":"off"}">
         <div class="r1"><div><b>${esc(u.name)}</b><small>@${esc(u.user)}${u.id===me.id?" (நீங்கள்)":""}</small></div><span class="tag t-${u.type}">${TYPE_LABEL[u.type]||esc(u.type)}</span></div>
-        <div class="meta">${u.type!=="admin"?`🏬 ${esc(u.companyName||"— கம்பெனி இல்லை —")}${u.branchName?" · "+esc(u.branchName):u.type==="owner"?" · எல்லா கிளைகள்":""}`:"எல்லா கம்பெனி, user-களையும் நிர்வகிக்கலாம்"}${u.active?"":` · <b style="display:inline;color:var(--bad);font-size:inherit">நிறுத்தப்பட்டது</b>`}</div>
+        <div class="meta">${!isAL(u.type)?`🏬 ${esc(u.companyName||"— கம்பெனி இல்லை —")}${u.branchName?" · "+esc(u.branchName):u.type==="owner"?" · எல்லா கிளைகள்":""}`:"எல்லா கம்பெனி, user-களையும் நிர்வகிக்கலாம்"}${u.active?"":` · <b style="display:inline;color:var(--bad);font-size:inherit">நிறுத்தப்பட்டது</b>`}</div>
         <div class="meta">🔐 ${u.maxSessions?u.maxSessions+" session":"session வரம்பில்லை"} · ⏱ ${u.idleMinutes?u.idleMinutes+" நிமிடம் idle → logout":"தானாக logout இல்லை"}${(adminData.sess||{})[u.id]?` · <b style="color:#137a3f">🟢 ${(adminData.sess||{})[u.id]} login</b>`:""}</div>
         <div class="acts"><button class="mini" data-edituser="${esc(u.id)}">✏️ மாற்று</button><button class="mini" data-shareuser="${esc(u.id)}">📲 WhatsApp</button>${u.id!==me.id?`<button class="mini" data-deluser="${esc(u.id)}">🗑 நீக்கு</button>`:""}</div>
       </article>`).join("") : `<div class="none"><b>👤</b>பொருந்தும் user இல்லை</div>`;
@@ -2616,7 +2619,7 @@ function openUserForm(id,draft){
   const cid=(draft&&draft.companyId)||(u&&u.companyId)||"";
   $("#sheetBody").innerHTML=`<h2>${u?"User மாற்று":"புது User சேர்க்க"}</h2><p class="sub">${u?"@"+esc(u.user):"Login விவரம் உருவாக்கி கடைக்கு அனுப்பலாம்"}</p>
     <div class="box frm">
-      <div class="fld">User type<div class="chips"><button type="button" data-utype="sales">🧾 Sales</button><button type="button" data-utype="stock">📦 Stock</button><button type="button" data-utype="warehouse">🏭 Warehouse</button><button type="button" data-utype="owner">👑 Owner</button><button type="button" data-utype="admin">⚙ Admin</button></div><p class="hint" id="uTypeHint"></p></div>
+      <div class="fld">User type<div class="chips"><button type="button" data-utype="sales">🧾 Sales</button><button type="button" data-utype="stock">📦 Stock</button><button type="button" data-utype="warehouse">🏭 Warehouse</button><button type="button" data-utype="owner">👑 Owner</button>${isSystem()?`<button type="button" data-utype="admin">⚙ Admin</button><button type="button" data-utype="system">🛡 System</button>`:""}</div><p class="hint" id="uTypeHint"></p></div>
       <label class="fld" id="fuComp">எந்த கம்பெனியை சேர்ந்தவர்? *<select id="uComp"><option value="">— தேர்வு செய்யவும் —</option>${adminData.companies.map(c=>`<option value="${esc(c.id)}"${c.id===cid?" selected":""}>${esc(c.name)}</option>`).join("")}<option value="__new">➕ புது கம்பெனி உருவாக்கு…</option></select><span class="err">கம்பெனியை தேர்வு செய்யவும்</span></label>
       <label class="fld" id="fuBranch">எந்த கிளை? (Branch) *<select id="uBranch" data-sel="${esc(bid)}"></select><span class="err">கிளையை தேர்வு செய்யவும்</span></label>
       <label class="fld" id="fuName">பெயர் *<input id="uName" maxlength="60" autocomplete="off" placeholder="எ.கா. அமீன்"><span class="err">பெயர் தேவை</span></label>
@@ -2634,15 +2637,16 @@ function openUserForm(id,draft){
   syncUType(); showSheet();
 }
 const U_HINT={
-  admin:"எல்லா கம்பெனி, கிளை, user-களையும் நிர்வகிக்கலாம்; எந்த கம்பெனியின் billing / stock-ஐயும் திறக்கலாம்",
+  system:"🛡 System: Admin-ன் எல்லா வசதிகளும் + Admin / System user-களை உருவாக்கலாம்; எல்லா admin-களின் கம்பெனி / user-களையும் பார்க்கலாம்; Software Invoice, Post-deploy Tests",
+  admin:"தான் உருவாக்கிய கம்பெனி, கிளை, user-களை நிர்வகிக்கலாம்; தன் கம்பெனியின் billing / stock-ஐ திறக்கலாம் (மற்ற admin-களின் கம்பெனி தெரியாது)",
   owner:"தன் கம்பெனியின் விற்பனை அறிக்கை மட்டும் — எல்லா கிளைகள், கிளை வாரியாக, user வாரியாக. பில் போட முடியாது",
   sales:"தன் கிளையில் பில் போடலாம்; குரூப், ஐட்டம், பில் வரலாறு, கிளையின் அறிக்கை",
   stock:"Sales-ன் எல்லா வசதிகளும் + தன் கிளையின் ஸ்டாக் பார்க்க / மாற்ற (மைனஸ் அனுமதி) · Warehouse அனுப்பும் சரக்கை பெறலாம்",
   warehouse:"🏭 Warehouse மட்டும்: Purchase Order பெறுதல் / சரிபார்த்தல், warehouse ஸ்டாக், கிளைகளுக்கு சரக்கு அனுப்புதல் (Transfer), எல்லா கிளை ஸ்டாக் அறிக்கை. பில் போட முடியாது"};
 function syncUType(){
   document.querySelectorAll("[data-utype]").forEach(b=>b.classList.toggle("on",b.dataset.utype===uForm.type));
-  $("#fuComp").hidden = uForm.type==="admin";
-  if($("#fuTpl")) $("#fuTpl").hidden = uForm.type==="admin";
+  $("#fuComp").hidden = isAL(uForm.type);
+  if($("#fuTpl")) $("#fuTpl").hidden = isAL(uForm.type);
   $("#fuBranch").hidden = !(uForm.type==="sales"||uForm.type==="stock"||uForm.type==="warehouse");
   $("#uTypeHint").textContent = U_HINT[uForm.type]||"";
   fillUBranches();
@@ -2658,7 +2662,7 @@ function fillUBranches(){
 const userDraft = () => ({id:uForm.id, type:uForm.type, companyId:$("#uComp").value, branchId:$("#uBranch")?$("#uBranch").value:"", name:$("#uName").value, user:$("#uUser").value, password:$("#uPass").value, active:$("#uActive")?$("#uActive").checked:true, maxSessions:$("#uMaxS").value, idleMinutes:$("#uIdle").value});
 async function saveUser(){
   const d=userDraft(); d.user=d.user.trim().toLowerCase(); d.name=d.name.trim();
-  const okU=/^[a-z0-9._-]{3,30}$/.test(d.user), okN=!!d.name, okC=d.type==="admin"||(d.companyId&&d.companyId!=="__new"), okP=uForm.id?(!d.password||d.password.length>=6):d.password.length>=6;
+  const okU=/^[a-z0-9._-]{3,30}$/.test(d.user), okN=!!d.name, okC=isAL(d.type)||(d.companyId&&d.companyId!=="__new"), okP=uForm.id?(!d.password||d.password.length>=6):d.password.length>=6;
   const okB=!(d.type==="sales"||d.type==="stock"||d.type==="warehouse")||!!d.branchId;
   $("#fuUser").classList.toggle("bad",!okU); $("#fuName").classList.toggle("bad",!okN); $("#fuComp").classList.toggle("bad",!okC); $("#fuPass").classList.toggle("bad",!okP); $("#fuBranch").classList.toggle("bad",!okB);
   const okS=/^\d{1,2}$/.test(String(d.maxSessions).trim())&&+d.maxSessions<=20, okI=/^\d{1,4}$/.test(String(d.idleMinutes).trim())&&+d.idleMinutes<=1440;
@@ -2666,8 +2670,8 @@ async function saveUser(){
   if(!okU||!okN||!okC||!okP||!okB||!okS||!okI){ toast(!okS?"அதிகபட்ச Session: 0-20":!okI?"Idle logout: 0-1440 நிமிடம்":"விவரங்களை சரி பார்க்கவும்"); return; }
   busy(true);
   try{
-    const body={id:d.id||"",user:d.user,name:d.name,type:d.type,companyId:d.type!=="admin"?d.companyId:"",branchId:(d.type==="sales"||d.type==="stock"||d.type==="warehouse")?d.branchId:"",password:d.password,active:d.active,maxSessions:+d.maxSessions,idleMinutes:+d.idleMinutes};
-    const tb=(!d.id&&d.type!=="admin")?tplBody("u"):null; if(tb){ body.template=tb.template; body.templateStock=tb.stock; }
+    const body={id:d.id||"",user:d.user,name:d.name,type:d.type,companyId:!isAL(d.type)?d.companyId:"",branchId:(d.type==="sales"||d.type==="stock"||d.type==="warehouse")?d.branchId:"",password:d.password,active:d.active,maxSessions:+d.maxSessions,idleMinutes:+d.idleMinutes};
+    const tb=(!d.id&&!isAL(d.type))?tplBody("u"):null; if(tb){ body.template=tb.template; body.templateStock=tb.stock; }
     const r=await api("admin/user","POST",body);
     uForm=null; await loadAdmin(); renderAll();
     if(tb||r.templateError){ if(company&&company.id===d.companyId){ try{ const dd=await api("data"); catalog=dd.catalog||catalog; buildCatalog(); purgeCart(); stockData=null; srData=null; renderAll(); }catch(_){} } setTimeout(()=>toast((r.template?"✅":"")+tplToast(r).replace(/^ · /,"")),400); }

@@ -36,7 +36,7 @@ public class BillingService {
 
     static final Pattern ID = Pattern.compile("[A-Za-z0-9_-]{1,40}");
     static final Pattern USERNAME = Pattern.compile("[a-z0-9._-]{3,30}");
-    static final Set<String> USER_TYPES = Set.of("admin", "owner", "sales", "stock", "warehouse");
+    static final Set<String> USER_TYPES = Set.of("admin", "owner", "sales", "stock", "warehouse", "system");
     static final Pattern MOBILE = Pattern.compile("[6-9][0-9]{9}");
     static final Pattern GSTIN = Pattern.compile("[0-9]{2}[A-Z0-9]{13}");
     static final Pattern EMAIL = Pattern.compile("[^@\\s]+@[^@\\s]+\\.[^@\\s]+");
@@ -69,7 +69,11 @@ public class BillingService {
             this.activeCompany = activeCompany;
         }
 
-        boolean admin() { return "admin".equals(str(user.get("user_type"))); }
+        /** admin-level: admin and system both have every admin function */
+        boolean admin() { return "admin".equals(type()) || "system".equals(type()); }
+
+        /** system: the top user — sees every company and user, and is the only one who creates admin / system users */
+        boolean system() { return "system".equals(type()); }
 
         String type() { return str(user.get("user_type")); }
 
@@ -170,6 +174,18 @@ public class BillingService {
         Map<String, Object> ut2 = db.one("SELECT column_type AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'user_type'");
         if (ut2 != null && !str(ut2.get("t")).contains("'warehouse'"))
             db.update("ALTER TABLE users MODIFY user_type ENUM('admin','owner','sales','stock','warehouse') NOT NULL");
+        Map<String, Object> ut3 = db.one("SELECT column_type AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'user_type'");
+        if (ut3 != null && !str(ut3.get("t")).contains("'system'")) {            // new user type: system
+            if (db.one("SELECT 1 AS x FROM information_schema.table_constraints WHERE table_schema = DATABASE() AND table_name = 'users' AND constraint_name = 'chk_users_company'") != null)
+                db.update("ALTER TABLE users DROP CONSTRAINT chk_users_company");
+            db.update("ALTER TABLE users MODIFY user_type ENUM('admin','owner','sales','stock','warehouse','system') NOT NULL");
+            db.update("ALTER TABLE users ADD CONSTRAINT chk_users_company CHECK ((user_type IN ('admin','system') AND company_id IS NULL) OR (user_type NOT IN ('admin','system') AND company_id IS NOT NULL))");
+        }
+        if (!hasColumn("users", "created_by")) db.update("ALTER TABLE users ADD COLUMN created_by VARCHAR(20) NULL");
+        if (!hasColumn("companies", "created_by")) db.update("ALTER TABLE companies ADD COLUMN created_by VARCHAR(20) NULL");
+        // the first (oldest) admin becomes the system user when there is none yet
+        if (lng(db.one("SELECT COUNT(*) AS n FROM users WHERE user_type = 'system'").get("n")) == 0)
+            db.update("UPDATE users SET user_type = 'system' WHERE id = (SELECT id FROM (SELECT id FROM users WHERE user_type = 'admin' ORDER BY created_at, id LIMIT 1) x)");
         if (!hasColumn("branches", "kind")) db.update("ALTER TABLE branches ADD COLUMN kind VARCHAR(10) NOT NULL DEFAULT 'shop' AFTER name");
         if (!hasColumn("companies", "tr_seq")) db.update("ALTER TABLE companies ADD COLUMN tr_seq BIGINT NOT NULL DEFAULT 0 AFTER bill_seq");
         if (!hasColumn("users", "branch_id")) db.update("ALTER TABLE users ADD COLUMN branch_id VARCHAR(20) NULL AFTER company_id");
@@ -326,7 +342,7 @@ public class BillingService {
         byte[] salt = bytes(16);
         LocalDateTime now = now();
         db.update("INSERT INTO users (id, username, full_name, user_type, company_id, pass_salt, pass_hash, active, must_change, created_at, updated_at) "
-                + "VALUES (?, ?, ?, 'admin', NULL, ?, ?, 1, 1, ?, ?)",
+                + "VALUES (?, ?, ?, 'system', NULL, ?, ?, 1, 1, ?, ?)",
                 newId("u"), "admin", "Super Admin", b64(salt), hash(DEFAULT_PASSWORD, salt), now, now);
         return true;
     }
@@ -438,7 +454,7 @@ public class BillingService {
         List<Object> out = new ArrayList<>();
         for (Map<String, Object> r : db.query("SELECT t.token_hash, t.created_at, t.last_seen, t.expires_at, t.ip, t.device, u.id AS uid, u.username, u.full_name, u.user_type, u.max_sessions, u.idle_minutes, "
                 + "co.name AS company_name FROM auth_tokens t JOIN users u ON u.id = t.user_id LEFT JOIN companies co ON co.id = u.company_id "
-                + "ORDER BY COALESCE(t.last_seen, t.created_at) DESC")) {
+                + "WHERE (? = 1 OR u.created_by = ? OR u.id = ?) ORDER BY COALESCE(t.last_seen, t.created_at) DESC", c.system() ? 1 : 0, c.uid(), c.uid())) {
             Map<String, Object> n = new LinkedHashMap<>();
             String h = str(r.get("token_hash"));
             LocalDateTime seen = r.get("last_seen") != null ? ldt(r.get("last_seen")) : ldt(r.get("created_at"));
@@ -470,9 +486,12 @@ public class BillingService {
             if (sid.length() != 16) throw new ApiException(400, "Session அடையாளம் தவறு");
             Map<String, Object> t = db.one("SELECT token_hash FROM auth_tokens WHERE LEFT(token_hash, 16) = ?", sid);
             if (t == null) throw new ApiException(404, "Session ஏற்கனவே முடிந்துவிட்டது");
+            if (!c.system()) { Map<String, Object> tu = db.one("SELECT u.created_by FROM auth_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?", t.get("token_hash"));
+                if (tu == null || !c.uid().equals(str(tu.get("created_by")))) throw new ApiException(404, "Session ஏற்கனவே முடிந்துவிட்டது"); }
             if (str(t.get("token_hash")).equals(c.key)) throw new ApiException(400, "இது உங்கள் சொந்த session — Logout பயன்படுத்தவும்");
             n = db.update("DELETE FROM auth_tokens WHERE token_hash = ?", t.get("token_hash"));
         } else if (!uid.isEmpty()) {
+            if (!c.system() && db.one("SELECT 1 AS x FROM users WHERE id = ? AND created_by = ?", uid, c.uid()) == null) throw new ApiException(404, "User இல்லை");
             n = db.update("DELETE FROM auth_tokens WHERE user_id = ? AND token_hash <> ?", uid, c.key);
         } else throw new ApiException(400, "Session / User தேர்வு செய்யவும்");
         Map<String, Object> o = adminSessions(auth);
@@ -3093,8 +3112,9 @@ public class BillingService {
 
     // ================================================================ branches (admin)
     public Map<String, Object> saveBranch(String auth, Map<String, Object> in) {
-        admin(auth);
+        Ctx c0 = admin(auth);
         String cid = str(in.get("companyId")), id = str(in.get("id"));
+        ownCompany(c0, cid);
         if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", cid) == null) throw new ApiException(404, "கம்பெனி இல்லை");
         String name = clip(in.get("name"), 40);
         if (name.isEmpty()) throw new ApiException(400, "கிளை பெயர் தேவை");
@@ -3114,8 +3134,9 @@ public class BillingService {
     }
 
     public Map<String, Object> savePayMode(String auth, Map<String, Object> in) {
-        admin(auth);
+        Ctx c0 = admin(auth);
         String cid = str(in.get("companyId")), id = str(in.get("id"));
+        ownCompany(c0, cid);
         if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", cid) == null) throw new ApiException(404, "கம்பெனி இல்லை");
         String name = clip(in.get("name"), 30), kind = str(in.get("kind"));
         if (name.isEmpty()) throw new ApiException(400, "பெயர் தேவை (எ.கா. UPI - Jafar)");
@@ -3137,7 +3158,7 @@ public class BillingService {
     }
 
     public Map<String, Object> deleteBranch(String auth, String cid, String id) {
-        admin(auth);
+        ownCompany(admin(auth), cid);
         if (branchRow(cid, id) == null) throw new ApiException(404, "கிளை இல்லை");
         if (lng(db.one("SELECT COUNT(*) AS n FROM branches WHERE company_id = ?", cid).get("n")) <= 1)
             throw new ApiException(409, "கடைசி கிளையை நீக்க முடியாது");
@@ -3152,7 +3173,7 @@ public class BillingService {
 
     /** Admin: today / selected day / month sales of every company, plus grand totals. */
     public Map<String, Object> adminSales(String auth, String date) {
-        admin(auth);
+        Ctx c = admin(auth);
         LocalDate today = LocalDate.now(zone);
         LocalDate sel = reportDate(date);
         LocalDate m1 = sel.withDayOfMonth(1);
@@ -3165,9 +3186,9 @@ public class BillingService {
                 + "SUM(b.created_at >= ? AND b.created_at < ?) AS d_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.total END), 0) AS d_tot, "
                 + "SUM(b.created_at >= ? AND b.created_at < ?) AS m_cnt, COALESCE(SUM(CASE WHEN b.created_at >= ? AND b.created_at < ? THEN b.total END), 0) AS m_tot "
                 + "FROM companies c LEFT JOIN bills b ON b.company_id = c.id AND b.created_at >= ? AND b.created_at < ? "
-                + "WHERE c.archived = 0 GROUP BY c.id, c.name, c.city ORDER BY m_tot DESC, c.name",
+                + "WHERE c.archived = 0 AND (? = 1 OR c.created_by = ?) GROUP BY c.id, c.name, c.city ORDER BY m_tot DESC, c.name",
                 a[0], a[1], a[0], a[1], a[2], a[3], a[2], a[3], a[4], a[5], a[4], a[5],
-                earliest(a[0], a[2], a[4]), latest(a[1], a[3], a[5]))) {
+                earliest(a[0], a[2], a[4]), latest(a[1], a[3], a[5]), c.system() ? 1 : 0, c.uid())) {
             Map<String, Object> p = new LinkedHashMap<>();
             p.put("id", str(r.get("id")));
             p.put("name", str(r.get("name")));
@@ -3207,7 +3228,7 @@ public class BillingService {
 
     // ================================================================ admin
     /** admin check for other components (post-deploy tests); returns the admin's name */
-    public String adminName(String auth) { return str(admin(auth).user.get("full_name")); }
+    public String adminName(String auth) { return str(system(auth).user.get("full_name")); }
 
     private Ctx admin(String auth) {
         Ctx c = ctx(auth);
@@ -3215,14 +3236,28 @@ public class BillingService {
         return c;
     }
 
+    private Ctx system(String auth) {
+        Ctx c = ctx(auth);
+        if (!c.system()) throw new ApiException(403, "System user மட்டும் (System only)");
+        return c;
+    }
+
+    /** an admin works only with the companies he created; the system user with all of them */
+    private void ownCompany(Ctx c, String cid) {
+        if (c.system()) return;
+        if (blank(cid) || db.one("SELECT 1 AS x FROM companies WHERE id = ? AND created_by = ?", cid, c.uid()) == null) throw new ApiException(404, "கம்பெனி இல்லை");
+    }
+
+    private static boolean adminLevel(String type) { return "admin".equals(type) || "system".equals(type); }
+
     public Map<String, Object> overview(String auth) {
-        admin(auth);
+        Ctx c = admin(auth);
         List<Object> cs = new ArrayList<>();
         for (Map<String, Object> r : db.query("SELECT c.*, "
                 + "(SELECT COUNT(*) FROM users u WHERE u.company_id = c.id) AS user_count, "
                 + "(SELECT COUNT(*) FROM item_groups g WHERE g.company_id = c.id) AS group_count, "
                 + "(SELECT COUNT(*) FROM items i WHERE i.company_id = c.id) AS item_count "
-                + "FROM companies c WHERE c.archived = 0 ORDER BY c.created_at, c.name")) {
+                + "FROM companies c WHERE c.archived = 0 AND (? = 1 OR c.created_by = ?) ORDER BY c.created_at, c.name", c.system() ? 1 : 0, c.uid())) {
             Map<String, Object> p = pubCompany(r);
             p.put("userCount", lng(r.get("user_count")));
             p.put("groupCount", lng(r.get("group_count")));
@@ -3244,7 +3279,8 @@ public class BillingService {
         }
         List<Object> us = new ArrayList<>();
         for (Map<String, Object> r : db.query("SELECT u.*, c.name AS company_name, br.name AS branch_name FROM users u LEFT JOIN companies c ON c.id = u.company_id "
-                + "LEFT JOIN branches br ON br.company_id = u.company_id AND br.id = u.branch_id ORDER BY u.created_at, u.username")) {
+                + "LEFT JOIN branches br ON br.company_id = u.company_id AND br.id = u.branch_id "
+                + "WHERE (? = 1 OR (u.created_by = ? AND u.user_type NOT IN ('admin','system'))) ORDER BY u.created_at, u.username", c.system() ? 1 : 0, c.uid())) {
             Map<String, Object> p = pubUser(r);
             p.put("companyName", str(r.get("company_name")));
             p.put("branchName", str(r.get("branch_name")));
@@ -3257,10 +3293,11 @@ public class BillingService {
     }
 
     public Map<String, Object> saveCompany(String auth, Map<String, Object> in) {
-        admin(auth);
+        Ctx c = admin(auth);
         String id = str(in.get("id"));
         if (!id.isEmpty() && db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", id) == null)
             throw new ApiException(404, "கம்பெனி இல்லை");
+        if (!id.isEmpty()) ownCompany(c, id);
         String name = clip(in.get("name"), 60);
         if (name.isEmpty()) throw new ApiException(400, "கம்பெனி பெயர் தேவை");
         if (db.one("SELECT id FROM companies WHERE archived = 0 AND LOWER(name) = LOWER(?) AND id <> ?", name, id) != null)
@@ -3287,6 +3324,7 @@ public class BillingService {
             id = newId("c");
             db.update("INSERT INTO companies (name, tagline, owner_name, phone, address, city, gstin, email, bill_prefix, show_bismillah, bill_footer, updated_at, id, created_at) "
                     + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", concat(f, id, now));
+            db.update("UPDATE companies SET created_by = ? WHERE id = ?", c.uid(), id);
         } else {
             db.update("UPDATE companies SET name = ?, tagline = ?, owner_name = ?, phone = ?, address = ?, city = ?, gstin = ?, email = ?, "
                     + "bill_prefix = ?, show_bismillah = ?, bill_footer = ?, updated_at = ? WHERE id = ?", concat(f, id));
@@ -3308,7 +3346,7 @@ public class BillingService {
 
     /** Archives the company (its groups, items and bills stay in the database). */
     public Map<String, Object> deleteCompany(String auth, String id) {
-        admin(auth);
+        ownCompany(admin(auth), id);
         if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", id) == null) throw new ApiException(404, "கம்பெனி இல்லை");
         if (lng(db.one("SELECT COUNT(*) AS n FROM users WHERE company_id = ?", id).get("n")) > 0)
             throw new ApiException(409, "இந்த கம்பெனியில் users உள்ளனர். முதலில் அவர்களை நீக்கவும் அல்லது மாற்றவும்");
@@ -3324,6 +3362,7 @@ public class BillingService {
         if (!id.isEmpty()) {
             u = db.one("SELECT * FROM users WHERE id = ?", id);
             if (u == null) throw new ApiException(404, "User இல்லை");
+            if (!c.system() && !id.equals(c.uid()) && !c.uid().equals(str(u.get("created_by")))) throw new ApiException(404, "User இல்லை");   // an admin sees only his own users
         }
         String un = str(in.get("user")).trim().toLowerCase(Locale.ROOT);
         if (!USERNAME.matcher(un).matches()) throw new ApiException(400, "Username: 3-30 எழுத்து, a-z 0-9 . _ - மட்டும்");
@@ -3333,10 +3372,13 @@ public class BillingService {
         if (name.isEmpty()) throw new ApiException(400, "பெயர் தேவை");
         String type = str(in.get("type"));
         if (type.equals("customer")) type = "sales";               // old app versions
-        if (!USER_TYPES.contains(type)) throw new ApiException(400, "User type: admin / owner / sales / stock");
+        if (!USER_TYPES.contains(type)) throw new ApiException(400, "User type: system / admin / owner / sales / stock / warehouse");
+        if (!c.system() && adminLevel(type) && !(u != null && id.equals(c.uid()) && type.equals(c.type())))
+            throw new ApiException(403, "Admin / System user-ஐ உருவாக்க System user மட்டுமே முடியும்");
         String cid = null, bid = null;
-        if (!type.equals("admin")) {
+        if (!adminLevel(type)) {
             cid = str(in.get("companyId"));
+            ownCompany(c, cid);
             if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", cid) == null)
                 throw new ApiException(400, "இந்த user-க்கு கம்பெனி தேவை");
             if (!type.equals("owner")) {                            // sales / stock: one shop; warehouse: one warehouse
@@ -3353,10 +3395,12 @@ public class BillingService {
         if (u == null && pw.isEmpty()) pw = DEFAULT_PASSWORD;                       // new user without a password -> the default (admin1234)
         if (!pw.isEmpty()) validPassword(pw);
         boolean self = u != null && str(u.get("id")).equals(c.uid());
-        if (self && (!active || !type.equals("admin")))
+        if (self && (!active || !type.equals(c.type())))
             throw new ApiException(400, "உங்கள் சொந்த admin கணக்கை நிறுத்தவோ type மாற்றவோ முடியாது");
-        if (u != null && "admin".equals(str(u.get("user_type"))) && bool(u.get("active")) && (!type.equals("admin") || !active) && activeAdmins() <= 1)
+        if (u != null && adminLevel(str(u.get("user_type"))) && bool(u.get("active")) && (!adminLevel(type) || !active) && activeAdmins() <= 1)
             throw new ApiException(400, "குறைந்தது ஒரு Admin இருக்க வேண்டும்");
+        if (u != null && "system".equals(str(u.get("user_type"))) && bool(u.get("active")) && (!type.equals("system") || !active) && activeSystems() <= 1)
+            throw new ApiException(400, "குறைந்தது ஒரு System user இருக்க வேண்டும்");
         LocalDateTime now = now();
         long maxS = in.get("maxSessions") == null || str(in.get("maxSessions")).isBlank() ? (u == null ? DEFAULT_MAX_SESSIONS : lng(u.get("max_sessions"))) : lng(in.get("maxSessions"));
         long idleM = in.get("idleMinutes") == null || str(in.get("idleMinutes")).isBlank() ? (u == null ? DEFAULT_IDLE_MINUTES : lng(u.get("idle_minutes"))) : lng(in.get("idleMinutes"));
@@ -3365,8 +3409,8 @@ public class BillingService {
         if (u == null) {
             id = newId("u");
             byte[] salt = bytes(16);
-            db.update("INSERT INTO users (id, username, full_name, user_type, company_id, branch_id, pass_salt, pass_hash, active, must_change, max_sessions, idle_minutes, created_at, updated_at) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)", id, un, name, type, cid, bid, b64(salt), hash(pw, salt), active, maxS, idleM, now, now);
+            db.update("INSERT INTO users (id, username, full_name, user_type, company_id, branch_id, pass_salt, pass_hash, active, must_change, max_sessions, idle_minutes, created_at, updated_at, created_by) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)", id, un, name, type, cid, bid, b64(salt), hash(pw, salt), active, maxS, idleM, now, now, c.uid());
         } else {
             db.update("UPDATE users SET max_sessions = ?, idle_minutes = ? WHERE id = ?", maxS, idleM, id);
             if (maxS > 0) db.update("DELETE FROM auth_tokens WHERE user_id = ? AND token_hash NOT IN (SELECT token_hash FROM (SELECT token_hash FROM auth_tokens WHERE user_id = ? "
@@ -3392,9 +3436,12 @@ public class BillingService {
         Ctx c = admin(auth);
         Map<String, Object> u = db.one("SELECT * FROM users WHERE id = ?", id);
         if (u == null) throw new ApiException(404, "User இல்லை");
+        if (!c.system() && !c.uid().equals(str(u.get("created_by")))) throw new ApiException(404, "User இல்லை");
         if (id.equals(c.uid())) throw new ApiException(400, "உங்களை நீங்களே நீக்க முடியாது");
-        if ("admin".equals(str(u.get("user_type"))) && bool(u.get("active")) && activeAdmins() <= 1)
+        if (adminLevel(str(u.get("user_type"))) && bool(u.get("active")) && activeAdmins() <= 1)
             throw new ApiException(400, "குறைந்தது ஒரு Admin இருக்க வேண்டும்");
+        if ("system".equals(str(u.get("user_type"))) && bool(u.get("active")) && activeSystems() <= 1)
+            throw new ApiException(400, "குறைந்தது ஒரு System user இருக்க வேண்டும்");
         db.update("DELETE FROM users WHERE id = ?", id);   // tokens are removed by ON DELETE CASCADE
         return obj("ok", true);
     }
@@ -3404,13 +3451,18 @@ public class BillingService {
         String cid = str(in.get("companyId"));
         if (!cid.isEmpty() && db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", cid) == null)
             throw new ApiException(404, "கம்பெனி இல்லை");
+        if (!cid.isEmpty()) ownCompany(c, cid);
         db.update("UPDATE auth_tokens SET company_id = ? WHERE token_hash = ?", cid.isEmpty() ? null : cid, c.key);
         c.activeCompany = cid.isEmpty() ? null : cid;
         return session(c);
     }
 
     private long activeAdmins() {
-        return lng(db.one("SELECT COUNT(*) AS n FROM users WHERE user_type = 'admin' AND active = 1").get("n"));
+        return lng(db.one("SELECT COUNT(*) AS n FROM users WHERE user_type IN ('admin','system') AND active = 1").get("n"));
+    }
+
+    private long activeSystems() {
+        return lng(db.one("SELECT COUNT(*) AS n FROM users WHERE user_type = 'system' AND active = 1").get("n"));
     }
 
     // ================================================================ output mapping
@@ -3501,6 +3553,7 @@ public class BillingService {
         if (c.admin()) {
             if (blank(company)) throw new ApiException(400, "கம்பெனியை தேர்வு செய்யவும்");
             if (db.one("SELECT id FROM companies WHERE id = ?", company.trim()) == null) throw new ApiException(404, "கம்பெனி இல்லை");
+            ownCompany(c, company.trim());
             return company.trim();
         }
         if (!c.owner()) throw new ApiException(403, "Invoice: Owner / Admin மட்டும்");
@@ -3636,7 +3689,7 @@ public class BillingService {
 
     /** admin: every company's invoice for a month */
     public Map<String, Object> adminInvoices(String auth, String monthIn) {
-        admin(auth);
+        system(auth);
         YearMonth m = month(monthIn, YearMonth.now(zone).minusMonths(1));
         boolean live = !m.isBefore(YearMonth.now(zone));
         LocalDateTime from = m.atDay(1).atStartOfDay(), to = m.plusMonths(1).atDay(1).atStartOfDay();
@@ -3674,14 +3727,14 @@ public class BillingService {
     }
 
     public Map<String, Object> adminGenerateInvoices(String auth, Map<String, Object> in) {
-        admin(auth);
+        system(auth);
         int n = generateInvoices(month(str(in.get("month")), YearMonth.now(zone).minusMonths(1)));
         return obj("created", n);
     }
 
     /** admin: payment received {amount, ref, date} (or paid=false to undo) */
     public Map<String, Object> payInvoice(String auth, long id, Map<String, Object> in) {
-        Ctx c = admin(auth);
+        Ctx c = system(auth);
         Map<String, Object> inv = db.one("SELECT * FROM platform_invoices WHERE id = ?", id);
         if (inv == null) throw new ApiException(404, "Invoice இல்லை");
         if (Boolean.FALSE.equals(in.get("paid"))) {
@@ -4115,7 +4168,7 @@ public class BillingService {
 
     /** admin: load a template into one company (merge by name; replace = start from an empty catalog). stock = opening stock per size in every shop (0 = none). */
     public Map<String, Object> loadTemplate(String auth, String companyId, Map<String, Object> in) {
-        admin(auth);
+        ownCompany(admin(auth), companyId);
         if (db.one("SELECT id FROM companies WHERE id = ? AND archived = 0", companyId) == null) throw new ApiException(404, "கம்பெனி இல்லை");
         return applyImport(companyId, templateCsv(str(in.get("template")).trim()), bool(in.get("replace")), tplStock(in, "stock"), null, "template", false);
     }

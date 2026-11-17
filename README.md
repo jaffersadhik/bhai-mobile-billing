@@ -176,3 +176,9 @@ Menu → **🧹 Browser டேட்டா அழி**: unregisters the service 
 - Order line for a weight item: `size="750 g"`, `qty=1`, `rate=amt`, `wt=grams`, `short=grams` (same shape as staff orders); "Cart-ல் ஏற்று" loads it into the billing cart as grams. Limits 10 g – 99 kg per line.
 - Pre-order is switched ON once for all existing companies (migration checks the old column default); the cart now shows the server error inline (red text above the button) as well as the toast.
 - Test: `test/t_weight_order_ui.py`.
+
+## System user type (overlay _17)
+- New user type **system** (🛡) next to admin / owner / sales / stock / warehouse. System = every Admin function + the only type that can create **Admin / System** users; it sees every company and user, Software Invoices (platform billing) and Post-deploy Tests / Rollback.
+- **Admin** can no longer create / promote Admin or System users (HTTP 403). An admin sees and manages only the **companies and users he created** (`companies.created_by`, `users.created_by`): overview, open company, edit / delete, branches, pay modes, templates, sales, sessions, invoices of his companies. Another admin's companies and users are hidden (404).
+- Migration: users.user_type gets `system`, `created_by` columns are added, and the oldest existing admin becomes the **System** user (other existing admins keep the Admin type and, having created nothing, see nothing until they create their own companies — System can edit them). At least one active System user must remain. A fresh install creates `admin / admin1234` as System.
+- Tests: `test/t_system_user.py` (API, 21 checks), `test/t_system_ui.py`.
