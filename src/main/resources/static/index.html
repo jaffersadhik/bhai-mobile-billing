@@ -3713,7 +3713,7 @@ function renderOrders(){
     <button class="admin" id="mShop" style="margin-top:6px"><span class="pl" aria-hidden="true">🔗</span><div><b>Online shop link</b><small>வாடிக்கையாளருக்கு அனுப்ப · ஒவ்வொரு பில்லின் WhatsApp-லும் தானாக சேரும்</small></div></button>
     ${L.length?L.map(o=>`<button class="ordc" data-ordopen="${o.id}"><div class="r1"><b>${esc(o.no)} · ${esc(o.name)}</b><span class="ost ${esc(o.status)}">${OST[o.status]||esc(o.status)}</span></div>
       <small>${o.source==="staff"?`📝 ${esc(o.takenBy)} எடுத்தது · `:"🌐 Online · "}${esc(fmtDate(o.at))} · ${o.pieces} pcs · <b>${inr(o.total)}</b> · ${o.mode==="pickup"?"🏬 பிக்அப்":"🚚 டெலிவரி"}${o.branch?" · "+esc(o.branch):""}</small>
-      <small>${(o.lines||[]).map(l=>`${esc(l.name)} (${esc(l.size)}) × ${l.qty}${l.short?" 📦":""}`).join(" · ")}</small>${(o.lines||[]).some(l=>l.short)?`<small style="color:#b45309;font-weight:800">📦 முன்பதிவு — ஸ்டாக் வந்தவுடன் வழங்கவும்</small>`:""}</button>`).join("")
+      <small>${(o.lines||[]).map(l=>`${esc(l.name)} (${esc(l.size)})${l.wt?"":" × "+l.qty}${l.short?" 📦":""}`).join(" · ")}</small>${(o.lines||[]).some(l=>l.short)?`<small style="color:#b45309;font-weight:800">📦 முன்பதிவு — ஸ்டாக் வந்தவுடன் வழங்கவும்</small>`:""}</button>`).join("")
       :`<div class="none"><b>🛒</b>${ordFlt==="open"?"நடப்பில் ஆர்டர் இல்லை":"ஆர்டர் இல்லை"}</div>`}`;
 }
 function openOrder(id){
@@ -3726,7 +3726,7 @@ function openOrder(id){
       <dt>முறை</dt><dd>${o.mode==="pickup"?"🏬 கடையில் பெறுவார்":"🚚 டோர் டெலிவரி"}</dd>${o.mode!=="pickup"?`<dt>முகவரி</dt><dd>${esc(o.address)}</dd>`:""}
       <dt>கடை</dt><dd>${esc(o.branch||"-")}</dd>${o.notes?`<dt>குறிப்பு</dt><dd>${esc(o.notes)}</dd>`:""}</dl></div>
     <div class="box">${(o.lines||[]).map(l=>`<div class="bl"><div class="r1"><div class="nm">${esc(l.name)}<small>${esc(l.en||"")}</small></div><div class="amt">${inr(l.amt)}</div></div>
-      <div class="r2"><span>Size: <b>${esc(l.size)}</b> | ${l.qty} × ${inr(l.rate)}${byId[l.id]&&canStock()&&stockData&&stockData.map?` | ஸ்டாக் ${stQty(l.id,l.size)}`:""}</span></div>${l.short?`<div class="r2" style="color:#b45309;font-weight:800">📦 முன்பதிவு — ${l.short} குறைவு (ஸ்டாக் வந்தவுடன்)</div>`:""}</div>`).join("")}
+      <div class="r2"><span>${l.wt?"⚖️ <b>"+esc(l.size)+"</b>":"Size: <b>"+esc(l.size)+"</b> | "+l.qty+" × "+inr(l.rate)}${!l.wt&&byId[l.id]&&canStock()&&stockData&&stockData.map?` | ஸ்டாக் ${stQty(l.id,l.size)}`:""}</span></div>${l.short?`<div class="r2" style="color:#b45309;font-weight:800">📦 முன்பதிவு — ${l.wt?fmtG(l.short):l.short} குறைவு (ஸ்டாக் வந்தவுடன்)</div>`:""}</div>`).join("")}
       <div class="sum" style="margin-top:8px"><div class="gt"><span>மொத்தம் (${o.pieces} pcs)</span><span>${inr(o.total)}</span></div></div></div>
     ${can&&!done?`${o.status==="new"?`<button class="cta leaf" data-ordset="accepted">👍 ஆர்டரை ஏற்றுக்கொள் (Take over)</button>`:""}
       ${!o.billNo?`<button class="cta" id="ordToBill">🧾 பில்லாக மாற்று (Cart-ல் ஏற்று)</button>`:""}
@@ -3750,7 +3750,7 @@ function orderToBill(){
   const o=ordCur; if(!o) return;
   if(lines().length&&!confirm("Cart-ல் உள்ள ஐட்டங்கள் நீக்கப்பட்டு இந்த ஆர்டர் ஏற்றப்படும். சரியா?")) return;
   cart={}; customs={}; ovr={};
-  let miss=0; (o.lines||[]).forEach(l=>{ const it=byId[l.id]; if(it&&it.sizes.some(z=>z.size===l.size)) cart[l.id+"|"+l.size]=l.qty; else miss++; });
+  let miss=0; (o.lines||[]).forEach(l=>{ const it=byId[l.id]; if(it&&isW(it)&&l.wt) cart[wKey(l.id)]=(cart[wKey(l.id)]||0)+l.wt*(l.qty||1); else if(it&&!isW(it)&&it.sizes.some(z=>z.size===l.size)) cart[l.id+"|"+l.size]=l.qty; else miss++; });
   save(); renderAll(); ordForBill={id:o.id,no:o.no,phone:o.phone,name:o.name};
   closeSheet(); if(location.hash==="#orders") location.hash="";
   setTimeout(()=>{ openBill({phone:o.phone,customer:o.name}); if(miss) toast(miss+" ஐட்டம் catalog-ல் இல்லை — Custom item-ஆக சேர்க்கவும்"); },250);

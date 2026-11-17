@@ -170,3 +170,9 @@ Menu → **🧹 Browser டேட்டா அழி**: unregisters the service 
 - When OFF, an order above stock is refused with HTTP 409.
 - Fix: weight items (fish, meat — `sold_by=weight`) can now be ordered from the shop in whole kg/g steps (earlier server answered "ஆர்டர் ஐட்டம் தவறு"); stock (kept in grams) is converted to kg for the check.
 - Test: `test/t_preorder_ui.py`.
+
+## Weight items in the online shop (overlay _16)
+- Weight items (`sold_by=weight`) are ordered by **weight**: chips (250 g / 500 g / 1 kg / 2 kg), a number box with kg/g selector and ± steps; price shown live. Count items keep the + / − piece stepper. Cart, success page, WhatsApp text and admin order screens show "750 g" for weight lines.
+- Order line for a weight item: `size="750 g"`, `qty=1`, `rate=amt`, `wt=grams`, `short=grams` (same shape as staff orders); "Cart-ல் ஏற்று" loads it into the billing cart as grams. Limits 10 g – 99 kg per line.
+- Pre-order is switched ON once for all existing companies (migration checks the old column default); the cart now shows the server error inline (red text above the button) as well as the toast.
+- Test: `test/t_weight_order_ui.py`.

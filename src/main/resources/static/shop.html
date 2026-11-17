@@ -137,17 +137,23 @@ const photoUrl=it=>it.photo?`/api/shop/${encodeURIComponent(CODE)}/photo/${encod
 const pic=(it,cls)=>it.photo?`<img loading="lazy" src="${esc(photoUrl(it))}" alt="${esc(it.ta)}">`:esc((catById[it.cat]||{}).emoji||"🛍");
 const tint=it=>(catById[it.cat]||{}).color||"#eee";
 /* stock of one item + size at the chosen location ("all" = every shop and warehouse together) */
-function qtyAt(id,size,where){ const k=id+"|"+size, w=where||loc, it=byId[id], ug=it&&it.by==="weight"?(it.unit==="g"?1:1000):1;   // weight items: stock is in grams
-  if(w==="all") return Math.floor(Object.values(S.stock).reduce((a,m)=>a+(m[k]||0),0)/ug);
-  return Math.floor(((S.stock[w]||{})[k]||0)/ug); }
+const isW=it=>!!it&&it.by==="weight", UG=it=>it.unit==="g"?1:1000;           // weight items: sold by weight, stock + cart are in grams, rate is per kg (or per g)
+const fmtG=g=>g>=1000?(+(g/1000).toFixed(3))+" kg":Math.round(g)+" g";
+const wStep=it=>it.unit==="g"?100:250;
+function qtyAt(id,size,where){ const it=byId[id]; if(isW(it)) size=it.sizes[0].size;      // weight item: grams in stock
+  const k=id+"|"+size, w=where||loc;
+  if(w==="all") return Object.values(S.stock).reduce((a,m)=>a+(m[k]||0),0);
+  return (S.stock[w]||{})[k]||0; }
+const fq=(id,v)=>isW(byId[id])?fmtG(v):v;
 const onlyIn=()=>inOnly===null?!NOSTOCK():inOnly;   // 'in stock only' is on by default, off when the shop takes orders without stock
 const NOSTOCK=()=>!!(S.company&&S.company.orderNoStock);   // shop takes orders even when stock is 0
 const itemQty=it=>it.sizes.reduce((a,z)=>a+qtyAt(it.id,z.size),0);
 function priceTxt(it){ const r=it.sizes.map(z=>z.rate), lo=Math.min(...r), hi=Math.max(...r); return lo===hi?inr(lo):inr(lo)+" – "+inr(hi); }
 const cartKeys=()=>Object.keys(cart).filter(k=>cart[k]>0&&byId[k.split("|")[0]]);
-const cartPcs=()=>cartKeys().reduce((a,k)=>a+cart[k],0);
-const rateOf=k=>{ const [id,sz]=k.split("|"); const z=byId[id]&&byId[id].sizes.find(x=>x.size===sz); return z?z.rate:0; };
-const cartTot=()=>cartKeys().reduce((a,k)=>a+cart[k]*rateOf(k),0);
+const cartPcs=()=>cartKeys().reduce((a,k)=>a+(isW(byId[k.split("|")[0]])?1:cart[k]),0);
+const rateOf=k=>{ const [id,sz]=k.split("|"); const it=byId[id]; if(isW(it)) return it.sizes[0].rate; const z=it&&it.sizes.find(x=>x.size===sz); return z?z.rate:0; };
+const lineAmt=k=>{ const it=byId[k.split("|")[0]]; return isW(it)?Math.round(rateOf(k)*cart[k]/UG(it)*100)/100:cart[k]*rateOf(k); };
+const cartTot=()=>cartKeys().reduce((a,k)=>a+lineAmt(k),0);
 function saveCart(){ ls.set("cart",cart); renderBar(); }
 function renderBar(){ const n=cartPcs(); $("#bar").hidden=!n||!!ORDER; $("#barN").textContent=n+" pcs"; $("#barT").textContent=inr(cartTot()); }
 function showSheet(){ $("#veil").classList.add("on"); $("#sheet").classList.add("on"); $("#sheet").scrollTop=0; }
@@ -193,18 +199,46 @@ function render(){
   const qi=$("#q"); if(q){ qi.focus(); qi.setSelectionRange(q.length,q.length); }
 }
 function card(it){
-  const n=itemQty(it), inc=it.sizes.reduce((a,z)=>a+(cart[it.id+"|"+z.size]||0),0);
+  const n=itemQty(it), inc=isW(it)?(cart[it.id+"|W"]?fmtG(cart[it.id+"|W"]):0):it.sizes.reduce((a,z)=>a+(cart[it.id+"|"+z.size]||0),0);
   return `<button class="card${n>0||NOSTOCK()?"":" dim"}" data-item="${esc(it.id)}" style="--tint:${esc(tint(it))}">
-    <div class="img">${pic(it)}<span class="badge${n>0||NOSTOCK()?"":" out"}">${n>0?(n>20?"இருப்பு உள்ளது":"இருப்பு "+n):(NOSTOCK()?"முன்பதிவு":"இருப்பு இல்லை")}</span>${inc?`<span class="incart">${inc}</span>`:""}</div>
+    <div class="img">${pic(it)}<span class="badge${n>0||NOSTOCK()?"":" out"}">${n>0?((isW(it)?n>20000:n>20)?"இருப்பு உள்ளது":"இருப்பு "+fq(it.id,n)):(NOSTOCK()?"முன்பதிவு":"இருப்பு இல்லை")}</span>${inc?`<span class="incart">${inc}</span>`:""}</div>
     <div class="in"><b>${esc(it.ta)}</b><small>${esc(it.en||"")}</small><div class="pr">${priceTxt(it)}</div></div></button>`;
 }
 function openItem(id){
   const it=byId[id]; if(!it) return;
+  if(isW(it)){ sel={id, size:"W", qty:1, wt:it.unit==="g"?500:1000, u:it.unit==="g"?"g":"kg"}; renderItem(); showSheet(); return; }
   const first=it.sizes.find(z=>qtyAt(it.id,z.size)>0)||it.sizes[0];
   sel={id, size:first.size, qty:1};
   renderItem(); showSheet();
 }
+const wGrams=()=>{ const v=parseFloat(String(($("#wIn")||{}).value||"").replace(",",".")); return isFinite(v)&&v>0?Math.round(sel.u==="kg"?v*1000:v):0; };
+function wtNote(it){ const have=qtyAt(it.id), inC=cart[it.id+"|W"]||0, g=sel.wt;
+  return !g?"எடையை உள்ளிடவும்":(g<10||g>99000)?"10 g – 99 kg வரை":have<=0&&NOSTOCK()?"📦 இப்போது ஸ்டாக் இல்லை — முன்பதிவு ஆர்டர் எடுக்கப்படும்; ஸ்டாக் வந்ததும் கடை தொடர்பு கொள்ளும்":(inC+g>have&&NOSTOCK())?"📦 ஸ்டாக் குறைவு ("+fmtG(Math.max(0,have))+") — மீதி முன்பதிவாக எடுக்கப்படும்":""; }
+function wtPaint(){ const it=byId[sel.id], ok=sel.wt>=10&&sel.wt<=99000&&(NOSTOCK()||qtyAt(it.id)>0);
+  const b=$("#addCart"); if(b){ b.disabled=!ok; b.textContent=ok?"🛒 Cart-ல் சேர் · "+inr(Math.round(it.sizes[0].rate*sel.wt/UG(it)*100)/100):(qtyAt(it.id)>0||NOSTOCK()?"எடையை சரி பார்க்கவும்":"இருப்பு இல்லை"); }
+  const a=$("#wAmt"); if(a) a.textContent=sel.wt?fmtG(sel.wt)+" = "+inr(Math.round(it.sizes[0].rate*sel.wt/UG(it)*100)/100):""; const n=$("#wNote"); if(n) n.textContent=wtNote(it);
+  document.querySelectorAll("[data-wq]").forEach(x=>x.classList.toggle("on",+x.dataset.wq===sel.wt)); }
+function renderWeightItem(it){
+  const have=qtyAt(it.id), inCart=cart[it.id+"|W"]||0, z=it.sizes[0], chips=(it.unit==="g"?[100,250,500,1000]:[250,500,1000,2000]);
+  $("#sb").innerHTML=`<h2>${esc(it.ta)}</h2><p class="sub">${esc(it.en||"")} · ${esc((catById[it.cat]||{}).ta||"")}</p>
+    <div class="big" style="--tint:${esc(tint(it))}">${pic(it)}</div>
+    <div class="addrow"><div style="font-size:24px;font-weight:900;color:var(--leaf-d)">${inr(z.rate)} <small style="font-size:13px;color:var(--muted)">/ ${it.unit}</small></div>
+      <small style="margin-left:auto;font-weight:800;color:var(--muted)">${have>0?"இருப்பு "+fmtG(have):(NOSTOCK()?"முன்பதிவு":"இல்லை")}</small></div>
+    <div class="lbl">⚖️ எவ்வளவு வேண்டும்? (Weight)</div>
+    <div class="chips" id="wch">${chips.map(g=>`<button type="button" data-wq="${g}" class="${g===sel.wt?"on":""}">${fmtG(g)}</button>`).join("")}</div>
+    <div class="addrow" style="margin-top:8px"><div class="step"><button data-wd="-1" aria-label="Less">−</button></div>
+      <input id="wIn" type="number" inputmode="decimal" min="0" step="any" style="flex:1;min-width:0;height:44px;border:1.5px solid var(--line);border-radius:12px;text-align:center;font-size:18px;font-weight:900" value="${sel.u==="kg"?+(sel.wt/1000).toFixed(3):sel.wt}">
+      <select id="wUn" aria-label="Unit" style="height:44px;border:1.5px solid var(--line);border-radius:12px;font-weight:800;padding:0 8px"><option value="kg"${sel.u==="kg"?" selected":""}>kg</option><option value="g"${sel.u==="g"?" selected":""}>g</option></select>
+      <div class="step"><button data-wd="1" aria-label="More">+</button></div></div>
+    <p class="sub" id="wAmt" style="margin-top:8px;font-weight:800;color:var(--leaf-d)"></p>
+    ${inCart?`<p class="sub">🛒 ஏற்கனவே Cart-ல்: ${fmtG(inCart)}</p>`:""}
+    <p class="sub" id="wNote" style="color:#b45309;font-weight:700"></p>
+    <button class="cta" id="addCart">🛒 Cart-ல் சேர்</button>
+    <button class="cta ghost" id="closeSheet2">மேலும் பொருட்கள் பார்</button>`;
+  wtPaint();
+}
 function renderItem(){
+  if(isW(byId[sel.id])){ renderWeightItem(byId[sel.id]); return; }
   const it=byId[sel.id], z=it.sizes.find(x=>x.size===sel.size), have=qtyAt(it.id,sel.size), inCart=cart[it.id+"|"+sel.size]||0;
   const where=loc==="all"?S.branches.filter(b=>qtyAt(it.id,sel.size,b.id)>0).map(b=>`${b.kind==="warehouse"?"🏭":"🏬"} ${esc(b.name)}: ${qtyAt(it.id,sel.size,b.id)}`).join(" · "):"";
   $("#sb").innerHTML=`<h2>${esc(it.ta)}</h2><p class="sub">${esc(it.en||"")} · ${esc((catById[it.cat]||{}).ta||"")}</p>
@@ -226,8 +260,8 @@ function openCart(){
   $("#sb").innerHTML=`<h2>🛒 உங்கள் Cart</h2><p class="sub">${esc(S.company.name)}</p>
     <div class="box">${K.map(k=>{ const [id,sz]=k.split("|"), it=byId[id], r=rateOf(k);
       return `<div class="cl" data-k="${esc(k)}"><div class="th" style="--tint:${esc(tint(it))}">${pic(it)}</div>
-        <div><b>${esc(it.ta)}</b><small>${esc(sz)} · ${inr(r)} × ${cart[k]} = <b>${inr(r*cart[k])}</b></small><small class="bad" data-warn="${esc(k)}"></small></div>
-        <div class="step"><button data-cq="-1" aria-label="Less">−</button><span>${cart[k]}</span><button data-cq="1" aria-label="More">+</button></div></div>`; }).join("")}
+        <div><b>${esc(it.ta)}</b><small>${isW(it)?fmtG(cart[k])+" × "+inr(r)+" / "+it.unit:esc(sz)+" · "+inr(r)+" × "+cart[k]} = <b>${inr(lineAmt(k))}</b></small><small class="bad" data-warn="${esc(k)}"></small></div>
+        <div class="step"><button data-cq="-1" aria-label="Less">−</button><span>${isW(it)?fmtG(cart[k]):cart[k]}</span><button data-cq="1" aria-label="More">+</button></div></div>`; }).join("")}
       <div class="tot"><span>மொத்தம் (${cartPcs()} pcs)</span><span>${inr(cartTot())}</span></div></div>
     <p class="sub" id="preNote" style="color:#b45309;font-weight:700" hidden>📦 முன்பதிவு: ஸ்டாக் இல்லாத ஐட்டங்கள் முன்பதிவாக எடுக்கப்படும் — ஸ்டாக் வந்தவுடன் கடை உங்களை தொடர்பு கொள்ளும்.</p>
     <div class="lbl">உங்கள் விவரம்</div>
@@ -237,6 +271,7 @@ function openCart(){
     <label class="fld" id="fA"${f.mode==="pickup"?" hidden":""}>டெலிவரி முகவரி *<textarea id="oAddr" rows="3" maxlength="300">${esc(f.address||"")}</textarea></label>
     <label class="fld" id="fB">எந்த கடை / warehouse-லிருந்து *<select id="oBranch"><option value="">— தேர்வு செய்யவும் —</option>${S.branches.map(b=>`<option value="${esc(b.id)}"${b.id===fill?" selected":""}>${b.kind==="warehouse"?"🏭":"🏬"} ${esc(b.name)}</option>`).join("")}</select></label>
     <label class="fld">குறிப்பு (optional)<textarea id="oNotes" rows="2" maxlength="300" placeholder="எ.கா. மாலை 6 மணிக்கு பிறகு"></textarea></label>
+    <p class="bad" id="ordErr" style="font-weight:800;font-size:13.5px;margin:6px 2px" hidden></p>
     <button class="cta" id="placeOrder">✅ ஆர்டர் செய் · ${inr(cartTot())}</button>
     <p class="sub" style="text-align:center;margin-top:8px">பணம்: டெலிவரி / பிக்அப் நேரத்தில் Cash அல்லது UPI · விலை, இருப்பை கடை உறுதி செய்யும்</p>`;
   showSheet(); checkCartBranch();
@@ -246,7 +281,7 @@ function checkCartBranch(){
   cartKeys().forEach(k=>{ const el=document.querySelector(`[data-warn="${CSS.escape(k)}"]`); if(!el) return;
     const [id,sz]=k.split("|"), h=b?qtyAt(id,sz,b):qtyAt(id,sz,"all");
     if(NOSTOCK()){ el.textContent=cart[k]>h?"📦 ஸ்டாக் குறைவு — முன்பதிவாக எடுக்கப்படும்":""; return; }
-    el.textContent=cart[k]>h?(b?"இந்த கடையில் "+h+" மட்டும்":"இருப்பு "+h+" மட்டும்"):""; if(cart[k]>h) bad++; });
+    el.textContent=cart[k]>h?(b?"இந்த கடையில் "+fq(id,h)+" மட்டும்":"இருப்பு "+fq(id,h)+" மட்டும்"):""; if(cart[k]>h) bad++; });
   { const pn=$("#preNote"); if(pn) pn.hidden=!(NOSTOCK()&&cartKeys().some(k=>{ const [id,sz]=k.split("|"); return cart[k]>(b?qtyAt(id,sz,b):qtyAt(id,sz,"all")); })); }
   return bad;
 }
@@ -260,9 +295,9 @@ async function placeOrder(){
   ls.set("me",{name,phone,mode,address,branch});
   const btn=$("#placeOrder"); btn.disabled=true;
   try{
-    const r=await api("/orders","POST",{name,phone,mode,address,branch,notes,lines:cartKeys().map(k=>({itemId:k.split("|")[0],size:k.split("|")[1],qty:cart[k]}))});
+    const r=await api("/orders","POST",{name,phone,mode,address,branch,notes,lines:cartKeys().map(k=>isW(byId[k.split("|")[0]])?({itemId:k.split("|")[0],wt:cart[k],qty:1}):({itemId:k.split("|")[0],size:k.split("|")[1],qty:cart[k]}))});
     const L=ls.get("orders",[]); L.unshift({no:r.no,token:r.token,at:new Date().toISOString(),total:r.total}); ls.set("orders",L.slice(0,30));
-    const ordLines=cartKeys().map(k=>{ const [id,sz]=k.split("|"); return {n:byId[id].ta,sz,q:cart[k],r:rateOf(k),pre:NOSTOCK()&&cart[k]>qtyAt(id,sz,branch)}; });
+    const ordLines=cartKeys().map(k=>{ const [id,sz]=k.split("|"); return {n:byId[id].ta,sz:isW(byId[id])?fmtG(cart[k]):sz,w:isW(byId[id]),q:cart[k],r:lineAmt(k)/(isW(byId[id])?1:cart[k]),pre:NOSTOCK()&&cart[k]>qtyAt(id,sz,branch)}; });
     const hasPre=ordLines.some(l=>l.pre);
     const brName=((S.branches.find(b=>b.id===branch))||{}).name||"";
     cart={}; saveCart(); render();
@@ -270,7 +305,7 @@ async function placeOrder(){
     const waNo=(S.company.wa||S.company.phone||"").replace(/\D/g,"").slice(-10);
     const waMsg=[`*${S.company.name}* — புதிய Online ஆர்டர் ${r.no}`,
       `👤 ${name}`,`📱 ${phone}`,mode==="pickup"?"🏬 கடையில் பெறுவார் (Pickup)":"🚚 டோர் டெலிவரி",mode==="pickup"?null:`📍 ${address}`,brName?`🏬 கடை: ${brName}`:null,"",
-      ...ordLines.map((l,i)=>`${i+1}. ${l.n} (${l.sz}) × ${l.q} = ${inr(l.r*l.q)}${l.pre?" 📦 முன்பதிவு":""}`),hasPre?"📦 முன்பதிவு ஐட்டங்கள்: ஸ்டாக் வந்தவுடன் வழங்கவும்":null,"",`*மொத்தம்: ${inr(r.total)}*`,notes?`📝 ${notes}`:null,
+      ...ordLines.map((l,i)=>`${i+1}. ${l.n} — ${l.w?l.sz:"("+l.sz+") × "+l.q} = ${inr(l.r*(l.w?1:l.q))}${l.pre?" 📦 முன்பதிவு":""}`),hasPre?"📦 முன்பதிவு ஐட்டங்கள்: ஸ்டாக் வந்தவுடன் வழங்கவும்":null,"",`*மொத்தம்: ${inr(r.total)}*`,notes?`📝 ${notes}`:null,
       `ஆர்டர் நிலை: ${link}`].filter(x=>x!==null).join("\n");
     const waUrl="https://wa.me/91"+waNo+"?text="+encodeURIComponent(waMsg)+"&raw=1";
     $("#sb").innerHTML=`<div class="ok"><div class="tick">✓</div><h2>ஆர்டர் ${esc(r.no)} பெறப்பட்டது</h2>
@@ -280,7 +315,7 @@ async function placeOrder(){
       ${waNo?`<p class="sub" style="margin-top:6px">📲 கடைக்கு WhatsApp-ல் ஆர்டர் விவரத்தை அனுப்பினால் உடனே பார்ப்பார்கள்</p><a class="cta" id="waSend" href="${esc(waUrl)}" target="_blank" rel="noopener">💬 WhatsApp-ல் ஆர்டரை அனுப்பு</a>`:""}
       <button class="cta ghost" id="closeSheet2">மேலும் ஷாப்பிங்</button></div>`;
     if(waNo){ try{ window.open(waUrl,"_blank","noopener"); }catch(e){} }   // opens WhatsApp right away where the browser allows it; the button above always works
-  }catch(e){ toast(e.message); btn.disabled=false; }
+  }catch(e){ toast(e.message); const eb=$("#ordErr"); if(eb){ eb.textContent="⚠️ "+e.message; eb.hidden=false; } btn.disabled=false; }
 }
 const FLOW=[["new","ஆர்டர் பெறப்பட்டது","🧾"],["accepted","கடை ஏற்றுக்கொண்டது","👍"],["billed","பில் போடப்பட்டது / பேக் ஆனது","📦"],["out","டெலிவரிக்கு புறப்பட்டது","🚚"],["delivered","டெலிவரி / பெறப்பட்டது","✅"]];
 const ST_TXT={new:"புதியது",accepted:"ஏற்கப்பட்டது",billed:"பேக் ஆனது",out:"டெலிவரியில்",delivered:"டெலிவரி ஆனது",cancelled:"ரத்து"};
@@ -315,12 +350,16 @@ document.addEventListener("click",e=>{
   if(d.grp){ grp=d.grp; render(); window.scrollTo({top:0}); return; }
   if(t.id==="backGrp"){ grp=null; render(); return; }
   if(d.item){ openItem(d.item); return; }
+  if(d.wq){ sel.wt=+d.wq; sel.u=sel.wt>=1000&&sel.wt%1000===0?sel.u:sel.u; const i=$("#wIn"); i.value=sel.u==="kg"?+(sel.wt/1000).toFixed(3):sel.wt; wtPaint(); return; }
+  if(d.wd){ const it=byId[sel.id]; sel.wt=Math.max(0,Math.min(99000,(sel.wt||0)+(+d.wd)*wStep(it))); $("#wIn").value=sel.u==="kg"?+(sel.wt/1000).toFixed(3):sel.wt; wtPaint(); return; }
   if(d.sz){ sel.size=d.sz; sel.qty=1; renderItem(); return; }
   if(d.iq){ const h=qtyAt(sel.id,sel.size)-(cart[sel.id+"|"+sel.size]||0); sel.qty=Math.max(1,Math.min(NOSTOCK()?99:Math.max(1,h),sel.qty+(+d.iq))); renderItem(); return; }
+  if(t.id==="addCart"&&isW(byId[sel.id])){ const k=sel.id+"|W", have=qtyAt(sel.id); sel.wt=wGrams()||sel.wt; if(sel.wt<10||sel.wt>99000){ toast("எடை 10 g – 99 kg வரை"); return; }
+    const n=Math.min(99000,(cart[k]||0)+sel.wt); if(!NOSTOCK()&&n>have){ toast("இருப்பு "+fmtG(have)+" வரை மட்டுமே"); return; } cart[k]=n; saveCart(); closeSheet(); render(); toast("🛒 Cart-ல் சேர்க்கப்பட்டது"); return; }
   if(t.id==="addCart"){ const k=sel.id+"|"+sel.size, h=qtyAt(sel.id,sel.size); const n=NOSTOCK()?Math.min(99,(cart[k]||0)+sel.qty):Math.min(h,(cart[k]||0)+sel.qty);
     if(n<=(cart[k]||0)){ toast("இருப்பு அளவு வரை மட்டுமே சேர்க்க முடியும்"); return; } cart[k]=n; saveCart(); closeSheet(); render(); toast("🛒 Cart-ல் சேர்க்கப்பட்டது"); return; }
   if(t.id==="openCart"){ openCart(); return; }
-  if(d.cq){ const k=t.closest("[data-k]").dataset.k; cart[k]=Math.max(0,(cart[k]||0)+(+d.cq)); if(!cart[k]) delete cart[k]; saveCart(); render(); if(cartKeys().length) openCart(); else closeSheet(); return; }
+  if(d.cq){ const k=t.closest("[data-k]").dataset.k, wi=byId[k.split("|")[0]]; cart[k]=Math.max(0,(cart[k]||0)+(+d.cq)*(isW(wi)?wStep(wi):1)); if(!cart[k]||(isW(wi)&&cart[k]<10)) delete cart[k]; saveCart(); render(); if(cartKeys().length) openCart(); else closeSheet(); return; }
   if(d.mode){ document.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("on",b===t)); $("#fA").hidden=d.mode==="pickup"; return; }
   if(t.id==="placeOrder"){ placeOrder(); return; }
   if(t.id==="myOrders"){ openMyOrders(); return; }
@@ -331,6 +370,8 @@ document.addEventListener("input",e=>{
   if(e.target.id==="q") render();
   if(e.target.id==="inOnly"){ inOnly=e.target.checked; ls.set("inOnly",inOnly); render(); }
   if(e.target.id==="oBranch") checkCartBranch();
+  if(e.target.id==="wIn"){ sel.wt=wGrams(); wtPaint(); }
+  if(e.target.id==="wUn"){ const g=wGrams()||sel.wt; sel.u=e.target.value; sel.wt=g; $("#wIn").value=sel.u==="kg"?+(g/1000).toFixed(3):g; wtPaint(); }
 });
 boot();
 </script>

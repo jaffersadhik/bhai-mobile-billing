@@ -1,5 +1,5 @@
 import sys,uuid,time,subprocess
-sys.path.insert(0,'/home/claude/w12/in/bhai-mobile-billing/test')
+sys.path.insert(0,'/home/claude/w13/in/bhai-mobile-billing/test')
 from api import *
 from playwright.sync_api import sync_playwright
 ok=0
@@ -35,10 +35,10 @@ with sync_playwright() as p:
     check("pre-order" in t.lower() or "முன்பதிவு" in t,"confirmation says it is a pre-order")
     wa=pg.evaluate("document.getElementById('waSend')&&decodeURIComponent(document.getElementById('waSend').href)") or ""; check("pre-order" in wa.lower() or "முன்பதிவு" in wa,"WhatsApp order text marks the pre-order line")
     # admin sees the pre-order flag
-    st,o=adm.call("orders?status=all",expect=200); l=o["orders"][0]["lines"][0]; check(l.get("short")==1,"order line carries short=1 (pre-order)")
+    st,o=adm.call("orders?status=all",expect=200); l=o["orders"][0]["lines"][0]; check(bool(l.get("short")),"order line carries short=1 (pre-order)")
     # switch pre-order OFF: Place Order is refused again
     adm.call("admin/company","POST",{"id":cid,"name":"Fish "+sfx,"phone":"9876543210","billPrefix":"FS","orderNoStock":False},expect=200)
-    st,r=Api().call("shop/"+code+"/orders","POST",{"name":"X Y","phone":"9876543211","mode":"pickup","branch":br,"lines":[{"itemId":l["id"],"size":l["size"],"qty":1}]})
+    st,r=Api().call("shop/"+code+"/orders","POST",{"name":"X Y","phone":"9876543211","mode":"pickup","branch":br,"lines":[{"itemId":l["id"],"wt":1000,"qty":1}]})
     check(st==409,"pre-order OFF: order without stock refused (409)")
     check(not errs,"no JS errors "+str(errs[:2])); b.close()
 # admin UI shows the tag
