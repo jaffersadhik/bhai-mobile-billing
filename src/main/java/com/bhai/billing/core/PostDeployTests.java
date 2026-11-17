@@ -222,10 +222,10 @@ public class PostDeployTests {
 
     private void api(List<Res> out, Map<String, Map<String, Object>> before, List<String> tokens) {
         // admin-wide screens
-        Map<String, Object> admin = db.one("SELECT id FROM users WHERE user_type = 'admin' AND active = 1 ORDER BY created_at LIMIT 1");
-        if (admin == null) { out.add(new Res("api.admin", "api", "Admin கணக்கு", "fail", "Active admin இல்லை", null, 0)); return; }
+        Map<String, Object> admin = db.one("SELECT id, user_type FROM users WHERE user_type IN ('system', 'admin') AND active = 1 ORDER BY user_type = 'system' DESC, created_at LIMIT 1");   // System user first; it works without any plain admin
+        if (admin == null) { out.add(new Res("api.admin", "api", "Admin கணக்கு", "fail", "Active System / Admin இல்லை", null, 0)); return; }
         String at = token(s(admin.get("id")), null, tokens);
-        for (String p : new String[]{"/api/admin/overview", "/api/admin/invoices", "/api/me"}) call(out, before, "api.admin" + p, "Admin · " + p, p, at, 200);
+        for (String p : "system".equals(s(admin.get("user_type"))) ? new String[]{"/api/admin/overview", "/api/admin/invoices", "/api/me"} : new String[]{"/api/admin/overview", "/api/me"}) call(out, before, "api.admin" + p, "Admin · " + p, p, at, 200);
 
         for (Map<String, Object> c : db.query("SELECT id, name FROM companies ORDER BY name")) {
             String cid = s(c.get("id")), cn = s(c.get("name"));
@@ -284,8 +284,8 @@ public class PostDeployTests {
                 "SELECT COUNT(*) AS n FROM purchase_orders WHERE paid > total + 0.01", "PO-க்களில் அதிகம்");
         check(out, "data.bill.dup", "பில் எண் இரட்டிப்பு இல்லை",
                 "SELECT COUNT(*) AS n FROM (SELECT company_id, bill_no FROM bills GROUP BY company_id, bill_no HAVING COUNT(*) > 1) d", "இரட்டிப்பு பில் எண்கள்");
-        check(out, "data.users.admin", "குறைந்தது ஒரு active admin",
-                "SELECT CASE WHEN COUNT(*) > 0 THEN 0 ELSE 1 END AS n FROM users WHERE user_type = 'admin' AND active = 1", "admin இல்லை");
+        check(out, "data.users.admin", "குறைந்தது ஒரு active System / admin",
+                "SELECT CASE WHEN COUNT(*) > 0 THEN 0 ELSE 1 END AS n FROM users WHERE user_type IN ('system', 'admin') AND active = 1", "System / admin இல்லை");
         // record counts must not go down (data loss after a deploy / migration)
         String[][] counts = {{"companies", "நிறுவனங்கள்"}, {"users", "பயனர்கள்"}, {"bills", "பில்கள்"}, {"cancel_bills", "ரத்து பில்கள்"},
                 {"party_payments", "Retailer பணம் வரவு"}, {"purchase_orders", "Purchase orders"}, {"platform_invoices", "Software invoices"}};
