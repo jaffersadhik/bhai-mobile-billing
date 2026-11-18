@@ -3,7 +3,7 @@
 Updated: 2026-11-14 (language switcher, quick add-branch, per-company website address `/s/<name>`, WhatsApp order number, Dry Fruit Palace master-data template, CSV import)
 
 ## Stack
-- Spring Boot 3.5.x, Java 17, MySQL 8.0.16+ (utf8mb4). Single jar, Docker on AWS EC2. Developer works on Windows (D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing).
+- Spring Boot 3.5.x, Java 25 (JDK 25; Docker uses eclipse-temurin 25), MySQL 8.0.16+ (utf8mb4). Single jar, Docker on AWS EC2. Developer works on Windows (D:\hotel\bhai-mobile-billing-springboot\bhai-mobile-billing).
 - Package `com.bhai.billing`. **No JPA** — plain JDBC through `core/Db` (`query`, `one`, `update`, `insert`, `batch`, `tx`); `JdbcDb` implementation. Rows come back as `Map<String,Object>` with **lower-case** column labels.
 - `config/AppConfig` builds `BillingService(new JdbcDb(ds), ZoneId bmb.zone)`; startup runner calls `service.migrate()` then creates admin/admin123 on empty DB.
 - `web/ApiController` — `/api/*`, session token in `X-Auth` header, `run()` maps `ApiException` (status + Tamil message) and `DbException` to `{ "error": ... }`.

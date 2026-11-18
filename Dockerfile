@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # ---------- build stage: compile the Spring Boot jar ----------
-FROM maven:3.9-eclipse-temurin-17 AS build
+FROM maven:3.9-eclipse-temurin-25 AS build
 WORKDIR /src
 COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
@@ -8,7 +8,7 @@ COPY src ./src
 RUN mvn -B -q -DskipTests package
 
 # ---------- runtime stage: small JRE image ----------
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:25-jre
 RUN useradd --system --uid 10001 --no-create-home bmb
 WORKDIR /app
 COPY --from=build /src/target/bhai-mobile-billing.jar app.jar

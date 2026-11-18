@@ -3413,7 +3413,7 @@ function lbCard(it){
     <div class="sizes" role="group" aria-label="Size">${it.sizes.map(x=>{ const n=lb.q[it.id+"|"+x.size];
       return `<button class="sz ${x.size===s?'on':''}" data-lbsz="${esc(x.size)}" aria-pressed="${x.size===s}">${esc(x.size)}${n?`<i>${n}</i>`:""}</button>`;}).join("")}</div>
     <div class="buy"><div class="rate"><b>${inr(z.rate)}</b><small class="${z.code?"":"nocode"}" style="${z.code?"":"color:var(--bad);font-weight:700"}">${z.code?esc(z.code):"barcode இல்லை"}${canStock()&&stockData&&stockData.map?" · ஸ்டாக் "+stQty(it.id,s):""}</small></div>
-      <div>${q?`<div class="step"><button data-lbact="dec" aria-label="Decrease">−</button><span>${q}</span><button data-lbact="inc" aria-label="Increase">+</button></div>`:`<button class="add" data-lbact="inc">ADD</button>`}</div></div>
+      <div>${q?`<div class="step"><button data-lbact="dec" aria-label="Decrease">−</button><input class="qin" data-lbqin inputmode="numeric" maxlength="3" value="${q}" aria-label="Labels"><button data-lbact="inc" aria-label="Increase">+</button></div>`:`<button class="add" data-lbact="inc">ADD</button>`}</div></div>
   </article>`;
 }
 function renderLabels(){
@@ -4774,6 +4774,7 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   { const d=e.target.dataset||{}, h=e.target.closest&&e.target.closest("[data-key],[data-item]");
+    if(d.lbqin!==undefined){ const hh=e.target.closest("[data-lbitem]"); if(hh){ const k=hh.dataset.lbitem+"|"+lbSel(hh.dataset.lbitem); lbSet(k,parseInt(String(e.target.value).replace(/\D/g,""),10)||0); } return; }
     if(d.qin!==undefined&&h){ setQty(h.dataset.key||(h.dataset.item+"|"+selSize(h.dataset.item)),e.target.value); return; }
     if(d.win!==undefined&&h){ if(cart[wKey(h.dataset.item)]===undefined) return; setWeight(h.dataset.item,e.target.value,h.querySelector("[data-wu]").value); return; }   // not added yet: ADD / Enter commits
     if(d.wu!==undefined&&h){ const id=h.dataset.item, v=h.querySelector("[data-win]").value; wu[id]=e.target.value; refreshCard(id);

@@ -67,6 +67,7 @@ header .call{margin-left:auto;background:rgba(255,255,255,.16);color:#fff;border
 .szs button.on{border-color:var(--leaf);background:var(--leaf-l)}
 .szs button:disabled{opacity:.4}
 .step{display:flex;align-items:center;gap:0;border:1.5px solid var(--leaf);border-radius:12px;overflow:hidden}
+.step .qin{width:56px;height:42px;border:0;background:transparent;text-align:center;font-size:17px;font-weight:900;color:var(--leaf-d);padding:0;-moz-appearance:textfield}.cl .step .qin{width:46px;height:34px;font-size:15px}
 .step button{width:44px;height:42px;font-size:20px;font-weight:900;color:var(--leaf)}.step span{min-width:40px;text-align:center;font-weight:900}
 .addrow{display:flex;align-items:center;gap:12px;margin-top:14px}
 .cta{display:block;width:100%;height:52px;border-radius:14px;background:var(--leaf);color:#fff;font-weight:800;font-size:15.5px;margin-top:12px;text-align:center;line-height:52px;text-decoration:none}
@@ -247,7 +248,7 @@ function renderItem(){
     <div class="szs">${it.sizes.map(x=>{ const h=qtyAt(it.id,x.size); return `<button data-sz="${esc(x.size)}" class="${x.size===sel.size?"on":""}"${h>0||NOSTOCK()?"":" disabled"}><b>${esc(x.size)}</b><small>${inr(x.rate)}</small><small>${h>0?"இருப்பு "+h:(NOSTOCK()?"முன்பதிவு":"இல்லை")}</small></button>`; }).join("")}</div>
     ${where?`<p class="sub" style="margin-top:8px">📍 ${where}</p>`:""}
     <div class="addrow"><div style="font-size:24px;font-weight:900;color:var(--leaf-d)">${inr(z.rate)}</div>
-      <div class="step" style="margin-left:auto"><button data-iq="-1" aria-label="Less">−</button><span>${sel.qty}</span><button data-iq="1" aria-label="More">+</button></div></div>
+      <div class="step" style="margin-left:auto"><button data-iq="-1" aria-label="Less">−</button><input class="qin" id="iqIn" inputmode="numeric" maxlength="3" value="${sel.qty}" aria-label="Quantity"><button data-iq="1" aria-label="More">+</button></div></div>
     ${inCart?`<p class="sub" style="margin-top:6px">🛒 ஏற்கனவே Cart-ல்: ${inCart}</p>`:""}
     ${have<=0&&NOSTOCK()?`<p class="sub" style="margin-top:6px;color:#b45309;font-weight:700">📦 இப்போது ஸ்டாக் இல்லை — முன்பதிவு ஆர்டர் எடுக்கப்படும்; ஸ்டாக் வந்ததும் கடை தொடர்பு கொள்ளும்</p>`:""}
     <button class="cta" id="addCart"${have>0||NOSTOCK()?"":" disabled"}>${have>0||NOSTOCK()?"🛒 Cart-ல் சேர் · "+inr(z.rate*sel.qty):"இருப்பு இல்லை"}</button>
@@ -261,7 +262,7 @@ function openCart(){
     <div class="box">${K.map(k=>{ const [id,sz]=k.split("|"), it=byId[id], r=rateOf(k);
       return `<div class="cl" data-k="${esc(k)}"><div class="th" style="--tint:${esc(tint(it))}">${pic(it)}</div>
         <div><b>${esc(it.ta)}</b><small>${isW(it)?fmtG(cart[k])+" × "+inr(r)+" / "+it.unit:esc(sz)+" · "+inr(r)+" × "+cart[k]} = <b>${inr(lineAmt(k))}</b></small><small class="bad" data-warn="${esc(k)}"></small></div>
-        <div class="step"><button data-cq="-1" aria-label="Less">−</button><span>${isW(it)?fmtG(cart[k]):cart[k]}</span><button data-cq="1" aria-label="More">+</button></div></div>`; }).join("")}
+        <div class="step"><button data-cq="-1" aria-label="Less">−</button>${isW(it)?`<span>${fmtG(cart[k])}</span>`:`<input class="qin" data-cqin inputmode="numeric" maxlength="3" value="${cart[k]}" aria-label="Quantity">`}<button data-cq="1" aria-label="More">+</button></div></div>`; }).join("")}
       <div class="tot"><span>மொத்தம் (${cartPcs()} pcs)</span><span>${inr(cartTot())}</span></div></div>
     <p class="sub" id="preNote" style="color:#b45309;font-weight:700" hidden>📦 முன்பதிவு: ஸ்டாக் இல்லாத ஐட்டங்கள் முன்பதிவாக எடுக்கப்படும் — ஸ்டாக் வந்தவுடன் கடை உங்களை தொடர்பு கொள்ளும்.</p>
     <div class="lbl">உங்கள் விவரம்</div>
@@ -353,10 +354,10 @@ document.addEventListener("click",e=>{
   if(d.wq){ sel.wt=+d.wq; sel.u=sel.wt>=1000&&sel.wt%1000===0?sel.u:sel.u; const i=$("#wIn"); i.value=sel.u==="kg"?+(sel.wt/1000).toFixed(3):sel.wt; wtPaint(); return; }
   if(d.wd){ const it=byId[sel.id]; sel.wt=Math.max(0,Math.min(99000,(sel.wt||0)+(+d.wd)*wStep(it))); $("#wIn").value=sel.u==="kg"?+(sel.wt/1000).toFixed(3):sel.wt; wtPaint(); return; }
   if(d.sz){ sel.size=d.sz; sel.qty=1; renderItem(); return; }
-  if(d.iq){ const h=qtyAt(sel.id,sel.size)-(cart[sel.id+"|"+sel.size]||0); sel.qty=Math.max(1,Math.min(NOSTOCK()?99:Math.max(1,h),sel.qty+(+d.iq))); renderItem(); return; }
+  if(d.iq){ iqRead(); sel.qty=Math.max(1,Math.min(iqMax(),sel.qty+(+d.iq))); renderItem(); return; }
   if(t.id==="addCart"&&isW(byId[sel.id])){ const k=sel.id+"|W", have=qtyAt(sel.id); sel.wt=wGrams()||sel.wt; if(sel.wt<10||sel.wt>99000){ toast("எடை 10 g – 99 kg வரை"); return; }
     const n=Math.min(99000,(cart[k]||0)+sel.wt); if(!NOSTOCK()&&n>have){ toast("இருப்பு "+fmtG(have)+" வரை மட்டுமே"); return; } cart[k]=n; saveCart(); closeSheet(); render(); toast("🛒 Cart-ல் சேர்க்கப்பட்டது"); return; }
-  if(t.id==="addCart"){ const k=sel.id+"|"+sel.size, h=qtyAt(sel.id,sel.size); const n=NOSTOCK()?Math.min(99,(cart[k]||0)+sel.qty):Math.min(h,(cart[k]||0)+sel.qty);
+  if(t.id==="addCart"){ iqRead(); const k=sel.id+"|"+sel.size, h=qtyAt(sel.id,sel.size); const n=NOSTOCK()?Math.min(999,(cart[k]||0)+sel.qty):Math.min(h,(cart[k]||0)+sel.qty);
     if(n<=(cart[k]||0)){ toast("இருப்பு அளவு வரை மட்டுமே சேர்க்க முடியும்"); return; } cart[k]=n; saveCart(); closeSheet(); render(); toast("🛒 Cart-ல் சேர்க்கப்பட்டது"); return; }
   if(t.id==="openCart"){ openCart(); return; }
   if(d.cq){ const k=t.closest("[data-k]").dataset.k, wi=byId[k.split("|")[0]]; cart[k]=Math.max(0,(cart[k]||0)+(+d.cq)*(isW(wi)?wStep(wi):1)); if(!cart[k]||(isW(wi)&&cart[k]<10)) delete cart[k]; saveCart(); render(); if(cartKeys().length) openCart(); else closeSheet(); return; }
@@ -370,8 +371,29 @@ document.addEventListener("input",e=>{
   if(e.target.id==="q") render();
   if(e.target.id==="inOnly"){ inOnly=e.target.checked; ls.set("inOnly",inOnly); render(); }
   if(e.target.id==="oBranch") checkCartBranch();
+  if(e.target.id==="iqIn"){ const v=e.target.value.replace(/\D/g,""); if(v!==e.target.value) e.target.value=v; sel.qty=Math.max(1,Math.min(iqMax(),parseInt(v,10)||1)); iqPaint(); }
+  if(e.target.dataset&&e.target.dataset.cqin!==undefined){ const v=e.target.value.replace(/\D/g,""); if(v!==e.target.value) e.target.value=v; }
   if(e.target.id==="wIn"){ sel.wt=wGrams(); wtPaint(); }
   if(e.target.id==="wUn"){ const g=wGrams()||sel.wt; sel.u=e.target.value; sel.wt=g; $("#wIn").value=sel.u==="kg"?+(g/1000).toFixed(3):g; wtPaint(); }
+});
+/* typed quantity (count items): item sheet + cart */
+function iqMax(){ const h=qtyAt(sel.id,sel.size)-(cart[sel.id+"|"+sel.size]||0); return NOSTOCK()?999:Math.max(1,h); }
+function iqRead(){ const i=$("#iqIn"); if(!i) return; const v=parseInt(i.value.replace(/\D/g,""),10)||1; sel.qty=Math.max(1,Math.min(iqMax(),v)); }
+function iqPaint(){ const it=byId[sel.id], z=it&&it.sizes.find(x=>x.size===sel.size), b=$("#addCart"); if(b&&z&&!b.disabled) b.textContent="🛒 Cart-ல் சேர் · "+inr(z.rate*sel.qty); }
+document.addEventListener("keydown",e=>{ if(e.key==="Enter"&&e.target.dataset&&(e.target.id==="iqIn"||e.target.dataset.cqin!==undefined)){ e.preventDefault(); e.target.blur(); } });
+document.addEventListener("change",e=>{
+  if(e.target.id==="iqIn"){ const v=parseInt(e.target.value.replace(/\D/g,""),10)||1, m=iqMax(); sel.qty=Math.max(1,Math.min(m,v)); if(v>m) toast(NOSTOCK()?"ஒரு முறை அதிகபட்சம் 999":"இருப்பு "+m+" வரை மட்டுமே"); e.target.value=sel.qty; iqPaint(); return; }
+  if(e.target.dataset&&e.target.dataset.cqin!==undefined){
+    const k=e.target.closest("[data-k]").dataset.k, v=parseInt(e.target.value.replace(/\D/g,""),10)||0;
+    if(v>999) toast("அதிகபட்சம் 999");
+    if(!v){ delete cart[k]; saveCart(); render(); if(cartKeys().length) openCart(); else closeSheet(); return; }
+    cart[k]=Math.min(999,v); e.target.value=cart[k]; saveCart(); render();
+    const row=e.target.closest(".cl"), it=byId[k.split("|")[0]], sm=row.querySelector("small");
+    if(sm) sm.firstChild.nodeValue=k.split("|")[1]+" · "+inr(rateOf(k))+" × "+cart[k]+" = ";
+    const b=sm&&sm.querySelector("b"); if(b) b.textContent=inr(lineAmt(k));
+    const tot=document.querySelector(".box .tot"); if(tot) tot.innerHTML="<span>மொத்தம் ("+cartPcs()+" pcs)</span><span>"+inr(cartTot())+"</span>";
+    checkCartBranch();
+  }
 });
 boot();
 </script>
