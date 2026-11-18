@@ -188,7 +188,7 @@ function render(){
           <span class="cnt">${its.length} பொருட்கள்</span>${ph?`<img class="ph" loading="lazy" src="${esc(photoUrl(ph))}" alt="">`:""}</button>`; }).join("")}</div>`;
   }
   $("#app").innerHTML=`
-    <section class="hero"><b>அந்த ஏக இறைவனின் சாந்தியும் சமாதானமும் உண்டாவதாக 🤲</b><p style="margin-top:6px;font-weight:700">Online-ல் ஆர்டர் செய்யுங்கள்</p><p>${esc([c.address,c.city].filter(Boolean).join(", "))}<br>வகையை தேர்வு செய்யுங்கள் → படம் பார்த்து சைஸ் தேர்வு → Cart → ஆர்டர். கடை உறுதி செய்து டெலிவரி / பிக்அப் செய்யும்.</p>
+    <section class="hero"><b>வணக்கம்!</b><p style="margin-top:6px;font-weight:700">Online-ல் ஆர்டர் செய்யுங்கள்</p><p>${esc([c.address,c.city].filter(Boolean).join(", "))}<br>வகையை தேர்வு செய்யுங்கள் → படம் பார்த்து சைஸ் தேர்வு → Cart → ஆர்டர். கடை உறுதி செய்து டெலிவரி / பிக்அப் செய்யும்.</p>
       ${ls.get("orders",[]).length?`<button class="myo" id="myOrders">📦 என் ஆர்டர்கள் (${ls.get("orders",[]).length})</button>`:""}</section>
     <div class="lbl">எந்த கடையின் இருப்பை பார்க்க வேண்டும்?</div>
     <div class="locs"><button data-loc="all" class="${loc==="all"?"on":""}">🌐 எல்லா இடங்களும்</button>${S.branches.map(b=>`<button data-loc="${esc(b.id)}" class="${loc===b.id?"on":""}">${b.kind==="warehouse"?"🏭":"🏬"} ${esc(b.name)}</button>`).join("")}</div>

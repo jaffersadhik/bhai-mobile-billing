@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS companies (
   gstin            VARCHAR(15)   NOT NULL DEFAULT '',
   email            VARCHAR(80)   NOT NULL DEFAULT '',
   bill_prefix      VARCHAR(8)    NOT NULL DEFAULT 'INV',
-  show_bismillah   TINYINT(1)    NOT NULL DEFAULT 1,
+  show_bismillah   TINYINT(1)    NOT NULL DEFAULT 0,   -- unused (religious greeting removed)
   bill_footer      VARCHAR(120)  NOT NULL DEFAULT '',
   bill_seq         BIGINT        NOT NULL DEFAULT 0,
   catalog_version  BIGINT        NOT NULL DEFAULT 0,

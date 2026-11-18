@@ -231,6 +231,8 @@ public class BillingService {
             if (cd != null && "0".equals(str(cd.get("d")))) db.update("UPDATE companies SET order_no_stock = 1");
         }
         db.update("ALTER TABLE companies ALTER COLUMN order_no_stock SET DEFAULT 1");
+        // the religious greeting on bills was removed: switch the old flag off everywhere (column kept, never read)
+        if (hasColumn("companies", "show_bismillah")) { db.update("ALTER TABLE companies ALTER COLUMN show_bismillah SET DEFAULT 0"); db.update("UPDATE companies SET show_bismillah = 0 WHERE show_bismillah <> 0"); }
         ensureBranches(null);
         ensurePayModes(null);
     }
@@ -3320,7 +3322,7 @@ public class BillingService {
         if (prefix.isEmpty()) prefix = "INV";
         if (!PREFIX.matcher(prefix).matches()) throw new ApiException(400, "Bill prefix: A-Z, 0-9 மட்டும் (max 8)");
         String footer = clip(in.get("footer"), 120);
-        boolean bis = !(in.get("bismillah") instanceof Boolean) || (Boolean) in.get("bismillah");
+        boolean bis = false;                                   // religious greeting on bills removed: the column stays (always 0)
         double fee = in.get("billFee") == null || str(in.get("billFee")).isEmpty() ? DEFAULT_BILL_FEE : round2(dbl(in.get("billFee")));
         if (Double.isNaN(fee) || fee < 0 || fee > 1000) throw new ApiException(400, "ஒரு பில்லுக்கான கட்டணம் தவறு (0 – 1000 ₹)");
         LocalDateTime now = now();
@@ -3501,7 +3503,6 @@ public class BillingService {
         p.put("gstin", str(c.get("gstin")));
         p.put("email", str(c.get("email")));
         p.put("billPrefix", str(c.get("bill_prefix")));
-        p.put("bismillah", bool(c.get("show_bismillah")));
         String f = str(c.get("bill_footer"));
         p.put("footer", f.isEmpty() ? DEFAULT_FOOTER : f);
         p.put("created", iso(ldt(c.get("created_at"))));

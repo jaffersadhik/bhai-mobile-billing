@@ -48,7 +48,6 @@ input,textarea{font:inherit;color:inherit}
 /* ---- hero ---- */
 .hero{margin-top:6px;border-radius:22px;padding:22px 18px;text-align:center;color:#fff;background:linear-gradient(150deg,#0e6b4a 0%,#09442f 100%);position:relative;overflow:hidden}
 .hero::after{content:"";position:absolute;inset:8px;border:1.5px solid rgba(233,180,49,.65);border-radius:16px;pointer-events:none}
-.hero .bis{font-family:var(--head);font-size:19px;font-weight:800;color:var(--gold)}
 .hero h2{font-family:var(--head);font-size:32px;font-weight:800;line-height:1.15;margin-top:6px}
 .hero p{margin-top:8px;font-size:13px;font-weight:600;opacity:.9}
 .hero .pill{display:inline-block;margin-top:12px;background:var(--gold);color:var(--leaf-d);font-weight:700;font-size:13px;border-radius:20px;padding:5px 14px}
@@ -182,7 +181,6 @@ body.authed .login{display:none}
 .login{max-width:480px;margin:0 auto;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;justify-content:center;padding:calc(28px + env(safe-area-inset-top,0px)) 20px calc(28px + env(safe-area-inset-bottom,0px));background:linear-gradient(160deg,#0e6b4a 0%,#09442f 100%);color:#fff;box-shadow:0 0 40px rgba(9,68,47,.18)}
 .login .brand{text-align:center;margin-bottom:22px}
 .login .lmark{width:72px;height:72px;border-radius:22px;background:var(--gold);color:var(--leaf-d);display:grid;place-items:center;font-family:var(--head);font-weight:800;font-size:40px;margin:0 auto 12px;box-shadow:0 10px 26px rgba(0,0,0,.25)}
-.login .bis{font-family:var(--head);font-size:16px;font-weight:800;color:var(--gold)}
 .login h1{font-family:var(--head);font-size:28px;font-weight:800;line-height:1.15;margin-top:4px}
 .login .tag{font-size:13px;font-weight:600;opacity:.85;margin-top:4px}
 .lcard{background:var(--bg);color:var(--ink);border-radius:22px;padding:20px 16px;box-shadow:0 14px 34px rgba(0,0,0,.25);position:relative}
@@ -681,7 +679,6 @@ footer .pw-by b{color:var(--leaf)}
   <button type="button" class="langbtn" id="langBtn" data-langlabel aria-label="Language">🌐 தமிழ்</button>
   <div class="brand">
     <div class="lmark mlogo" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="16" fill="#0e6b4a"/><path d="M18 12h28a3 3 0 0 1 3 3v37l-5-3-5 3-5-3-5 3-5-3-5 3V15a3 3 0 0 1 3-3z" fill="#fff"/><path d="M23 38V22l9 10 9-10v16" fill="none" stroke="#e9b431" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-    <div class="bis" id="lBis"></div>
     <h1 class="appn" id="lApp"></h1>
     <p class="appta" id="lAppTa"></p>
     <p class="tag">கடைகளுக்கான மொபைல் பில்லிங் · Mobile Billing for shops</p>
@@ -736,7 +733,6 @@ footer .pw-by b{color:var(--leaf)}
 const APP_NAME     = "MBill";
 const DEFAULT_PW   = "admin1234";        // default password for new users (same as the server default)
 const APP_NAME_TA  = "Mobile Bill · மொபைல் பில்";
-const BISMILLAH    = "அல்லாஹ்வின் திருப்பெயரால்";
 const COUNTRY_CODE = "91";          // WhatsApp bills go to COUNTRY_CODE + customer's 10-digit mobile
 const API_BASE     = "api/";        // server API inside the same WAR (users, companies, groups, items, bills are stored on the server)
 
@@ -1079,7 +1075,7 @@ function renderBar(){
   $("#q").placeholder = c ? `${c[1]} பகுதியில் தேடு / Barcode` : "ஐட்டம் பெயர் / Barcode எண் தேடு (Search)";
 }
 function heroHtml(){
-  return `<section class="hero">${company.bismillah!==false?`<div class="bis">${esc(BISMILLAH)}</div>`:""}<h2>${esc(company.name)}</h2>
+  return `<section class="hero"><h2>${esc(company.name)}</h2>
     ${company.tagline?`<p>${esc(company.tagline)}</p>`:""}<span class="pill">${esc(APP_NAME)}</span><br>
     <span class="owner">👤 ${esc(me.name)} · ${esc(me.user)}${isSystem()?" · System":isAdmin()?" · Admin":""}${myBranch?" · 🏬 "+esc(myBranch):""}</span></section>`;
 }
@@ -1411,7 +1407,6 @@ async function loadPendingToCart(id){
 }
 function billText(b){
   const c=company||{}, out=[];
-  if(c.bismillah!==false) out.push(`*${BISMILLAH}*`);
   out.push(`*${c.name||APP_NAME}*`);
   const addr=[c.address,c.city].filter(Boolean).join(", "); if(addr) out.push(addr);
   const ph=[c.phone?`📞 ${c.phone}`:"", c.gstin?`GSTIN: ${c.gstin}`:""].filter(Boolean).join(" · "); if(ph) out.push(ph);
@@ -1450,7 +1445,7 @@ function billDoc(b){
   return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:"Noto Sans Tamil",Arial,sans-serif;color:#111;margin:0;padding:18px;font-size:13px;width:384px}
     h1{font-size:18px;margin:0;text-align:center}.c{text-align:center}.m{color:#444;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:8px}td{padding:4px 0;vertical-align:top;border-bottom:1px dashed #bbb}
     td.r{text-align:right;white-space:nowrap}.t td{font-weight:bold;font-size:15px;border:0;border-top:2px solid #111}hr{border:0;border-top:1px dashed #999}</style></head><body>
-    ${c.bismillah!==false?`<div class="c m">${esc(BISMILLAH)}</div>`:""}<h1>${esc(c.name||APP_NAME)}</h1>
+    <h1>${esc(c.name||APP_NAME)}</h1>
     <div class="c m">${esc([c.address,c.city].filter(Boolean).join(", "))}${c.phone?"<br>📞 "+esc(c.phone):""}${c.gstin?" · GSTIN: "+esc(c.gstin):""}</div><hr>
     <div><b>பில் எண்: ${esc(b.no)}</b><br><span class="m">${esc(fmtDate(b.at))}${b.customer?" · "+esc(b.customer):""}${b.by?" · 👤 "+esc(b.by):""}</span></div>
     <table>${(b.lines||[]).map((l,i)=>`<tr><td>${i+1}. ${esc(l.name)}${l.en?` <span class="m">(${esc(l.en)})</span>`:""}<br><span class="m">${l.size?"Size "+esc(l.size)+" · ":""}${l.qty} × ${inr(l.rate)}</span></td><td class="r">${inr(l.amt)}</td></tr>`).join("")}
@@ -1589,7 +1584,7 @@ function billPrintHtml(b,f){
       ${b.pay?`<tr><td>பணம்</td><td class="r">${esc(b.pay)}</td></tr>`:""}</table>
       <p style="margin-top:10mm;text-align:center">${esc(foot)}</p></div>`;
   }
-  return `<div class="rcpt t${f}" data-noi18n>${c.bismillah!==false?`<div class="c m">${esc(BISMILLAH)}</div>`:""}<h1>${esc(c.name||APP_NAME)}</h1>
+  return `<div class="rcpt t${f}" data-noi18n><h1>${esc(c.name||APP_NAME)}</h1>
     <div class="c m">${esc(addr)}${c.phone?"<br>Ph: "+esc(c.phone):""}${c.gstin?"<br>GSTIN: "+esc(c.gstin):""}</div><hr>
     <div><b>பில் எண்: ${esc(b.no)}</b><br><span class="m">${esc(fmtDate(b.at))}${b.customer?"<br>"+esc(b.customer):""}${b.by?"<br>பில் போட்டவர்: "+esc(b.by):""}</span></div><hr>
     <table>${L.map((l,k)=>`<tr><td>${k+1}. ${esc(l.name)}<br><span class="sub">${l.size?"Size "+esc(l.size)+" · ":""}${lineWt(l)?esc(lineWt(l))+" · ":""}${l.qty} × ${inr(l.rate)}</span></td><td class="r">${inr(l.amt)}</td></tr>`).join("")}
@@ -2507,7 +2502,6 @@ function openCompanyForm(id,ret){
       <label class="fld" id="fkWa">💬 Online ஆர்டர் WhatsApp எண் (காலி = மேலே உள்ள மொபைல்)<input id="kWa" inputmode="numeric" maxlength="10" autocomplete="off"><span class="err">சரியான 10 இலக்க எண்</span></label>
       ${c?`<div class="meta" style="margin:2px 0 8px">🌐 Website: ${esc(shopBase(c))}</div>`:tplBlock("k")}
       <label class="fld">பில் கடைசி வரி<input id="kFoot" maxlength="120" autocomplete="off" placeholder="நன்றி! மீண்டும் வருக 🙏"></label>
-      <label class="rem"><input type="checkbox" id="kBis" checked>பில்லில் "${esc(BISMILLAH)}" காட்டு</label>
       <label class="rem"><input type="checkbox" id="kRc">✏️ பில் போடும்போது ரேட் மாற்ற அனுமதி (Rate change)</label>
       <label class="rem"><input type="checkbox" id="kOs">📦 முன்பதிவு (Pre-order): ஸ்டாக் இல்லாவிட்டாலும் ஆர்டர் எடுக்க அனுமதி</label>
       <p class="hint" style="margin:-2px 0 6px">இதை நிறுத்தினால் ஸ்டாக் 0 உள்ள ஐட்டத்துக்கு Online shop-ல் "ஆர்டர் செய்" வேலை செய்யாது.</p>
@@ -2515,7 +2509,7 @@ function openCompanyForm(id,ret){
     <button class="cta leaf" id="compSave">${c?"சேமி":"கம்பெனியை உருவாக்கு"}</button>
     ${c?`<div class="two-b"><button class="cta warn" id="compDel">🗑 நீக்கு</button><button class="cta ghost" id="compCancel">ரத்து</button></div>`:`<button class="cta ghost" id="compCancel">ரத்து (Cancel)</button>`}`;
   if(c){ $("#kName").value=c.name||""; $("#kTag").value=c.tagline||""; $("#kOwner").value=c.owner||""; $("#kPhone").value=c.phone||""; $("#kAddr").value=c.address||"";
-    $("#kCity").value=c.city||""; $("#kPrefix").value=c.billPrefix||""; $("#kGst").value=c.gstin||""; $("#kEmail").value=c.email||""; $("#kFoot").value=c.footer||""; $("#kWa").value=c.shopWa||""; $("#kBis").checked=c.bismillah!==false; $("#kOs").checked=!!c.orderNoStock; $("#kRc").checked=!!c.rateChange; $("#kFee").value=c.billFee!=null?c.billFee:"0.25"; }
+    $("#kCity").value=c.city||""; $("#kPrefix").value=c.billPrefix||""; $("#kGst").value=c.gstin||""; $("#kEmail").value=c.email||""; $("#kFoot").value=c.footer||""; $("#kWa").value=c.shopWa||""; $("#kOs").checked=!!c.orderNoStock; $("#kRc").checked=!!c.rateChange; $("#kFee").value=c.billFee!=null?c.billFee:"0.25"; }
   if(!c&&$("#kOs")) $("#kOs").checked=true;                 // new company: pre-order on
   showSheet(); if(!c) setTimeout(()=>{ const i=$("#kName"); if(i) i.focus(); },250);
 }
@@ -2523,7 +2517,7 @@ async function saveCompany(){
   const b={id:kForm.id||"", name:$("#kName").value.trim(), tagline:$("#kTag").value.trim(), owner:$("#kOwner").value.trim(),
     phone:$("#kPhone").value.replace(/\D/g,""), address:$("#kAddr").value.trim(), city:$("#kCity").value.trim(),
     gstin:$("#kGst").value.trim().toUpperCase(), email:$("#kEmail").value.trim(), billPrefix:$("#kPrefix").value.trim().toUpperCase(),
-    footer:$("#kFoot").value.trim(), bismillah:$("#kBis").checked, rateChange:$("#kRc").checked, orderNoStock:$("#kOs").checked, shopWa:$("#kWa").value.replace(/\D/g,""), billFee:$("#kFee").value.trim()===""?0.25:Number($("#kFee").value.trim())};
+    footer:$("#kFoot").value.trim(), rateChange:$("#kRc").checked, orderNoStock:$("#kOs").checked, shopWa:$("#kWa").value.replace(/\D/g,""), billFee:$("#kFee").value.trim()===""?0.25:Number($("#kFee").value.trim())};
   const okF=isFinite(b.billFee)&&b.billFee>=0&&b.billFee<=1000; $("#fkFee").classList.toggle("bad",!okF); if(!okF){ toast("ஒரு பில்லுக்கான கட்டணம் தவறு"); return; }
   const okN=!!b.name, okP=/^[6-9]\d{9}$/.test(b.phone), okG=!b.gstin||/^[0-9]{2}[A-Z0-9]{13}$/.test(b.gstin), okX=!b.billPrefix||/^[A-Z0-9]{1,8}$/.test(b.billPrefix);
   $("#fkName").classList.toggle("bad",!okN); $("#fkPhone").classList.toggle("bad",!okP); $("#fkGst").classList.toggle("bad",!okG); $("#fkPrefix").classList.toggle("bad",!okX);
@@ -2798,7 +2792,7 @@ async function doLogin(e){
     const r=await api("login","POST",{user:u,pass:p,remember:$("#lRem").checked});
     setToken(r.access_token||r.token,$("#lRem").checked); $("#lPass").value="";
     await enter(r);
-    toast("அந்த ஏக இறைவனின் சாந்தியும் சமாதானமும் உண்டாவதாக · "+me.name+(company?" · "+company.name:""));
+    toast("வணக்கம் · "+me.name+(company?" · "+company.name:""));
   }catch(err){ lerr(err.message); $("#lPass").value=""; $("#lPass").focus(); }
   finally{ $("#lBtn").disabled=false; busy(false); }
 }
@@ -3743,7 +3737,7 @@ function openOrder(id){
   if(canStock()&&(!stockData||stockData.co!==company.id)) loadStock();
 }
 function orderMsg(o,url){
-  return [`*${company.name}*`,`அந்த ஏக இறைவனின் சாந்தியும் சமாதானமும் உண்டாவதாக 🤲`,`${o.name} அவர்களே,`,`உங்கள் ஆர்டர் ${o.no} · ${inr(o.total)}`,`நிலை: ${OST[o.status]||o.status}`,o.billNo?`பில்: ${o.billNo}`:"",url?`ஆர்டர் நிலை பார்க்க: ${url}`:"","","நன்றி ❤️"].filter(x=>x!=="").join("\n");
+  return [`*${company.name}*`,`வணக்கம்!`,`${o.name} அவர்களே,`,`உங்கள் ஆர்டர் ${o.no} · ${inr(o.total)}`,`நிலை: ${OST[o.status]||o.status}`,o.billNo?`பில்: ${o.billNo}`:"",url?`ஆர்டர் நிலை பார்க்க: ${url}`:"","","நன்றி ❤️"].filter(x=>x!=="").join("\n");
 }
 async function setOrder(body){
   busy(true);
@@ -4064,7 +4058,7 @@ function renderPoForm(){
     <div class="box frm"><h3>செலவு & பணம்</h3>
       <div class="two"><label class="fld">போக்குவரத்து / இதர ₹<input id="poOther" inputmode="decimal" value="${esc(f.other||"")}" placeholder="0"></label><label class="fld">தள்ளுபடி ₹<input id="poDisc" inputmode="decimal" value="${esc(f.discount||"")}" placeholder="0"></label></div>
       <label class="fld">Supplier-க்கு செலுத்தியது (Advance / Paid) ₹<input id="poPaid" inputmode="decimal" value="${esc(f.paid||"")}" placeholder="0"></label>
-      <label class="fld">குறிப்பு (Notes)<input id="poNotes" maxlength="300" value="${esc(f.notes||"")}" placeholder="எ.கா. தீபாவளி சரக்கு, டிசைன் விவரம்"></label>
+      <label class="fld">குறிப்பு (Notes)<input id="poNotes" maxlength="300" value="${esc(f.notes||"")}" placeholder="எ.கா. புது சரக்கு, டிசைன் விவரம்"></label>
       <div class="potot" id="poTot"></div></div>
     <button class="cta leaf" id="poSave">${f.id?"மாற்றத்தை சேமி":"PO-ஐ சேமி (Save)"}</button>
     <button class="cta ghost" data-close>ரத்து (Cancel)</button>`;
@@ -4820,7 +4814,6 @@ document.addEventListener("keydown",e=>{ if(e.key==="Enter" && e.target.id==="st
 /* ================= START ================= */
 if("serviceWorker" in navigator && location.protocol!=="file:") addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
 (async function start(){
-  $("#lBis").textContent=BISMILLAH;
   $("#lApp").innerHTML="<span>M</span>Bill";
   $("#lAppTa").textContent=APP_NAME_TA;
   renderBrand();
