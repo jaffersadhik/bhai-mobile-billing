@@ -99,8 +99,12 @@ input,textarea{font:inherit;color:inherit}
 .step{display:flex;align-items:center;height:40px;border-radius:12px;background:var(--leaf);color:#fff;flex:none}
 .step button{width:38px;height:40px;font-size:21px;font-weight:700;color:#fff}
 .step span{min-width:34px;text-align:center;font-size:15px;font-weight:700}
-.step .qin{width:48px;height:40px;border:0;background:transparent;color:#fff;text-align:center;font-size:15px;font-weight:700;padding:0;-moz-appearance:textfield}
-.bl .step .qin{height:34px}
+.step .qin{width:60px;height:32px;margin:0 2px;border:1.5px solid #fff;border-radius:9px;background:#fff;color:var(--ink,#1b2b34);text-align:center;font-size:16px;font-weight:800;padding:0;-moz-appearance:textfield}
+.step .qin:focus{outline:2px solid var(--gold);outline-offset:1px}
+.bl .step .qin{height:28px;width:56px}
+.addq{display:flex;align-items:center;gap:6px}
+.qin0{width:62px;height:40px;border:1.5px solid var(--line);border-radius:12px;background:#fff;text-align:center;font-size:15px;font-weight:700;padding:0;min-width:0}
+.qin0:focus{outline:2px solid var(--leaf);outline-offset:1px}
 .wbox{display:flex;align-items:center;gap:6px;flex:none}
 .win{width:78px;height:40px;border:1.5px solid var(--line,#d9dee3);border-radius:10px;padding:0 8px;font-size:15px;font-weight:700;text-align:center;background:#fff}
 .wbox select,.r2.wr select{height:40px;border:1.5px solid var(--line,#d9dee3);border-radius:10px;background:#fff;font-size:14px;font-weight:700;padding:0 4px}
@@ -1083,7 +1087,7 @@ const pwWarn = () => defaultPw ? `<div class="warnbox">⚠️ Default password �
 function ctl(id){
   const q=cart[id+"|"+selSize(id)];
   return q ? `<div class="step"><button data-act="dec" aria-label="Decrease">−</button><input class="qin" data-qin inputmode="numeric" value="${q}" aria-label="Quantity"><button data-act="inc" aria-label="Increase">+</button></div>`
-           : `<button class="add" data-act="inc">ADD</button>`;
+           : `<div class="addq"><input class="qin0" data-qin0 inputmode="numeric" maxlength="3" placeholder="Qty" autocomplete="off" aria-label="Quantity (type e.g. 500)"><button class="add" data-act="inc">ADD</button></div>`;
 }
 /* weight item tile: type the weight, pick kg / g, ADD */
 function wcard(it){
@@ -4618,6 +4622,7 @@ document.addEventListener("click",e=>{
   if(d.act){
     const h=t.closest("[data-key],[data-item]"); if(!h) return;
     const key=h.dataset.key || (h.dataset.item+"|"+selSize(h.dataset.item));
+    if(d.act==="inc"&&!cart[key]&&!key.startsWith("c:")){ const qi=h.querySelector("[data-qin0]"), n=qi?parseInt(String(qi.value).replace(/\D/g,""),10):0; if(n>0){ setQty(key,n); return; } }   // qty typed before ADD
     change(key,d.act==="inc"?1:-1); return;
   }
   if(d.cat){ cameFromHome=true; $("#q").value=""; location.hash=d.cat; return; }
@@ -4733,6 +4738,7 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Enter" && e.target.id==="cfbPhone"){ e.preventDefault(); cfbFind(); return; }
   if(e.key==="Enter" && e.target.id==="bcIn"){ e.preventDefault(); typeBarcode(e.target.value); e.target.value=""; return; }
   if(e.key==="Enter" && e.target.dataset && e.target.dataset.win!==undefined){ e.preventDefault(); const h=e.target.closest("[data-item]"); if(h) setWeight(h.dataset.item,e.target.value,h.querySelector("[data-wu]").value); return; }
+  if(e.key==="Enter" && e.target.dataset && e.target.dataset.qin0!==undefined){ e.preventDefault(); const b=e.target.parentElement.querySelector("[data-act=inc]"); if(b) b.click(); return; }
   if(e.key==="Enter" && e.target.dataset && (e.target.dataset.win!==undefined||e.target.dataset.qin!==undefined||e.target.dataset.rin!==undefined||e.target.dataset.bwin!==undefined)){ e.preventDefault(); e.target.blur(); return; }
   if(e.key==="Enter" && e.target.id==="q"){ const c=findCode(cleanCode(e.target.value)); if(c.length>=1 && byCode[c]){ e.preventDefault(); e.target.value=""; renderView(); scanToCart(c); } return; }
   if(e.key==="Enter" && e.target.dataset && e.target.dataset.ri!==undefined){ e.preventDefault(); saveItemEdit(); }
@@ -4772,6 +4778,8 @@ document.addEventListener("input",e=>{
   if(e.target.dataset && e.target.dataset.cri!==undefined){ e.target.style.borderColor=""; newCostHint(Number(e.target.dataset.cri)); }
   if(e.target.dataset && e.target.dataset.iri!==undefined) newCostHint(Number(e.target.dataset.iri));
 });
+document.addEventListener("focusin",e=>{ const d=e.target.dataset; if(d&&(d.qin!==undefined||d.qin0!==undefined)) setTimeout(()=>{ try{ e.target.select(); }catch(x){} },0); });
+document.addEventListener("input",e=>{ const d=e.target.dataset; if(d&&(d.qin!==undefined||d.qin0!==undefined)){ const v=e.target.value.replace(/\D/g,""); if(v!==e.target.value) e.target.value=v; } });
 document.addEventListener("change",e=>{
   { const d=e.target.dataset||{}, h=e.target.closest&&e.target.closest("[data-key],[data-item]");
     if(d.lbqin!==undefined){ const hh=e.target.closest("[data-lbitem]"); if(hh){ const k=hh.dataset.lbitem+"|"+lbSel(hh.dataset.lbitem); lbSet(k,parseInt(String(e.target.value).replace(/\D/g,""),10)||0); } return; }
